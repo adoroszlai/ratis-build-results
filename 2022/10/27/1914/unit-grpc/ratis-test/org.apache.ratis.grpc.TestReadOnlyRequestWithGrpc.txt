@@ -1,0 +1,93 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestReadOnlyRequestWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 11.612 s <<< FAILURE! - in org.apache.ratis.grpc.TestReadOnlyRequestWithGrpc
+testFollowerLinearizableReadRetryWhenLeaderDown(org.apache.ratis.grpc.TestReadOnlyRequestWithGrpc)  Time elapsed: 0.974 s  <<< ERROR!
+org.apache.ratis.protocol.exceptions.RaftRetryFailureException: Failed RaftClientRequest:client-637778CCA44E->s1@group-F05F6F172674, cid=66, seq=0, RO, QUERY for 3 attempts with ExceptionDependentRetry(maxAttempts=2147483647; defaultPolicy=NoRetry; map={org.apache.ratis.protocol.exceptions.ReadIndexException->RetryForeverWithSleep(sleepTime = 100ms)})
+	at org.apache.ratis.client.impl.RaftClientImpl.noMoreRetries(RaftClientImpl.java:306)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:119)
+	at org.apache.ratis.client.impl.BlockingImpl.send(BlockingImpl.java:85)
+	at org.apache.ratis.client.impl.BlockingImpl.sendReadOnly(BlockingImpl.java:64)
+	at org.apache.ratis.client.api.BlockingApi.sendReadOnly(BlockingApi.java:45)
+	at org.apache.ratis.ReadOnlyRequestTests.testFollowerLinearizableReadRetryWhenLeaderDown(ReadOnlyRequestTests.java:242)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:141)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.ReadOnlyRequestTests.testFollowerLinearizableReadRetryWhenLeaderDown(ReadOnlyRequestTests.java:218)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: java.io.IOException: java.lang.IllegalStateException: Unexpected IOException when writing an object to a ByteString.
+	at org.apache.ratis.util.IOUtils.asIOException(IOUtils.java:56)
+	at org.apache.ratis.grpc.GrpcUtil.tryUnwrapException(GrpcUtil.java:121)
+	at org.apache.ratis.grpc.GrpcUtil.unwrapException(GrpcUtil.java:91)
+	at org.apache.ratis.grpc.GrpcUtil.unwrapIOException(GrpcUtil.java:152)
+	at org.apache.ratis.grpc.client.GrpcClientRpc$1.onError(GrpcClientRpc.java:156)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.PartialForwardingClientCallListener.onClose(PartialForwardingClientCallListener.java:39)
+	at org.apache.ratis.thirdparty.io.grpc.ForwardingClientCallListener.onClose(ForwardingClientCallListener.java:23)
+	at org.apache.ratis.grpc.metrics.intercept.client.MetricClientCallListener.onClose(MetricClientCallListener.java:47)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:562)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:743)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:722)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	... 1 more
+Caused by: java.lang.IllegalStateException: Unexpected IOException when writing an object to a ByteString.
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:490)
+	at org.apache.ratis.util.ReflectionUtils.instantiateException(ReflectionUtils.java:259)
+	at org.apache.ratis.grpc.GrpcUtil.tryUnwrapException(GrpcUtil.java:120)
+	... 16 more
+Caused by: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: INTERNAL: Unexpected IOException when writing an object to a ByteString.
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:535)
+	... 13 more
+	Suppressed: java.lang.IllegalStateException: Failed to cast to class java.io.IOException, object=java.lang.IllegalStateException: Unexpected IOException when writing an object to a ByteString.
+	at org.apache.ratis.util.ProtoUtils.writeObject2ByteString(ProtoUtils.java:55)
+	at java.base/java.util.Optional.map(Optional.java:265)
+	at org.apache.ratis.util.ProtoUtils.toThrowableProto(ProtoUtils.java:71)
+	at java.base/java.util.Optional.map(Optional.java:265)
+	at org.apache.ratis.client.impl.ClientProtoUtils.toRaftClientReplyProto(ClientProtoUtils.java:359)
+	at org.apache.ratis.grpc.server.GrpcClientProtocolService$UnorderedRequestStreamObserver.lambda$processClientRequest$0(GrpcClientProtocolService.java:286)
+	at java.base/java.util.concurrent.CompletableFuture$UniAccept.tryFire(CompletableFuture.java:714)
+	at java.base/java.util.concurrent.CompletableFuture$Completion.run(CompletableFuture.java:478)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: java.io.NotSerializableException: org.apache.ratis.protocol.RaftGroupMemberId
+	at java.base/java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1175)
+	at java.base/java.io.ObjectOutputStream.defaultWriteFields(ObjectOutputStream.java:1543)
+	at java.base/java.io.ObjectOutputStream.writeSerialData(ObjectOutputStream.java:1500)
+	at java.base/java.io.ObjectOutputStream.writeOrdinaryObject(ObjectOutputStream.java:1423)
+	at java.base/java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1169)
+	at java.base/java.io.ObjectOutputStream.writeObject(ObjectOutputStream.java:345)
+	at org.apache.ratis.util.ProtoUtils.writeObject2ByteString(ProtoUtils.java:53)
+	... 10 more
+
+		at org.apache.ratis.util.IOUtils.readObject(IOUtils.java:237)
+		at org.apache.ratis.util.IOUtils.bytes2Object(IOUtils.java:214)
+		at org.apache.ratis.grpc.GrpcUtil.tryUnwrapException(GrpcUtil.java:109)
+		at org.apache.ratis.grpc.GrpcUtil.unwrapException(GrpcUtil.java:91)
+		at org.apache.ratis.grpc.GrpcUtil.unwrapIOException(GrpcUtil.java:152)
+		at org.apache.ratis.grpc.client.GrpcClientRpc$1.onError(GrpcClientRpc.java:156)
+		... 13 more
+	Caused by: java.lang.ClassCastException: Cannot cast java.lang.IllegalStateException to java.io.IOException
+		at java.base/java.lang.Class.cast(Class.java:3605)
+		at org.apache.ratis.util.IOUtils.readObject(IOUtils.java:234)
+		... 18 more
+
