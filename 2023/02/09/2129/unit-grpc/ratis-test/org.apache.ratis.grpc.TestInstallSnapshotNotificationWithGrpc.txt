@@ -1,0 +1,42 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestInstallSnapshotNotificationWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 77.226 s <<< FAILURE! - in org.apache.ratis.grpc.TestInstallSnapshotNotificationWithGrpc
+testRestartFollower(org.apache.ratis.grpc.TestInstallSnapshotNotificationWithGrpc)  Time elapsed: 63.198 s  <<< ERROR!
+java.lang.IllegalStateException: s0@group-5D8BFF2AC38C-SegmentedRaftLog is expected to be opened but it is CLOSED
+	at org.apache.ratis.util.OpenCloseState.assertOpen(OpenCloseState.java:63)
+	at org.apache.ratis.server.raftlog.RaftLogBase.checkLogState(RaftLogBase.java:111)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLog.getLastEntryTermIndex(SegmentedRaftLog.java:341)
+	at org.apache.ratis.server.raftlog.RaftLog.getNextIndex(RaftLog.java:83)
+	at org.apache.ratis.InstallSnapshotNotificationTests.testRestartFollower(InstallSnapshotNotificationTests.java:272)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:141)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.InstallSnapshotNotificationTests.testRestartFollower(InstallSnapshotNotificationTests.java:255)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: org.apache.ratis.util.OpenCloseState$CloseTrace: Close s0@group-5D8BFF2AC38C-SegmentedRaftLog
+	at org.apache.ratis.util.OpenCloseState.lambda$close$1(OpenCloseState.java:109)
+	at java.base/java.util.concurrent.atomic.AtomicReference.getAndUpdate(AtomicReference.java:187)
+	at org.apache.ratis.util.OpenCloseState.close(OpenCloseState.java:109)
+	at org.apache.ratis.server.raftlog.RaftLogBase.close(RaftLogBase.java:365)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLog.close(SegmentedRaftLog.java:505)
+	at org.apache.ratis.server.impl.ServerState.close(ServerState.java:418)
+	at org.apache.ratis.server.impl.RaftServerImpl.lambda$close$4(RaftServerImpl.java:488)
+	at org.apache.ratis.util.LifeCycle.lambda$checkStateAndClose$4(LifeCycle.java:299)
+	at org.apache.ratis.util.LifeCycle.checkStateAndClose(LifeCycle.java:319)
+	at org.apache.ratis.util.LifeCycle.checkStateAndClose(LifeCycle.java:297)
+	at org.apache.ratis.server.impl.RaftServerImpl.close(RaftServerImpl.java:465)
+	at org.apache.ratis.server.impl.StateMachineUpdater.run(StateMachineUpdater.java:196)
+	... 1 more
+
