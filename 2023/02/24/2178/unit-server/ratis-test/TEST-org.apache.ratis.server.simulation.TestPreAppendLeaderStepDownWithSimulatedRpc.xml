@@ -1,0 +1,582 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" name="org.apache.ratis.server.simulation.TestPreAppendLeaderStepDownWithSimulatedRpc" time="4.802" tests="3" errors="0" skipped="0" failures="1">
+  <properties>
+    <property name="awt.toolkit" value="sun.awt.X11.XToolkit"/>
+    <property name="java.specification.version" value="11"/>
+    <property name="sun.cpu.isalist" value=""/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.3/ratis-thirdparty-misc-1.0.3.jar:/home/runner/work/ratis/ratis/ratis-proto/target/ratis-proto-3.0.0-SNAPSHOT.jar:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk15on/1.70/bcprov-jdk15on-1.70.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk15on/1.70/bcpkix-jdk15on-1.70.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk15on/1.70/bcutil-jdk15on-1.70.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/1.7.36/slf4j-reload4j-1.7.36.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.19/reload4j-1.2.19.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value=""/>
+    <property name="java.vm.specification.version" value="11"/>
+    <property name="os.name" value="Linux"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-11-jdk-amd64/lib"/>
+    <property name="sun.java.command" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter12228859108729755192.jar /home/runner/work/ratis/ratis/ratis-test/target/surefire 2023-02-24T20-04-28_505-jvmRun1 surefire115973113732686426tmp surefire_2617730110893226514057tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.3/ratis-thirdparty-misc-1.0.3.jar:/home/runner/work/ratis/ratis/ratis-proto/target/ratis-proto-3.0.0-SNAPSHOT.jar:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk15on/1.70/bcprov-jdk15on-1.70.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk15on/1.70/bcpkix-jdk15on-1.70.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk15on/1.70/bcutil-jdk15on-1.70.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/1.7.36/slf4j-reload4j-1.7.36.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.19/reload4j-1.2.19.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2023-01-17"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-11-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="java.vm.compressedOopsMode" value="32-bit"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.awt.graphicsenv" value="sun.awt.X11GraphicsEnvironment"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter12228859108729755192.jar"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="11.0.18+10"/>
+    <property name="user.name" value="runner"/>
+    <property name="java.net.preferIPv4Stack" value="true"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="5.15.0-1033-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-11.0.18+10"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="11.0.18"/>
+    <property name="user.dir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="ratis.tmp.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/tmp"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="java.awt.printerjob" value="sun.print.PSPrinterJob"/>
+    <property name="ratis.log.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/log"/>
+    <property name="sun.os.patch.level" value="unknown"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="11.0.18+10"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="55.0"/>
+  </properties>
+  <testcase name="testNoLeaderStepDown" classname="org.apache.ratis.server.simulation.TestPreAppendLeaderStepDownWithSimulatedRpc" time="2.14"/>
+  <testcase name="testLeaderStepDownAsync" classname="org.apache.ratis.server.simulation.TestPreAppendLeaderStepDownWithSimulatedRpc" time="1.276"/>
+  <testcase name="testLeaderStepDown" classname="org.apache.ratis.server.simulation.TestPreAppendLeaderStepDownWithSimulatedRpc" time="1.311">
+    <failure type="java.lang.AssertionError">java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at org.apache.ratis.server.impl.PreAppendLeaderStepDownTest.runTestLeaderStepDown(PreAppendLeaderStepDownTest.java:105)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:141)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.server.impl.PreAppendLeaderStepDownTest.testLeaderStepDown(PreAppendLeaderStepDownTest.java:75)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+</failure>
+    <system-out><![CDATA[2023-02-24 20:11:46,418 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-02-24 20:11:46,419 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-02-24 20:11:46,419 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.server.RaftServer$Division log level to DEBUG
+2023-02-24 20:11:46,419 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.server.raftlog.RaftLog log level to DEBUG
+2023-02-24 20:11:46,419 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.client.RaftClient log level to DEBUG
+2023-02-24 20:11:46,420 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:runWithNewCluster(135)) - Running runWithNewCluster
+2023-02-24 20:11:46,420 [Time-limited test] INFO  simulation.MiniRaftClusterWithSimulatedRpc (ConfUtils.java:logGet(46)) - org.apache.ratis.server.simulation.SimulatedRequestReply.simulateLatencyMs = 0 (custom)
+2023-02-24 20:11:46,420 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:<init>(306)) - new MiniRaftClusterWithSimulatedRpc with group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(339)) - .............................................................. 
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(340)) - ... 
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(341)) - ...     Starting MiniRaftClusterWithSimulatedRpc
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(342)) - ... 
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(343)) - .............................................................. 
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:initServers(318)) - servers = {}
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(382)) - newRaftServer: s0, group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER], format? true
+2023-02-24 20:11:46,421 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(201)) - deleteFully target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0
+2023-02-24 20:11:46,421 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(217)) - deleteFully: target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0 does not exist.
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(387)) - Formatted directory target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0
+2023-02-24 20:11:46,421 [Time-limited test] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-02-24 20:11:46,421 [Time-limited test] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2023-02-24 20:11:46,422 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.cached = true (default)
+2023-02-24 20:11:46,422 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.size = 0 (default)
+2023-02-24 20:11:46,422 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-02-24 20:11:46,422 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-02-24 20:11:46,422 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0] (custom)
+2023-02-24 20:11:46,422 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:addNew(99)) - s0: addNew group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER] returns group-D64796E987C8:java.util.concurrent.CompletableFuture@36501082[Not completed]
+2023-02-24 20:11:46,422 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(382)) - newRaftServer: s1, group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER], format? true
+2023-02-24 20:11:46,422 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(201)) - deleteFully target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1
+2023-02-24 20:11:46,423 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(217)) - deleteFully: target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1 does not exist.
+2023-02-24 20:11:46,423 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(387)) - Formatted directory target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1
+2023-02-24 20:11:46,423 [Time-limited test] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-02-24 20:11:46,423 [Time-limited test] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2023-02-24 20:11:46,423 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.cached = true (default)
+2023-02-24 20:11:46,423 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.size = 0 (default)
+2023-02-24 20:11:46,423 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-02-24 20:11:46,423 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-02-24 20:11:46,423 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1] (custom)
+2023-02-24 20:11:46,423 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(198)) - s0: new RaftServerImpl for group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER] with StateMachineWithException:uninitialized
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.sleep.time = 25ms (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(113)) - s0@group-D64796E987C8: ConfigurationManager, init=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null, confs=<EMPTY_MAP>
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.notification.no-leader.timeout = 60s (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.timeout = 10s (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.expirytime = 60s (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.statistics.expirytime = 100μs (default)
+2023-02-24 20:11:46,424 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.option = DEFAULT (default)
+2023-02-24 20:11:46,426 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.install.snapshot.enabled = true (default)
+2023-02-24 20:11:46,426 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.cached = true (default)
+2023-02-24 20:11:46,426 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.size = 0 (default)
+2023-02-24 20:11:46,426 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.cached = true (default)
+2023-02-24 20:11:46,426 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.size = 0 (default)
+2023-02-24 20:11:46,435 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:addNew(99)) - s1: addNew group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER] returns group-D64796E987C8:java.util.concurrent.CompletableFuture@609d375c[Not completed]
+2023-02-24 20:11:46,435 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(382)) - newRaftServer: s2, group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER], format? true
+2023-02-24 20:11:46,435 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(201)) - deleteFully target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2
+2023-02-24 20:11:46,435 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(217)) - deleteFully: target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2 does not exist.
+2023-02-24 20:11:46,435 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(387)) - Formatted directory target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2
+2023-02-24 20:11:46,435 [Time-limited test] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-02-24 20:11:46,436 [Time-limited test] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2023-02-24 20:11:46,436 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.cached = true (default)
+2023-02-24 20:11:46,436 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.size = 0 (default)
+2023-02-24 20:11:46,436 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-02-24 20:11:46,436 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-02-24 20:11:46,436 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2] (custom)
+2023-02-24 20:11:46,436 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,436 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-02-24 20:11:46,436 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-02-24 20:11:46,436 [s1-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(198)) - s1: new RaftServerImpl for group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER] with StateMachineWithException:uninitialized
+2023-02-24 20:11:46,436 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.sleep.time = 25ms (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(113)) - s1@group-D64796E987C8: ConfigurationManager, init=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null, confs=<EMPTY_MAP>
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.notification.no-leader.timeout = 60s (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.timeout = 10s (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.expirytime = 60s (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.statistics.expirytime = 100μs (default)
+2023-02-24 20:11:46,437 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.option = DEFAULT (default)
+2023-02-24 20:11:46,438 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.install.snapshot.enabled = true (default)
+2023-02-24 20:11:46,439 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.cached = true (default)
+2023-02-24 20:11:46,440 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.size = 0 (default)
+2023-02-24 20:11:46,440 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.cached = true (default)
+2023-02-24 20:11:46,440 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.size = 0 (default)
+2023-02-24 20:11:46,440 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:addNew(99)) - s2: addNew group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER] returns group-D64796E987C8:java.util.concurrent.CompletableFuture@7237b2ef[Not completed]
+2023-02-24 20:11:46,440 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.free-space.min = 0MB (=0) (default)
+2023-02-24 20:11:46,440 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.corruption.policy = EXCEPTION (default)
+2023-02-24 20:11:46,440 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0] (custom)
+2023-02-24 20:11:46,440 [s0-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8 does not exist. Creating ...
+2023-02-24 20:11:46,441 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8
+2023-02-24 20:11:46,441 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,442 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-02-24 20:11:46,442 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-02-24 20:11:46,442 [s2-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(198)) - s2: new RaftServerImpl for group-D64796E987C8:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER] with StateMachineWithException:uninitialized
+2023-02-24 20:11:46,442 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-02-24 20:11:46,442 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-02-24 20:11:46,442 [s0-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(232)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8/in_use.lock acquired by nodename 8750@fv-az744-335
+2023-02-24 20:11:46,443 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8/current
+2023-02-24 20:11:46,443 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8/sm
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.sleep.time = 25ms (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(113)) - s2@group-D64796E987C8: ConfigurationManager, init=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null, confs=<EMPTY_MAP>
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.notification.no-leader.timeout = 60s (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.timeout = 10s (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.expirytime = 60s (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.statistics.expirytime = 100μs (default)
+2023-02-24 20:11:46,443 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.option = DEFAULT (default)
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(96)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8 has been successfully formatted.
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(213)) - Initializing StateMachineWithException:uninitialized
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(293)) - Loading snapshot null
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.use.memory = false (default)
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.gap = 1024 (default)
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.read.timeout = 1000ms (default)
+2023-02-24 20:11:46,444 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.preservation.log.num = 0 (default)
+2023-02-24 20:11:46,445 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.num.max = 6 (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.size.max = 200MB (=209715200) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(183)) - new s0@group-D64796E987C8-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.byte-limit = 64MB (=67108864) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.element-limit = 4096 (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.force.sync.num = 128 (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync = true (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout = 10s (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout.retry = -1 (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-02-24 20:11:46,446 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,447 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.unsafe-flush.enabled = false (default)
+2023-02-24 20:11:46,447 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.async-flush.enabled = false (default)
+2023-02-24 20:11:46,447 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.caching.enabled = false (default)
+2023-02-24 20:11:46,448 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(134)) - s0@group-D64796E987C8-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2023-02-24 20:11:46,448 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(134)) - s0@group-D64796E987C8-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2023-02-24 20:11:46,451 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(342)) - s0@group-D64796E987C8: start as a follower, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,451 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s0@group-D64796E987C8: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2023-02-24 20:11:46,451 [s0-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s0: start s0@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,451 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-D64796E987C8,id=s0
+2023-02-24 20:11:46,452 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.auto.trigger.enabled = false (default)
+2023-02-24 20:11:46,452 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.retention.file.num = -1 (default)
+2023-02-24 20:11:46,452 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.upto.snapshot.index = false (default)
+2023-02-24 20:11:46,452 [s0@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,452 [s0@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,453 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.install.snapshot.enabled = true (default)
+2023-02-24 20:11:46,453 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.cached = true (default)
+2023-02-24 20:11:46,454 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.size = 0 (default)
+2023-02-24 20:11:46,454 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.cached = true (default)
+2023-02-24 20:11:46,454 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.size = 0 (default)
+2023-02-24 20:11:46,456 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:startImpl(401)) - s0: start RPC server
+2023-02-24 20:11:46,458 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.free-space.min = 0MB (=0) (default)
+2023-02-24 20:11:46,458 [JvmPauseMonitor6] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(103)) - JvmPauseMonitor-s0: Started
+2023-02-24 20:11:46,458 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.corruption.policy = EXCEPTION (default)
+2023-02-24 20:11:46,459 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1] (custom)
+2023-02-24 20:11:46,459 [s1-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8 does not exist. Creating ...
+2023-02-24 20:11:46,459 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8
+2023-02-24 20:11:46,460 [s1-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(232)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8/in_use.lock acquired by nodename 8750@fv-az744-335
+2023-02-24 20:11:46,460 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8/current
+2023-02-24 20:11:46,460 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8/sm
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(96)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8 has been successfully formatted.
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(213)) - Initializing StateMachineWithException:uninitialized
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(293)) - Loading snapshot null
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.use.memory = false (default)
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.gap = 1024 (default)
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.read.timeout = 1000ms (default)
+2023-02-24 20:11:46,461 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.preservation.log.num = 0 (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.num.max = 6 (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.size.max = 200MB (=209715200) (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(183)) - new s1@group-D64796E987C8-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.byte-limit = 64MB (=67108864) (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.element-limit = 4096 (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.force.sync.num = 128 (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync = true (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout = 10s (default)
+2023-02-24 20:11:46,462 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout.retry = -1 (default)
+2023-02-24 20:11:46,463 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-02-24 20:11:46,463 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,464 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.unsafe-flush.enabled = false (default)
+2023-02-24 20:11:46,464 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.async-flush.enabled = false (default)
+2023-02-24 20:11:46,464 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.caching.enabled = false (default)
+2023-02-24 20:11:46,464 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(134)) - s1@group-D64796E987C8-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2023-02-24 20:11:46,464 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(134)) - s1@group-D64796E987C8-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2023-02-24 20:11:46,465 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(342)) - s1@group-D64796E987C8: start as a follower, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,465 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s1@group-D64796E987C8: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2023-02-24 20:11:46,465 [s1-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s1: start s1@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,466 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-D64796E987C8,id=s1
+2023-02-24 20:11:46,466 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.auto.trigger.enabled = false (default)
+2023-02-24 20:11:46,466 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.retention.file.num = -1 (default)
+2023-02-24 20:11:46,466 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.upto.snapshot.index = false (default)
+2023-02-24 20:11:46,466 [s1@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,466 [s1@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,467 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:startImpl(401)) - s1: start RPC server
+2023-02-24 20:11:46,468 [JvmPauseMonitor7] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(103)) - JvmPauseMonitor-s1: Started
+2023-02-24 20:11:46,468 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.free-space.min = 0MB (=0) (default)
+2023-02-24 20:11:46,468 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.corruption.policy = EXCEPTION (default)
+2023-02-24 20:11:46,468 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2] (custom)
+2023-02-24 20:11:46,468 [s2-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8 does not exist. Creating ...
+2023-02-24 20:11:46,468 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8
+2023-02-24 20:11:46,470 [s2-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(232)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8/in_use.lock acquired by nodename 8750@fv-az744-335
+2023-02-24 20:11:46,470 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8/current
+2023-02-24 20:11:46,471 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8/sm
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(96)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8 has been successfully formatted.
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(213)) - Initializing StateMachineWithException:uninitialized
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(293)) - Loading snapshot null
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.use.memory = false (default)
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.gap = 1024 (default)
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.read.timeout = 1000ms (default)
+2023-02-24 20:11:46,472 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.preservation.log.num = 0 (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.num.max = 6 (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.size.max = 200MB (=209715200) (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(183)) - new s2@group-D64796E987C8-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.byte-limit = 64MB (=67108864) (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.element-limit = 4096 (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 8MB (=8388608) (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.force.sync.num = 128 (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync = true (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout = 10s (default)
+2023-02-24 20:11:46,473 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout.retry = -1 (default)
+2023-02-24 20:11:46,474 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-02-24 20:11:46,474 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.unsafe-flush.enabled = false (default)
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.async-flush.enabled = false (default)
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.caching.enabled = false (default)
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(134)) - s2@group-D64796E987C8-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(134)) - s2@group-D64796E987C8-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(342)) - s2@group-D64796E987C8: start as a follower, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s2@group-D64796E987C8: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2023-02-24 20:11:46,475 [s2-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s2: start s2@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,476 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-D64796E987C8,id=s2
+2023-02-24 20:11:46,476 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.auto.trigger.enabled = false (default)
+2023-02-24 20:11:46,476 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.retention.file.num = -1 (default)
+2023-02-24 20:11:46,476 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.upto.snapshot.index = false (default)
+2023-02-24 20:11:46,476 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:startImpl(401)) - s2: start RPC server
+2023-02-24 20:11:46,477 [s2@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,477 [s2@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,477 [JvmPauseMonitor8] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(103)) - JvmPauseMonitor-s2: Started
+2023-02-24 20:11:46,479 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-02-24 20:11:46,479 [Time-limited test] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(100)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,479 [Time-limited test] WARN  ratis.RaftTestUtil (JavaUtils.java:attempt(217)) - FAILED "waitForLeader-null-(expectLeader? true)", attempt #1/100: java.lang.IllegalStateException: No leader yet : printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING, sleep 450ms and then retry.
+java.lang.IllegalStateException: No leader yet : printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+	at org.apache.ratis.server.impl.MiniRaftCluster.newIllegalStateExceptionForNoLeaders(MiniRaftCluster.java:581)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$1(RaftTestUtil.java:104)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:615)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:608)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$3(RaftTestUtil.java:112)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:211)
+	at org.apache.ratis.util.JavaUtils.attemptRepeatedly(JavaUtils.java:197)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:111)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:92)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:87)
+	at org.apache.ratis.server.impl.PreAppendLeaderStepDownTest.runTestLeaderStepDown(PreAppendLeaderStepDownTest.java:85)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:141)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.server.impl.PreAppendLeaderStepDownTest.testLeaderStepDown(PreAppendLeaderStepDownTest.java:75)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+2023-02-24 20:11:46,651 [s2@group-D64796E987C8-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(143)) - s2@group-D64796E987C8-FollowerState: change to CANDIDATE, lastRpcElapsedTime:175552829ns, electionTimeout:174ms
+2023-02-24 20:11:46,651 [s2@group-D64796E987C8-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(110)) - s2: shutdown s2@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,651 [s2@group-D64796E987C8-FollowerState] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s2@group-D64796E987C8: changes role from  FOLLOWER to CANDIDATE at term 0 for changeToCandidate
+2023-02-24 20:11:46,651 [s2@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.pre-vote = true (default)
+2023-02-24 20:11:46,651 [s2@group-D64796E987C8-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s2: start s2@group-D64796E987C8-LeaderElection3
+2023-02-24 20:11:46,655 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(309)) - s2@group-D64796E987C8-LeaderElection3 PRE_VOTE round 0: submit vote requests at term 0 for -1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,657 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,657 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,657 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1302)) - s1@group-D64796E987C8: receive requestVote(PRE_VOTE, s2, group-D64796E987C8, 0, (t:0, i:0))
+2023-02-24 20:11:46,657 [HandlerDaemon-0] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-D64796E987C8-FOLLOWER: accept PRE_VOTE from s2: our priority 0 <= candidate's priority 0
+2023-02-24 20:11:46,657 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1335)) - s1@group-D64796E987C8 replies to PRE_VOTE vote request: s2<-s1#0:OK-t0. Peer's state: s1@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,658 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(89)) - s2@group-D64796E987C8-LeaderElection3: PRE_VOTE PASSED received 1 response(s) and 0 exception(s):
+2023-02-24 20:11:46,658 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(93)) -   Response 0: s2<-s1#0:OK-t0
+2023-02-24 20:11:46,658 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(311)) - s2@group-D64796E987C8-LeaderElection3 PRE_VOTE round 0: result PASSED
+2023-02-24 20:11:46,659 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1302)) - s0@group-D64796E987C8: receive requestVote(PRE_VOTE, s2, group-D64796E987C8, 0, (t:0, i:0))
+2023-02-24 20:11:46,659 [HandlerDaemon-0] INFO  impl.VoteContext (VoteContext.java:log(49)) - s0@group-D64796E987C8-FOLLOWER: accept PRE_VOTE from s2: our priority 0 <= candidate's priority 0
+2023-02-24 20:11:46,659 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1335)) - s0@group-D64796E987C8 replies to PRE_VOTE vote request: s2<-s0#0:OK-t0. Peer's state: s0@group-D64796E987C8:t0, leader=null, voted=, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,660 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(309)) - s2@group-D64796E987C8-LeaderElection3 ELECTION round 0: submit vote requests at term 1 for -1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,661 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,661 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,661 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1302)) - s0@group-D64796E987C8: receive requestVote(ELECTION, s2, group-D64796E987C8, 1, (t:0, i:0))
+2023-02-24 20:11:46,665 [HandlerDaemon-1] INFO  impl.VoteContext (VoteContext.java:log(49)) - s0@group-D64796E987C8-FOLLOWER: accept ELECTION from s2: our priority 0 <= candidate's priority 0
+2023-02-24 20:11:46,665 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s0@group-D64796E987C8: changes role from  FOLLOWER to FOLLOWER at term 1 for candidate:s2
+2023-02-24 20:11:46,665 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(110)) - s0: shutdown s0@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,665 [s0@group-D64796E987C8-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s0@group-D64796E987C8-FollowerState was interrupted
+2023-02-24 20:11:46,665 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s0: start s0@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,666 [s0@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,666 [s0@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,669 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1335)) - s0@group-D64796E987C8 replies to ELECTION vote request: s2<-s0#0:OK-t1. Peer's state: s0@group-D64796E987C8:t1, leader=null, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,669 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(89)) - s2@group-D64796E987C8-LeaderElection3: ELECTION PASSED received 1 response(s) and 0 exception(s):
+2023-02-24 20:11:46,669 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(93)) -   Response 0: s2<-s0#0:OK-t1
+2023-02-24 20:11:46,669 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(311)) - s2@group-D64796E987C8-LeaderElection3 ELECTION round 0: result PASSED
+2023-02-24 20:11:46,669 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderElection(130)) - s2: shutdown s2@group-D64796E987C8-LeaderElection3
+2023-02-24 20:11:46,669 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s2@group-D64796E987C8: changes role from CANDIDATE to LEADER at term 1 for changeToLeader
+2023-02-24 20:11:46,669 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServer$Division (ServerState.java:setLeader(260)) - s2@group-D64796E987C8: change Leader from null to s2 at term 1 for becomeLeader, leader elected after 226ms
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.staging.catchup.gap = 1000 (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.element-limit = 4096 (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.byte-limit = 64MB (=67108864) (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.watch.timeout = 10s (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.watch.timeout.denomination = 1s (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.watch.element-limit = 65536 (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.element-limit = 4096 (default)
+2023-02-24 20:11:46,670 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1302)) - s1@group-D64796E987C8: receive requestVote(ELECTION, s2, group-D64796E987C8, 1, (t:0, i:0))
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.follower.gap.ratio.max = -1.0 (default)
+2023-02-24 20:11:46,670 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.snapshot.chunk.size.max = 16MB (=16777216) (default)
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.element-limit = 0 (default)
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.snapshot.chunk.size.max = 16MB (=16777216) (default)
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.element-limit = 0 (default)
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s2: start s2@group-D64796E987C8-LeaderStateImpl
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] DEBUG raftlog.RaftLog (SegmentedRaftLog.java:appendImpl(446)) - truncateIndex=-1, arrayIndex=0
+2023-02-24 20:11:46,671 [s2@group-D64796E987C8-LeaderElection3] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(426)) - s2@group-D64796E987C8-SegmentedRaftLogWorker: Starting segment from index:0
+2023-02-24 20:11:46,675 [HandlerDaemon-1] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-D64796E987C8-FOLLOWER: accept ELECTION from s2: our priority 0 <= candidate's priority 0
+2023-02-24 20:11:46,676 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s1@group-D64796E987C8: changes role from  FOLLOWER to FOLLOWER at term 1 for candidate:s2
+2023-02-24 20:11:46,676 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(110)) - s1: shutdown s1@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,676 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s1: start s1@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,679 [s2@group-D64796E987C8-LeaderElection3] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(378)) - s2@group-D64796E987C8: set configuration 0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,680 [s2@group-D64796E987C8-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(630)) - s2@group-D64796E987C8-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s2/e8e33245-15e8-458b-a85c-d64796e987c8/current/log_inprogress_0
+2023-02-24 20:11:46,680 [HandlerDaemon-2] INFO  server.RaftServer$Division (ServerState.java:setLeader(260)) - s0@group-D64796E987C8: change Leader from null to s2 at term 1 for appendEntries, leader elected after 256ms
+2023-02-24 20:11:46,696 [s1@group-D64796E987C8-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s1@group-D64796E987C8-FollowerState was interrupted
+2023-02-24 20:11:46,699 [s1@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-02-24 20:11:46,699 [s1@group-D64796E987C8-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-02-24 20:11:46,700 [HandlerDaemon-0] DEBUG server.RaftServer$Division (RaftServerImpl.java:logAppendEntries(1429)) - s0@group-D64796E987C8: receive appendEntries(s2, 1, null, -1, true, commits:[s2:c-1, s0:c-1, s1:c-1], cId:49, entries: [(t:1, i:0), CONFIGURATIONENTRY(current:id: "s0"
+address: "localhost:36691"
+dataStreamAddress: "localhost:38357"
+clientAddress: "localhost:44695"
+adminAddress: "localhost:37891"
+startupRole: FOLLOWER
+,id: "s1"
+address: "localhost:32779"
+dataStreamAddress: "localhost:41549"
+clientAddress: "localhost:40627"
+adminAddress: "localhost:45953"
+startupRole: FOLLOWER
+,id: "s2"
+address: "localhost:35833"
+dataStreamAddress: "localhost:43903"
+clientAddress: "localhost:44665"
+adminAddress: "localhost:34029"
+startupRole: FOLLOWER
+, old:)]
+2023-02-24 20:11:46,700 [HandlerDaemon-0] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(378)) - s0@group-D64796E987C8: set configuration 0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,700 [HandlerDaemon-0] DEBUG raftlog.RaftLog (SegmentedRaftLog.java:appendImpl(446)) - truncateIndex=-1, arrayIndex=0
+2023-02-24 20:11:46,700 [HandlerDaemon-0] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(426)) - s0@group-D64796E987C8-SegmentedRaftLogWorker: Starting segment from index:0
+2023-02-24 20:11:46,700 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1335)) - s1@group-D64796E987C8 replies to ELECTION vote request: s2<-s1#0:OK-t1. Peer's state: s1@group-D64796E987C8:t1, leader=null, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,703 [HandlerDaemon-2] INFO  server.RaftServer$Division (ServerState.java:setLeader(260)) - s1@group-D64796E987C8: change Leader from null to s2 at term 1 for appendEntries, leader elected after 266ms
+2023-02-24 20:11:46,708 [HandlerDaemon-0] DEBUG server.RaftServer$Division (RaftServerImpl.java:logAppendEntries(1429)) - s1@group-D64796E987C8: receive appendEntries(s2, 1, null, -1, true, commits:[s2:c-1, s0:c-1, s1:c-1], cId:50, entries: [(t:1, i:0), CONFIGURATIONENTRY(current:id: "s0"
+address: "localhost:36691"
+dataStreamAddress: "localhost:38357"
+clientAddress: "localhost:44695"
+adminAddress: "localhost:37891"
+startupRole: FOLLOWER
+,id: "s1"
+address: "localhost:32779"
+dataStreamAddress: "localhost:41549"
+clientAddress: "localhost:40627"
+adminAddress: "localhost:45953"
+startupRole: FOLLOWER
+,id: "s2"
+address: "localhost:35833"
+dataStreamAddress: "localhost:43903"
+clientAddress: "localhost:44665"
+adminAddress: "localhost:34029"
+startupRole: FOLLOWER
+, old:)]
+2023-02-24 20:11:46,709 [HandlerDaemon-0] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(378)) - s1@group-D64796E987C8: set configuration 0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null
+2023-02-24 20:11:46,709 [HandlerDaemon-0] DEBUG raftlog.RaftLog (SegmentedRaftLog.java:appendImpl(446)) - truncateIndex=-1, arrayIndex=0
+2023-02-24 20:11:46,709 [s0@group-D64796E987C8-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(630)) - s0@group-D64796E987C8-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s0/e8e33245-15e8-458b-a85c-d64796e987c8/current/log_inprogress_0
+2023-02-24 20:11:46,710 [HandlerDaemon-0] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(426)) - s1@group-D64796E987C8-SegmentedRaftLogWorker: Starting segment from index:0
+2023-02-24 20:11:46,713 [s0-server-thread1] DEBUG server.RaftServer$Division (RaftServerImpl.java:logAppendEntries(1429)) - s0@group-D64796E987C8: succeeded to handle AppendEntries. Reply: s2<-s0#49:OK-t1,SUCCESS,nextIndex=1,followerCommit=-1,matchIndex=0
+2023-02-24 20:11:46,718 [s1@group-D64796E987C8-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(630)) - s1@group-D64796E987C8-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/983f2933/MiniRaftClusterWithSimulatedRpc43709772/s1/e8e33245-15e8-458b-a85c-d64796e987c8/current/log_inprogress_0
+2023-02-24 20:11:46,721 [s1-server-thread1] DEBUG server.RaftServer$Division (RaftServerImpl.java:logAppendEntries(1429)) - s1@group-D64796E987C8: succeeded to handle AppendEntries. Reply: s2<-s1#50:OK-t1,SUCCESS,nextIndex=1,followerCommit=-1,matchIndex=0
+2023-02-24 20:11:46,930 [Time-limited test] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(119)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING    LEADER s2@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,930 [Time-limited test] DEBUG client.RaftClient (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-02-24 20:11:46,930 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-02-24 20:11:46,931 [Time-limited test] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(100)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING    LEADER s2@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,931 [Time-limited test] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(119)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING    LEADER s2@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,932 [s2-client-thread1] DEBUG server.RaftServer$Division (RaftServerImpl.java:submitClientRequestAsync(832)) - s2@group-D64796E987C8: receive client request(RaftClientRequest:client-7250A184BA47->s2@group-D64796E987C8, cid=999, seq=0, RW, message)
+2023-02-24 20:11:46,932 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-02-24 20:11:46,932 [Time-limited test] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(100)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING    LEADER s2@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,932 [s2@group-D64796E987C8-LeaderStateImpl] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(329)) - s2@group-D64796E987C8: changes role from    LEADER to FOLLOWER at term 1 for StepDownReason:STATE_MACHINE_EXCEPTION
+2023-02-24 20:11:46,932 [s2@group-D64796E987C8-LeaderStateImpl] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderState(93)) - s2: shutdown s2@group-D64796E987C8-LeaderStateImpl
+2023-02-24 20:11:46,933 [Time-limited test] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(119)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,933 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(831)) - ************************************************************** 
+2023-02-24 20:11:46,933 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(832)) - *** 
+2023-02-24 20:11:46,933 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(833)) - ***     Stopping MiniRaftClusterWithSimulatedRpc
+2023-02-24 20:11:46,933 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(834)) - *** 
+2023-02-24 20:11:46,933 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(835)) - ************************************************************** 
+2023-02-24 20:11:46,935 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(836)) - printing ALL groups
+  s0:  RUNNING  FOLLOWER s0@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s0@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s1@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-D64796E987C8:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-D64796E987C8-SegmentedRaftLog:OPENED:c0, conf=0: peers:[s0|rpc:localhost:36691|admin:localhost:37891|client:localhost:44695|dataStream:localhost:38357|priority:0|startupRole:FOLLOWER, s1|rpc:localhost:32779|admin:localhost:45953|client:localhost:40627|dataStream:localhost:41549|priority:0|startupRole:FOLLOWER, s2|rpc:localhost:35833|admin:localhost:34029|client:localhost:44665|dataStream:localhost:43903|priority:0|startupRole:FOLLOWER]|listeners:[], old=null RUNNING
+2023-02-24 20:11:46,933 [s2@group-D64796E987C8->s0-LogAppenderDefault-LogAppenderDaemon] INFO  leader.LogAppenderDaemon (LogAppenderDaemon.java:run(83)) - s2@group-D64796E987C8->s0-LogAppenderDefault-LogAppenderDaemon was interrupted: java.lang.InterruptedException
+2023-02-24 20:11:46,933 [s2@group-D64796E987C8-LeaderStateImpl] INFO  impl.PendingRequests (PendingRequests.java:sendNotLeaderResponses(282)) - s2@group-D64796E987C8-PendingRequests: sendNotLeaderResponses
+2023-02-24 20:11:46,933 [s2@group-D64796E987C8->s1-LogAppenderDefault-LogAppenderDaemon] INFO  leader.LogAppenderDaemon (LogAppenderDaemon.java:run(83)) - s2@group-D64796E987C8->s1-LogAppenderDefault-LogAppenderDaemon was interrupted: java.lang.InterruptedException
+2023-02-24 20:11:46,936 [MiniRaftCluster-10] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$7(417)) - s0: close
+2023-02-24 20:11:46,936 [MiniRaftCluster-11] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$7(417)) - s1: close
+2023-02-24 20:11:46,936 [s2@group-D64796E987C8-LeaderStateImpl] INFO  server.RaftServer$Division (ServerState.java:setLeader(260)) - s2@group-D64796E987C8: change Leader from s2 to null at term 1 for StepDownReason:STATE_MACHINE_EXCEPTION
+2023-02-24 20:11:46,937 [s2@group-D64796E987C8-LeaderStateImpl] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(139)) - s2: start s2@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,937 [MiniRaftCluster-12] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$7(417)) - s2: close
+2023-02-24 20:11:46,940 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$4(466)) - s1@group-D64796E987C8: shutdown
+2023-02-24 20:11:46,940 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(73)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-D64796E987C8,id=s1
+2023-02-24 20:11:46,940 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.clientHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,940 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.clientHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,940 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.clientHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,940 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.clientHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,940 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.clientHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,940 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$4(466)) - s2@group-D64796E987C8: shutdown
+2023-02-24 20:11:46,941 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(73)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-D64796E987C8,id=s2
+2023-02-24 20:11:46,941 [s2-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(110)) - s2: shutdown s2@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,941 [s2-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(154)) - s2@group-D64796E987C8-StateMachineUpdater: set stopIndex = 0
+2023-02-24 20:11:46,940 [s1-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(110)) - s1: shutdown s1@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,941 [s1-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(154)) - s1@group-D64796E987C8-StateMachineUpdater: set stopIndex = 0
+2023-02-24 20:11:46,941 [s1@group-D64796E987C8-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s1@group-D64796E987C8-FollowerState was interrupted
+2023-02-24 20:11:46,941 [s2-impl-thread1] INFO  server.RaftServer$Division (ServerState.java:close(414)) - s2@group-D64796E987C8: applyIndex: 0
+2023-02-24 20:11:46,941 [s1-impl-thread1] INFO  server.RaftServer$Division (ServerState.java:close(414)) - s1@group-D64796E987C8: applyIndex: 0
+2023-02-24 20:11:46,943 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.clientHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,943 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.clientHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,943 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.clientHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,943 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.clientHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,943 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$4(466)) - s0@group-D64796E987C8: shutdown
+2023-02-24 20:11:46,943 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(73)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-D64796E987C8,id=s0
+2023-02-24 20:11:46,943 [s0-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(110)) - s0: shutdown s0@group-D64796E987C8-FollowerState
+2023-02-24 20:11:46,943 [s0-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(154)) - s0@group-D64796E987C8-StateMachineUpdater: set stopIndex = 0
+2023-02-24 20:11:46,944 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.serverHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.serverHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.serverHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.serverHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.serverHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.serverHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [s0@group-D64796E987C8-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s0@group-D64796E987C8-FollowerState was interrupted
+2023-02-24 20:11:46,944 [s0-impl-thread1] INFO  server.RaftServer$Division (ServerState.java:close(414)) - s0@group-D64796E987C8: applyIndex: 0
+2023-02-24 20:11:46,944 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.serverHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.serverHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,944 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.serverHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-02-24 20:11:46,945 [s2@group-D64796E987C8-FollowerState] INFO  impl.FollowerState (FollowerState.java:shouldRun(117)) - s2@group-D64796E987C8-FollowerState: Stopping now (isRunning? false, role = FOLLOWER)
+2023-02-24 20:11:47,681 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(242)) - s2@group-D64796E987C8-SegmentedRaftLogWorker close()
+2023-02-24 20:11:47,682 [JvmPauseMonitor8] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(109)) - JvmPauseMonitor-s2: Stopped
+2023-02-24 20:11:47,711 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(242)) - s0@group-D64796E987C8-SegmentedRaftLogWorker close()
+2023-02-24 20:11:47,712 [JvmPauseMonitor6] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(109)) - JvmPauseMonitor-s0: Stopped
+2023-02-24 20:11:47,723 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(242)) - s1@group-D64796E987C8-SegmentedRaftLogWorker close()
+2023-02-24 20:11:47,723 [JvmPauseMonitor7] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(109)) - JvmPauseMonitor-s1: Stopped
+2023-02-24 20:11:47,723 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(855)) - MiniRaftClusterWithSimulatedRpc shutdown completed
+]]></system-out>
+  </testcase>
+</testsuite>
