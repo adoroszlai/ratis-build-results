@@ -1,0 +1,52 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.util.TestStreamObserverWithTimeout
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 2.692 s <<< FAILURE! - in org.apache.ratis.grpc.util.TestStreamObserverWithTimeout
+org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.testWithTimeout  Time elapsed: 1.559 s  <<< ERROR!
+java.util.concurrent.ExecutionException: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: CANCELLED: Cancelled by client with StreamObserver.onError()
+	at java.base/java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:395)
+	at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:1999)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.runTestTimeout(TestStreamObserverWithTimeout.java:101)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.testWithTimeout(TestStreamObserverWithTimeout.java:76)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: CANCELLED: Cancelled by client with StreamObserver.onError()
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.PartialForwardingClientCallListener.onClose(PartialForwardingClientCallListener.java:39)
+	at org.apache.ratis.thirdparty.io.grpc.ForwardingClientCallListener.onClose(ForwardingClientCallListener.java:23)
+	at org.apache.ratis.thirdparty.io.grpc.ForwardingClientCallListener$SimpleForwardingClientCallListener.onClose(ForwardingClientCallListener.java:40)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener$3.run(DelayedClientCall.java:471)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.delayOrExecute(DelayedClientCall.java:435)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.onClose(DelayedClientCall.java:468)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	... 1 more
+Caused by: org.apache.ratis.protocol.exceptions.TimeoutIOException: StreamObserverWithTimeout-test: Timed out 500ms for sending request name: "m1"
+
+	at org.apache.ratis.grpc.util.StreamObserverWithTimeout.handleTimeout(StreamObserverWithTimeout.java:100)
+	at org.apache.ratis.grpc.util.StreamObserverWithTimeout.lambda$onNext$1(StreamObserverWithTimeout.java:94)
+	at org.apache.ratis.util.TimeoutTimer.lambda$onTimeout$2(TimeoutTimer.java:101)
+	at org.apache.ratis.util.LogUtils.runAndLog(LogUtils.java:38)
+	at org.apache.ratis.util.LogUtils$1.run(LogUtils.java:79)
+	at org.apache.ratis.util.TimeoutTimer$Task.run(TimeoutTimer.java:55)
+	at java.base/java.util.TimerThread.mainLoop(Timer.java:556)
+	at java.base/java.util.TimerThread.run(Timer.java:506)
+
