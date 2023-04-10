@@ -1,0 +1,239 @@
+2023-04-10 03:33:11,142 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-04-10 03:33:11,146 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-04-10 03:33:11,159 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.grpc.util.ResponseNotifyClientInterceptor log level to TRACE
+2023-04-10 03:33:11,170 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(80)) - slow = 5, WithTimeout
+2023-04-10 03:33:11,577 [Time-limited test] DEBUG util.ResponseNotifyClientInterceptor (ResponseNotifyClientInterceptor.java:interceptCall(48)) - callOptions CallOptions{deadline=null, authority=null, callCredentials=null, executor=null, compressorName=null, customOptions=[[internal-stub-type, ASYNC]], waitForReady=false, maxInboundMessageSize=null, maxOutboundMessageSize=null, streamTracerFactories=[]}
+2023-04-10 03:33:11,593 [Time-limited test] DEBUG util.ResponseNotifyClientInterceptor (ResponseNotifyClientInterceptor.java:start(61)) - start Metadata()
+2023-04-10 03:33:11,598 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m0
+2023-04-10 03:33:11,629 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m1
+2023-04-10 03:33:11,631 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m2
+2023-04-10 03:33:11,866 [grpc-default-executor-0] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 0) Hello m0, slow = 5, sleep 125ms
+2023-04-10 03:33:12,010 [grpc-default-executor-0] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 1) Hello m1, slow = 5, sleep 125ms
+2023-04-10 03:33:12,069 [grpc-default-executor-1] DEBUG util.ResponseNotifyClientInterceptor (ResponseNotifyClientInterceptor.java:onMessage(65)) - onMessage message: "0) Hello m0"
+
+2023-04-10 03:33:12,075 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m3
+2023-04-10 03:33:12,137 [grpc-default-executor-1] INFO  util.GrpcTestClient (GrpcTestClient.java:onError(81)) - onError
+org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: CANCELLED: Cancelled by client with StreamObserver.onError()
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.PartialForwardingClientCallListener.onClose(PartialForwardingClientCallListener.java:39)
+	at org.apache.ratis.thirdparty.io.grpc.ForwardingClientCallListener.onClose(ForwardingClientCallListener.java:23)
+	at org.apache.ratis.thirdparty.io.grpc.ForwardingClientCallListener$SimpleForwardingClientCallListener.onClose(ForwardingClientCallListener.java:40)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener$3.run(DelayedClientCall.java:471)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.delayOrExecute(DelayedClientCall.java:435)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.onClose(DelayedClientCall.java:468)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: org.apache.ratis.protocol.exceptions.TimeoutIOException: StreamObserverWithTimeout-test: Timed out 500ms for sending request HelloRequest:m1
+	at org.apache.ratis.grpc.util.StreamObserverWithTimeout.handleTimeout(StreamObserverWithTimeout.java:107)
+	at org.apache.ratis.grpc.util.StreamObserverWithTimeout.lambda$onNext$2(StreamObserverWithTimeout.java:101)
+	at org.apache.ratis.util.TimeoutTimer.lambda$onTimeout$2(TimeoutTimer.java:101)
+	at org.apache.ratis.util.LogUtils.runAndLog(LogUtils.java:38)
+	at org.apache.ratis.util.LogUtils$1.run(LogUtils.java:79)
+	at org.apache.ratis.util.TimeoutTimer$Task.run(TimeoutTimer.java:55)
+	at java.base/java.util.TimerThread.mainLoop(Timer.java:556)
+	at java.base/java.util.TimerThread.run(Timer.java:506)
+2023-04-10 03:33:12,138 [grpc-default-executor-2] ERROR util.GrpcTestServer (GrpcTestServer.java:onError(98)) - onError
+org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: CANCELLED: client cancelled
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:530)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ServerCalls$StreamingServerCallHandler$StreamingServerCallListener.onCancel(ServerCalls.java:291)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.closedInternal(ServerCallImpl.java:378)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.closed(ServerCallImpl.java:365)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1Closed.runInContext(ServerImpl.java:923)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+2023-04-10 03:33:12,576 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m4
+2023-04-10 03:33:12,576 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m5
+2023-04-10 03:33:12,576 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m6
+2023-04-10 03:33:12,576 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m7
+2023-04-10 03:33:12,576 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m8
+2023-04-10 03:33:12,577 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m9
+2023-04-10 03:33:12,577 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(103)) - 0) passed
+2023-04-10 03:33:12,594 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-04-10 03:33:12,595 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-04-10 03:33:12,595 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.grpc.util.ResponseNotifyClientInterceptor log level to TRACE
+2023-04-10 03:33:12,596 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(80)) - slow = 2, WithDeadline
+2023-04-10 03:33:12,605 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m0
+2023-04-10 03:33:12,605 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m1
+2023-04-10 03:33:12,605 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m2
+2023-04-10 03:33:12,606 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m3
+2023-04-10 03:33:12,621 [grpc-default-executor-2] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 0) Hello m0, slow = 2, sleep 125ms
+2023-04-10 03:33:12,750 [grpc-default-executor-1] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 1) Hello m1, slow = 2, sleep 125ms
+2023-04-10 03:33:12,751 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(103)) - 0) passed
+2023-04-10 03:33:12,878 [grpc-default-executor-1] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 2) Hello m2, slow = 2, sleep 1000ms
+2023-04-10 03:33:12,879 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(103)) - 1) passed
+2023-04-10 03:33:13,098 [grpc-default-executor-2] INFO  util.GrpcTestClient (GrpcTestClient.java:onError(81)) - onError
+org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]]
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener$3.run(DelayedClientCall.java:471)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.delayOrExecute(DelayedClientCall.java:435)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.onClose(DelayedClientCall.java:468)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+2023-04-10 03:33:13,114 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(113)) - GOOD! 2) java.util.concurrent.CompletionException: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]], {}
+java.util.concurrent.ExecutionException: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]]
+	at java.base/java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:395)
+	at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:1999)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.runTestTimeout(TestStreamObserverWithTimeout.java:109)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.testWithDeadline(TestStreamObserverWithTimeout.java:61)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]]
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener$3.run(DelayedClientCall.java:471)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.delayOrExecute(DelayedClientCall.java:435)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.onClose(DelayedClientCall.java:468)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	... 1 more
+2023-04-10 03:33:13,116 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(113)) - GOOD! 3) java.util.concurrent.CompletionException: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]], {}
+java.util.concurrent.ExecutionException: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]]
+	at java.base/java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:395)
+	at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:1999)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.runTestTimeout(TestStreamObserverWithTimeout.java:109)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.testWithDeadline(TestStreamObserverWithTimeout.java:61)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.485886459s. [closed=[], committed=[buffered_nanos=5749016, remote_addr=localhost/127.0.0.1:39523]]
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener$3.run(DelayedClientCall.java:471)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.delayOrExecute(DelayedClientCall.java:435)
+	at org.apache.ratis.thirdparty.io.grpc.internal.DelayedClientCall$DelayedListener.onClose(DelayedClientCall.java:468)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	... 1 more
+2023-04-10 03:33:13,123 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-04-10 03:33:13,123 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-04-10 03:33:13,123 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.grpc.util.ResponseNotifyClientInterceptor log level to TRACE
+2023-04-10 03:33:13,130 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (BaseTest.java:testFailureCase(151)) - run 'total sleep time is longer than the deadline'
+2023-04-10 03:33:13,130 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(80)) - slow = 5, WithDeadline
+2023-04-10 03:33:13,140 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m0
+2023-04-10 03:33:13,140 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m1
+2023-04-10 03:33:13,140 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m2
+2023-04-10 03:33:13,141 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m3
+2023-04-10 03:33:13,141 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m4
+2023-04-10 03:33:13,145 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m5
+2023-04-10 03:33:13,146 [grpc-default-executor-2] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 0) Hello m0, slow = 5, sleep 125ms
+2023-04-10 03:33:13,148 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m6
+2023-04-10 03:33:13,148 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m7
+2023-04-10 03:33:13,148 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m8
+2023-04-10 03:33:13,148 [Time-limited test] INFO  util.GrpcTestClient (GrpcTestClient.java:send(114)) - send m9
+2023-04-10 03:33:13,277 [grpc-default-executor-2] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 1) Hello m1, slow = 5, sleep 125ms
+2023-04-10 03:33:13,278 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(103)) - 0) passed
+2023-04-10 03:33:13,405 [grpc-default-executor-2] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 2) Hello m2, slow = 5, sleep 125ms
+2023-04-10 03:33:13,405 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(103)) - 1) passed
+2023-04-10 03:33:13,532 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (TestStreamObserverWithTimeout.java:runTestTimeout(103)) - 2) passed
+2023-04-10 03:33:13,533 [grpc-default-executor-2] INFO  util.GrpcTestServer (GrpcTestServer.java:onNext(85)) - count = 3) Hello m3, slow = 5, sleep 125ms
+2023-04-10 03:33:13,632 [grpc-default-executor-0] INFO  util.GrpcTestClient (GrpcTestClient.java:onError(81)) - onError
+org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.490838473s. [closed=[], committed=[buffered_nanos=-57201, remote_addr=localhost/127.0.0.1:39505]]
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+2023-04-10 03:33:13,646 [Time-limited test] INFO  util.TestStreamObserverWithTimeout (BaseTest.java:assertThrowable(133)) - The test "total sleep time is longer than the deadline" throws ExecutionException
+java.util.concurrent.ExecutionException: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.490838473s. [closed=[], committed=[buffered_nanos=-57201, remote_addr=localhost/127.0.0.1:39505]]
+	at java.base/java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:395)
+	at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:1999)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.runTestTimeout(TestStreamObserverWithTimeout.java:101)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.lambda$testWithDeadlineFailure$0(TestStreamObserverWithTimeout.java:68)
+	at org.apache.ratis.BaseTest.testFailureCase(BaseTest.java:154)
+	at org.apache.ratis.BaseTest.testFailureCase(BaseTest.java:167)
+	at org.apache.ratis.grpc.util.TestStreamObserverWithTimeout.testWithDeadlineFailure(TestStreamObserverWithTimeout.java:67)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: DEADLINE_EXCEEDED: deadline exceeded after 0.490838473s. [closed=[], committed=[buffered_nanos=-57201, remote_addr=localhost/127.0.0.1:39505]]
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:539)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$StreamObserverToCallListenerAdapter.onClose(ClientCalls.java:487)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:563)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:70)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:744)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:723)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	... 1 more
+2023-04-10 03:33:13,658 [grpc-default-executor-2] ERROR util.GrpcTestServer (GrpcTestServer.java:onError(98)) - onError
+org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException: CANCELLED: client cancelled
+	at org.apache.ratis.thirdparty.io.grpc.Status.asRuntimeException(Status.java:530)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ServerCalls$StreamingServerCallHandler$StreamingServerCallListener.onCancel(ServerCalls.java:291)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.closedInternal(ServerCallImpl.java:378)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.closed(ServerCallImpl.java:365)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1Closed.runInContext(ServerImpl.java:923)
+	at org.apache.ratis.thirdparty.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at org.apache.ratis.thirdparty.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
