@@ -1,0 +1,1897 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="org.apache.ratis.server.raftlog.TestRaftLogMetrics" time="2.606" tests="1" errors="0" skipped="0" failures="1">
+  <properties>
+    <property name="awt.toolkit" value="sun.awt.X11.XToolkit"/>
+    <property name="java.specification.version" value="11"/>
+    <property name="sun.cpu.isalist" value=""/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.4/ratis-thirdparty-misc-1.0.4.jar:/home/runner/work/ratis/ratis/ratis-proto/target/ratis-proto-3.0.0-SNAPSHOT.jar:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.76/bcprov-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.76/bcpkix-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.76/bcutil-jdk18on-1.76.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/2.0.7/slf4j-reload4j-2.0.7.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value=""/>
+    <property name="java.vm.specification.version" value="11"/>
+    <property name="os.name" value="Linux"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-11-jdk-amd64/lib"/>
+    <property name="sun.java.command" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter-20231104172821503_15.jar /home/runner/work/ratis/ratis/ratis-test/target/surefire 2023-11-04T17-27-31_597-jvmRun1 surefire-20231104172821503_13tmp surefire_3-20231104172821503_14tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.4/ratis-thirdparty-misc-1.0.4.jar:/home/runner/work/ratis/ratis/ratis-proto/target/ratis-proto-3.0.0-SNAPSHOT.jar:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.76/bcprov-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.76/bcpkix-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.76/bcutil-jdk18on-1.76.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/2.0.7/slf4j-reload4j-2.0.7.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2023-10-17"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-11-jdk-amd64"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="java.vm.compressedOopsMode" value="32-bit"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.awt.graphicsenv" value="sun.awt.X11GraphicsEnvironment"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter-20231104172821503_15.jar"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="11.0.21+9"/>
+    <property name="user.name" value="runner"/>
+    <property name="java.net.preferIPv4Stack" value="true"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="5.15.0-1050-azure"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="java.vendor.version" value="Temurin-11.0.21+9"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="11.0.21"/>
+    <property name="user.dir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="ratis.tmp.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/tmp"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="java.awt.printerjob" value="sun.print.PSPrinterJob"/>
+    <property name="ratis.log.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/log"/>
+    <property name="sun.os.patch.level" value="unknown"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode"/>
+    <property name="java.vendor" value="Eclipse Adoptium"/>
+    <property name="java.vm.version" value="11.0.21+9"/>
+    <property name="java.specification.maintenance.version" value="2"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="55.0"/>
+  </properties>
+  <testcase name="testRaftLogMetrics" classname="org.apache.ratis.server.raftlog.TestRaftLogMetrics" time="2.54">
+    <failure message="expected:&lt;4&gt; but was:&lt;5&gt;" type="java.lang.AssertionError"><![CDATA[java.lang.AssertionError: expected:<4> but was:<5>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:647)
+	at org.junit.Assert.assertEquals(Assert.java:633)
+	at org.apache.ratis.server.raftlog.TestRaftLogMetrics.assertFlushCount(TestRaftLogMetrics.java:144)
+	at org.apache.ratis.server.raftlog.TestRaftLogMetrics.runTestRaftLogMetrics(TestRaftLogMetrics.java:102)
+	at org.apache.ratis.server.raftlog.TestRaftLogMetrics.testRaftLogMetrics(TestRaftLogMetrics.java:87)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+]]></failure>
+    <system-out><![CDATA[2023-11-04 17:28:22,132 [main] INFO  metrics.MetricRegistries (MetricRegistriesLoader.java:load(64)) - Loaded MetricRegistries class org.apache.ratis.metrics.impl.MetricRegistriesImpl
+2023-11-04 17:28:22,295 [main] WARN  impl.MetricRegistriesImpl (MetricRegistriesImpl.java:addReporterRegistration(115)) - New reporters are added after registries were created. Some metrics will be missing from the reporter. Please add reporter before adding any new registry.
+2023-11-04 17:28:22,295 [main] WARN  impl.MetricRegistriesImpl (MetricRegistriesImpl.java:addReporterRegistration(115)) - New reporters are added after registries were created. Some metrics will be missing from the reporter. Please add reporter before adding any new registry.
+2023-11-04 17:28:22,304 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-11-04 17:28:22,305 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-11-04 17:28:22,324 [Time-limited test] INFO  simulation.MiniRaftClusterWithSimulatedRpc (ConfUtils.java:logGet(46)) - org.apache.ratis.server.simulation.SimulatedRequestReply.simulateLatencyMs = 0 (custom)
+2023-11-04 17:28:22,394 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:<init>(306)) - new MiniRaftClusterWithSimulatedRpc with group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]
+2023-11-04 17:28:22,394 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(339)) - .............................................................. 
+2023-11-04 17:28:22,395 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(340)) - ... 
+2023-11-04 17:28:22,395 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(341)) - ...     Starting MiniRaftClusterWithSimulatedRpc
+2023-11-04 17:28:22,395 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(342)) - ... 
+2023-11-04 17:28:22,395 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(343)) - .............................................................. 
+2023-11-04 17:28:22,395 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:initServers(318)) - servers = {}
+2023-11-04 17:28:22,406 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(382)) - newRaftServer: s0, group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535], format? true
+2023-11-04 17:28:22,407 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0
+2023-11-04 17:28:22,408 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0 does not exist.
+2023-11-04 17:28:22,408 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(387)) - Formatted directory target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0
+2023-11-04 17:28:22,419 [Time-limited test] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-11-04 17:28:22,425 [Time-limited test] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2023-11-04 17:28:22,430 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-11-04 17:28:22,431 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.close.threshold = 60s (default)
+2023-11-04 17:28:22,432 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-11-04 17:28:22,447 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0] (custom)
+2023-11-04 17:28:22,448 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.cached = true (default)
+2023-11-04 17:28:22,449 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.size = 0 (default)
+2023-11-04 17:28:22,459 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:addNew(100)) - s0: addNew group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535] returns group-E1A9FA04EB8B:java.util.concurrent.CompletableFuture@7b9283bd[Not completed]
+2023-11-04 17:28:22,459 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(382)) - newRaftServer: s1, group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535], format? true
+2023-11-04 17:28:22,460 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1
+2023-11-04 17:28:22,460 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1 does not exist.
+2023-11-04 17:28:22,460 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(387)) - Formatted directory target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1
+2023-11-04 17:28:22,460 [Time-limited test] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-11-04 17:28:22,461 [Time-limited test] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2023-11-04 17:28:22,461 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-11-04 17:28:22,461 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.close.threshold = 60s (default)
+2023-11-04 17:28:22,461 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-11-04 17:28:22,462 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1] (custom)
+2023-11-04 17:28:22,462 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.cached = true (default)
+2023-11-04 17:28:22,464 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.size = 0 (default)
+2023-11-04 17:28:22,474 [s0-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(255)) - s0: new RaftServerImpl for group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535] with MetricsStateMachine:uninitialized
+2023-11-04 17:28:22,476 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-11-04 17:28:22,476 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-11-04 17:28:22,477 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.sleep.time = 25ms (default)
+2023-11-04 17:28:22,477 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-11-04 17:28:22,477 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-11-04 17:28:22,477 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-11-04 17:28:22,482 [s0-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(113)) - s0@group-E1A9FA04EB8B: ConfigurationManager, init=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null, confs=<EMPTY_MAP>
+2023-11-04 17:28:22,486 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:addNew(100)) - s1: addNew group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535] returns group-E1A9FA04EB8B:java.util.concurrent.CompletableFuture@5b8edf04[Not completed]
+2023-11-04 17:28:22,486 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(382)) - newRaftServer: s2, group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535], format? true
+2023-11-04 17:28:22,486 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2
+2023-11-04 17:28:22,487 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2 does not exist.
+2023-11-04 17:28:22,487 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(387)) - Formatted directory target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2
+2023-11-04 17:28:22,487 [Time-limited test] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = org.apache.ratis.server.simulation.SimulatedRpc (custom)
+2023-11-04 17:28:22,487 [Time-limited test] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2023-11-04 17:28:22,488 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-11-04 17:28:22,488 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.close.threshold = 60s (default)
+2023-11-04 17:28:22,488 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-11-04 17:28:22,488 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2] (custom)
+2023-11-04 17:28:22,489 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.cached = true (default)
+2023-11-04 17:28:22,489 [Time-limited test] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.proxy.size = 0 (default)
+2023-11-04 17:28:22,489 [s1-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(255)) - s1: new RaftServerImpl for group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535] with MetricsStateMachine:uninitialized
+2023-11-04 17:28:22,493 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-11-04 17:28:22,494 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-11-04 17:28:22,494 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.sleep.time = 25ms (default)
+2023-11-04 17:28:22,494 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-11-04 17:28:22,494 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-11-04 17:28:22,494 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-11-04 17:28:22,494 [s1-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(113)) - s1@group-E1A9FA04EB8B: ConfigurationManager, init=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null, confs=<EMPTY_MAP>
+2023-11-04 17:28:22,497 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.notification.no-leader.timeout = 60s (default)
+2023-11-04 17:28:22,501 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.notification.no-leader.timeout = 60s (default)
+2023-11-04 17:28:22,502 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.timeout = 10s (default)
+2023-11-04 17:28:22,509 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.timeout = 10s (default)
+2023-11-04 17:28:22,515 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.expirytime = 60s (default)
+2023-11-04 17:28:22,516 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.statistics.expirytime = 100μs (default)
+2023-11-04 17:28:22,518 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.expirytime = 60s (default)
+2023-11-04 17:28:22,518 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.statistics.expirytime = 100μs (default)
+2023-11-04 17:28:22,522 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:addNew(100)) - s2: addNew group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535] returns group-E1A9FA04EB8B:java.util.concurrent.CompletableFuture@63b7102f[Not completed]
+2023-11-04 17:28:22,522 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.option = DEFAULT (default)
+2023-11-04 17:28:22,526 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.read-after-write-consistent.write-index-cache.expiry-time = 60s (default)
+2023-11-04 17:28:22,531 [s2-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(255)) - s2: new RaftServerImpl for group-E1A9FA04EB8B:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535] with MetricsStateMachine:uninitialized
+2023-11-04 17:28:22,538 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-11-04 17:28:22,538 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.max = 300ms (default)
+2023-11-04 17:28:22,539 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.sleep.time = 25ms (default)
+2023-11-04 17:28:22,539 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.slowness.timeout = 60s (default)
+2023-11-04 17:28:22,539 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.leader.step-down.wait-time = 10s (default)
+2023-11-04 17:28:22,540 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.sleep.deviation.threshold = 300ms (default)
+2023-11-04 17:28:22,540 [s2-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(113)) - s2@group-E1A9FA04EB8B: ConfigurationManager, init=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null, confs=<EMPTY_MAP>
+2023-11-04 17:28:22,540 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.notification.no-leader.timeout = 60s (default)
+2023-11-04 17:28:22,540 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.timeout = 10s (default)
+2023-11-04 17:28:22,540 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.expirytime = 60s (default)
+2023-11-04 17:28:22,541 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.retrycache.statistics.expirytime = 100μs (default)
+2023-11-04 17:28:22,541 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.option = DEFAULT (default)
+2023-11-04 17:28:22,541 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.read-after-write-consistent.write-index-cache.expiry-time = 60s (default)
+2023-11-04 17:28:22,535 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.option = DEFAULT (default)
+2023-11-04 17:28:22,541 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.read-after-write-consistent.write-index-cache.expiry-time = 60s (default)
+2023-11-04 17:28:22,592 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.request.timeout = 3000ms (default)
+2023-11-04 17:28:22,595 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.install.snapshot.enabled = true (default)
+2023-11-04 17:28:22,596 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.cached = true (default)
+2023-11-04 17:28:22,596 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.size = 0 (default)
+2023-11-04 17:28:22,596 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.cached = true (default)
+2023-11-04 17:28:22,599 [s2-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.size = 0 (default)
+2023-11-04 17:28:22,601 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.request.timeout = 3000ms (default)
+2023-11-04 17:28:22,601 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.install.snapshot.enabled = true (default)
+2023-11-04 17:28:22,601 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.cached = true (default)
+2023-11-04 17:28:22,601 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.size = 0 (default)
+2023-11-04 17:28:22,597 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.request.timeout = 3000ms (default)
+2023-11-04 17:28:22,602 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.cached = true (default)
+2023-11-04 17:28:22,602 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.install.snapshot.enabled = true (default)
+2023-11-04 17:28:22,602 [s1-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.size = 0 (default)
+2023-11-04 17:28:22,602 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.cached = true (default)
+2023-11-04 17:28:22,602 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.server.size = 0 (default)
+2023-11-04 17:28:22,602 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.cached = true (default)
+2023-11-04 17:28:22,603 [s0-groupManagement] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.threadpool.client.size = 0 (default)
+2023-11-04 17:28:22,604 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.free-space.min = 0MB (=0) (default)
+2023-11-04 17:28:22,607 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.corruption.policy = EXCEPTION (default)
+2023-11-04 17:28:22,607 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0] (custom)
+2023-11-04 17:28:22,621 [s0-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b does not exist. Creating ...
+2023-11-04 17:28:22,624 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b
+2023-11-04 17:28:22,628 [s0-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(232)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/in_use.lock acquired by nodename 2366@fv-az616-80
+2023-11-04 17:28:22,628 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current
+2023-11-04 17:28:22,629 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/sm
+2023-11-04 17:28:22,642 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@877b7f3
+2023-11-04 17:28:22,666 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta with options [REPLACE_EXISTING]
+2023-11-04 17:28:22,666 [s0-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(97)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b has been successfully formatted.
+2023-11-04 17:28:22,669 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.use.memory = false (default)
+2023-11-04 17:28:22,679 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.gap = 1024 (default)
+2023-11-04 17:28:22,680 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,683 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.read.timeout = 1000ms (default)
+2023-11-04 17:28:22,685 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.preservation.log.num = 0 (default)
+2023-11-04 17:28:22,692 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 32MB (=33554432) (default)
+2023-11-04 17:28:22,709 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.num.max = 6 (default)
+2023-11-04 17:28:22,709 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.size.max = 200MB (=209715200) (default)
+2023-11-04 17:28:22,710 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,714 [s0-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s0@group-E1A9FA04EB8B-cacheEviction-AwaitToRun,5,main] started
+2023-11-04 17:28:22,717 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(184)) - new s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b
+2023-11-04 17:28:22,718 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.byte-limit = 64MB (=67108864) (default)
+2023-11-04 17:28:22,719 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.element-limit = 4096 (default)
+2023-11-04 17:28:22,721 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 32MB (=33554432) (default)
+2023-11-04 17:28:22,722 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-11-04 17:28:22,722 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.force.sync.num = 128 (default)
+2023-11-04 17:28:22,723 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync = true (default)
+2023-11-04 17:28:22,723 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout = 10s (default)
+2023-11-04 17:28:22,724 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout.retry = -1 (default)
+2023-11-04 17:28:22,727 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-11-04 17:28:22,727 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,729 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.unsafe-flush.enabled = false (default)
+2023-11-04 17:28:22,729 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.async-flush.enabled = false (default)
+2023-11-04 17:28:22,730 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.caching.enabled = false (default)
+2023-11-04 17:28:22,738 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(135)) - s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2023-11-04 17:28:22,738 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(135)) - s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2023-11-04 17:28:22,741 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(390)) - s0@group-E1A9FA04EB8B: start as a follower, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:22,741 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s0@group-E1A9FA04EB8B: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2023-11-04 17:28:22,742 [s0-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s0: start s0@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:22,750 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-E1A9FA04EB8B,id=s0
+2023-11-04 17:28:22,752 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.trigger-when-stop.enabled = true (default)
+2023-11-04 17:28:22,753 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.auto.trigger.enabled = false (default)
+2023-11-04 17:28:22,753 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.retention.file.num = -1 (default)
+2023-11-04 17:28:22,754 [s0-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.upto.snapshot.index = false (default)
+2023-11-04 17:28:22,754 [s0@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-11-04 17:28:22,754 [s0@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-11-04 17:28:22,761 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:startImpl(406)) - s0: start RPC server
+2023-11-04 17:28:22,764 [JvmPauseMonitor0] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s0: Started
+2023-11-04 17:28:22,764 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.free-space.min = 0MB (=0) (default)
+2023-11-04 17:28:22,764 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.corruption.policy = EXCEPTION (default)
+2023-11-04 17:28:22,764 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1] (custom)
+2023-11-04 17:28:22,765 [s1-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b does not exist. Creating ...
+2023-11-04 17:28:22,765 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b
+2023-11-04 17:28:22,767 [s1-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(232)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/in_use.lock acquired by nodename 2366@fv-az616-80
+2023-11-04 17:28:22,768 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current
+2023-11-04 17:28:22,768 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/sm
+2023-11-04 17:28:22,768 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@2e73fbba
+2023-11-04 17:28:22,770 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta with options [REPLACE_EXISTING]
+2023-11-04 17:28:22,770 [s1-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(97)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b has been successfully formatted.
+2023-11-04 17:28:22,770 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.use.memory = false (default)
+2023-11-04 17:28:22,770 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.gap = 1024 (default)
+2023-11-04 17:28:22,770 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,771 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.read.timeout = 1000ms (default)
+2023-11-04 17:28:22,771 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.preservation.log.num = 0 (default)
+2023-11-04 17:28:22,773 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 32MB (=33554432) (default)
+2023-11-04 17:28:22,774 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.num.max = 6 (default)
+2023-11-04 17:28:22,774 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.size.max = 200MB (=209715200) (default)
+2023-11-04 17:28:22,774 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,775 [s1-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s1@group-E1A9FA04EB8B-cacheEviction-AwaitToRun,5,main] started
+2023-11-04 17:28:22,779 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(184)) - new s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b
+2023-11-04 17:28:22,782 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.byte-limit = 64MB (=67108864) (default)
+2023-11-04 17:28:22,782 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.element-limit = 4096 (default)
+2023-11-04 17:28:22,782 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 32MB (=33554432) (default)
+2023-11-04 17:28:22,783 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-11-04 17:28:22,783 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.force.sync.num = 128 (default)
+2023-11-04 17:28:22,783 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync = true (default)
+2023-11-04 17:28:22,783 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout = 10s (default)
+2023-11-04 17:28:22,784 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout.retry = -1 (default)
+2023-11-04 17:28:22,789 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-11-04 17:28:22,790 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,792 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.unsafe-flush.enabled = false (default)
+2023-11-04 17:28:22,792 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.async-flush.enabled = false (default)
+2023-11-04 17:28:22,792 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.caching.enabled = false (default)
+2023-11-04 17:28:22,792 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(135)) - s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2023-11-04 17:28:22,792 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(135)) - s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2023-11-04 17:28:22,798 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(390)) - s1@group-E1A9FA04EB8B: start as a follower, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:22,798 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s1@group-E1A9FA04EB8B: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2023-11-04 17:28:22,798 [s1-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s1: start s1@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:22,810 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-E1A9FA04EB8B,id=s1
+2023-11-04 17:28:22,811 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.trigger-when-stop.enabled = true (default)
+2023-11-04 17:28:22,811 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.auto.trigger.enabled = false (default)
+2023-11-04 17:28:22,811 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.retention.file.num = -1 (default)
+2023-11-04 17:28:22,811 [s1-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.upto.snapshot.index = false (default)
+2023-11-04 17:28:22,822 [s1@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-11-04 17:28:22,822 [s1@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-11-04 17:28:22,823 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:startImpl(406)) - s1: start RPC server
+2023-11-04 17:28:22,830 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.free-space.min = 0MB (=0) (default)
+2023-11-04 17:28:22,830 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.corruption.policy = EXCEPTION (default)
+2023-11-04 17:28:22,830 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.storage.dir = [/home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2] (custom)
+2023-11-04 17:28:22,831 [s2-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b does not exist. Creating ...
+2023-11-04 17:28:22,831 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b
+2023-11-04 17:28:22,832 [JvmPauseMonitor1] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s1: Started
+2023-11-04 17:28:22,833 [s2-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(232)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/in_use.lock acquired by nodename 2366@fv-az616-80
+2023-11-04 17:28:22,833 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current
+2023-11-04 17:28:22,833 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/sm
+2023-11-04 17:28:22,833 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@2fedc81f
+2023-11-04 17:28:22,835 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta with options [REPLACE_EXISTING]
+2023-11-04 17:28:22,836 [s2-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(97)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b has been successfully formatted.
+2023-11-04 17:28:22,836 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.use.memory = false (default)
+2023-11-04 17:28:22,836 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.gap = 1024 (default)
+2023-11-04 17:28:22,836 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,836 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.read.timeout = 1000ms (default)
+2023-11-04 17:28:22,836 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.preservation.log.num = 0 (default)
+2023-11-04 17:28:22,839 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 32MB (=33554432) (default)
+2023-11-04 17:28:22,840 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.num.max = 6 (default)
+2023-11-04 17:28:22,840 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.cache.size.max = 200MB (=209715200) (default)
+2023-11-04 17:28:22,840 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,842 [s2-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s2@group-E1A9FA04EB8B-cacheEviction-AwaitToRun,5,main] started
+2023-11-04 17:28:22,842 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(184)) - new s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b
+2023-11-04 17:28:22,842 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.byte-limit = 64MB (=67108864) (default)
+2023-11-04 17:28:22,842 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.queue.element-limit = 4096 (default)
+2023-11-04 17:28:22,842 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.segment.size.max = 32MB (=33554432) (default)
+2023-11-04 17:28:22,843 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.preallocated.size = 4MB (=4194304) (default)
+2023-11-04 17:28:22,843 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.force.sync.num = 128 (default)
+2023-11-04 17:28:22,843 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync = true (default)
+2023-11-04 17:28:22,843 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout = 10s (default)
+2023-11-04 17:28:22,843 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.sync.timeout.retry = -1 (default)
+2023-11-04 17:28:22,843 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.write.buffer.size = 64KB (=65536) (default)
+2023-11-04 17:28:22,844 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:22,845 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.unsafe-flush.enabled = false (default)
+2023-11-04 17:28:22,845 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.async-flush.enabled = false (default)
+2023-11-04 17:28:22,845 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.statemachine.data.caching.enabled = false (default)
+2023-11-04 17:28:22,846 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(135)) - s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2023-11-04 17:28:22,846 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(135)) - s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2023-11-04 17:28:22,848 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(390)) - s2@group-E1A9FA04EB8B: start as a follower, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:22,848 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s2@group-E1A9FA04EB8B: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2023-11-04 17:28:22,848 [s2-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s2: start s2@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:22,848 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-E1A9FA04EB8B,id=s2
+2023-11-04 17:28:22,848 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.trigger-when-stop.enabled = true (default)
+2023-11-04 17:28:22,849 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.auto.trigger.enabled = false (default)
+2023-11-04 17:28:22,849 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.snapshot.retention.file.num = -1 (default)
+2023-11-04 17:28:22,849 [s2-impl-thread1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.purge.upto.snapshot.index = false (default)
+2023-11-04 17:28:22,851 [s2@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-11-04 17:28:22,855 [s2@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-11-04 17:28:22,856 [Time-limited test] INFO  server.RaftServer (RaftServerProxy.java:startImpl(406)) - s2: start RPC server
+2023-11-04 17:28:22,858 [JvmPauseMonitor2] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s2: Started
+2023-11-04 17:28:23,018 [s0@group-E1A9FA04EB8B-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(143)) - s0@group-E1A9FA04EB8B-FollowerState: change to CANDIDATE, lastRpcElapsedTime:276325876ns, electionTimeout:262ms
+2023-11-04 17:28:23,018 [s0@group-E1A9FA04EB8B-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(109)) - s0: shutdown s0@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,019 [s0@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s0@group-E1A9FA04EB8B: changes role from  FOLLOWER to CANDIDATE at term 0 for changeToCandidate
+2023-11-04 17:28:23,024 [s0@group-E1A9FA04EB8B-FollowerState] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.leaderelection.pre-vote = true (default)
+2023-11-04 17:28:23,024 [s0@group-E1A9FA04EB8B-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s0: start s0@group-E1A9FA04EB8B-LeaderElection1
+2023-11-04 17:28:23,031 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(323)) - s0@group-E1A9FA04EB8B-LeaderElection1 PRE_VOTE round 0: submit vote requests at term 0 for -1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,050 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1372)) - s1@group-E1A9FA04EB8B: receive requestVote(PRE_VOTE, s0, group-E1A9FA04EB8B, 0, (t:0, i:0))
+2023-11-04 17:28:23,051 [HandlerDaemon-0] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-E1A9FA04EB8B-FOLLOWER: accept PRE_VOTE from s0: our priority 0 <= candidate's priority 0
+2023-11-04 17:28:23,058 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-11-04 17:28:23,058 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-11-04 17:28:23,058 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1372)) - s2@group-E1A9FA04EB8B: receive requestVote(PRE_VOTE, s0, group-E1A9FA04EB8B, 0, (t:0, i:0))
+2023-11-04 17:28:23,058 [HandlerDaemon-0] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-E1A9FA04EB8B-FOLLOWER: accept PRE_VOTE from s0: our priority 0 <= candidate's priority 0
+2023-11-04 17:28:23,060 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1405)) - s2@group-E1A9FA04EB8B replies to PRE_VOTE vote request: s0<-s2#0:OK-t0. Peer's state: s2@group-E1A9FA04EB8B:t0, leader=null, voted=, raftlog=Memoized:s2@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,062 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(89)) - s0@group-E1A9FA04EB8B-LeaderElection1: PRE_VOTE PASSED received 1 response(s) and 0 exception(s):
+2023-11-04 17:28:23,062 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(93)) -   Response 0: s0<-s2#0:OK-t0
+2023-11-04 17:28:23,062 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(325)) - s0@group-E1A9FA04EB8B-LeaderElection1 PRE_VOTE round 0: result PASSED
+2023-11-04 17:28:23,065 [s0@group-E1A9FA04EB8B-LeaderElection1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@62fe1b12
+2023-11-04 17:28:23,066 [s0@group-E1A9FA04EB8B-LeaderElection1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta with options [REPLACE_EXISTING]
+2023-11-04 17:28:23,066 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(323)) - s0@group-E1A9FA04EB8B-LeaderElection1 ELECTION round 0: submit vote requests at term 1 for -1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,067 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1372)) - s1@group-E1A9FA04EB8B: receive requestVote(ELECTION, s0, group-E1A9FA04EB8B, 1, (t:0, i:0))
+2023-11-04 17:28:23,068 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.min = 150ms (fallback to raft.server.rpc.timeout.min)
+2023-11-04 17:28:23,072 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logFallback(53)) - raft.server.rpc.first-election.timeout.max = 300ms (fallback to raft.server.rpc.timeout.max)
+2023-11-04 17:28:23,073 [HandlerDaemon-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1405)) - s1@group-E1A9FA04EB8B replies to PRE_VOTE vote request: s0<-s1#0:OK-t0. Peer's state: s1@group-E1A9FA04EB8B:t0, leader=null, voted=, raftlog=Memoized:s1@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,073 [HandlerDaemon-1] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-E1A9FA04EB8B-FOLLOWER: accept ELECTION from s0: our priority 0 <= candidate's priority 0
+2023-11-04 17:28:23,074 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s1@group-E1A9FA04EB8B: changes role from  FOLLOWER to FOLLOWER at term 1 for candidate:s0
+2023-11-04 17:28:23,074 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(109)) - s1: shutdown s1@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,074 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s1: start s1@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,074 [s1@group-E1A9FA04EB8B-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s1@group-E1A9FA04EB8B-FollowerState was interrupted
+2023-11-04 17:28:23,075 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(562)) - s1@group-E1A9FA04EB8B: set firstElectionSinceStartup to false for candidate:s0
+2023-11-04 17:28:23,075 [HandlerDaemon-1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@40c46ec7
+2023-11-04 17:28:23,080 [HandlerDaemon-1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta with options [REPLACE_EXISTING]
+2023-11-04 17:28:23,080 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1372)) - s2@group-E1A9FA04EB8B: receive requestVote(ELECTION, s0, group-E1A9FA04EB8B, 1, (t:0, i:0))
+2023-11-04 17:28:23,080 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1405)) - s1@group-E1A9FA04EB8B replies to ELECTION vote request: s0<-s1#0:OK-t1. Peer's state: s1@group-E1A9FA04EB8B:t1, leader=null, voted=s0, raftlog=Memoized:s1@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,081 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(89)) - s0@group-E1A9FA04EB8B-LeaderElection1: ELECTION PASSED received 1 response(s) and 0 exception(s):
+2023-11-04 17:28:23,081 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(93)) -   Response 0: s0<-s1#0:OK-t1
+2023-11-04 17:28:23,081 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(325)) - s0@group-E1A9FA04EB8B-LeaderElection1 ELECTION round 0: result PASSED
+2023-11-04 17:28:23,081 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderElection(129)) - s0: shutdown s0@group-E1A9FA04EB8B-LeaderElection1
+2023-11-04 17:28:23,081 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s0@group-E1A9FA04EB8B: changes role from CANDIDATE to LEADER at term 1 for changeToLeader
+2023-11-04 17:28:23,086 [HandlerDaemon-1] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-E1A9FA04EB8B-FOLLOWER: accept ELECTION from s0: our priority 0 <= candidate's priority 0
+2023-11-04 17:28:23,086 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(377)) - s2@group-E1A9FA04EB8B: changes role from  FOLLOWER to FOLLOWER at term 1 for candidate:s0
+2023-11-04 17:28:23,086 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(109)) - s2: shutdown s2@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,086 [s2@group-E1A9FA04EB8B-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s2@group-E1A9FA04EB8B-FollowerState was interrupted
+2023-11-04 17:28:23,089 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.staging.catchup.gap = 1000 (default)
+2023-11-04 17:28:23,090 [HandlerDaemon-1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s2: start s2@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,092 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(562)) - s2@group-E1A9FA04EB8B: set firstElectionSinceStartup to false for candidate:s0
+2023-11-04 17:28:23,092 [HandlerDaemon-1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@538808b2
+2023-11-04 17:28:23,099 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.element-limit = 4096 (default)
+2023-11-04 17:28:23,099 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.byte-limit = 64MB (=67108864) (default)
+2023-11-04 17:28:23,102 [HandlerDaemon-1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/raft-meta with options [REPLACE_EXISTING]
+2023-11-04 17:28:23,102 [HandlerDaemon-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1405)) - s2@group-E1A9FA04EB8B replies to ELECTION vote request: s0<-s2#0:OK-t1. Peer's state: s2@group-E1A9FA04EB8B:t1, leader=null, voted=s0, raftlog=Memoized:s2@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c-1, conf=-1: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,112 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.watch.timeout = 10s (default)
+2023-11-04 17:28:23,112 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.watch.timeout.denomination = 1s (default)
+2023-11-04 17:28:23,113 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.watch.element-limit = 65536 (default)
+2023-11-04 17:28:23,119 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.leader.lease.enabled = false (default)
+2023-11-04 17:28:23,122 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.read.leader.lease.timeout.ratio = 0.9 (default)
+2023-11-04 17:28:23,122 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.rpc.timeout.min = 150ms (default)
+2023-11-04 17:28:23,122 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.element-limit = 4096 (default)
+2023-11-04 17:28:23,122 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.write.follower.gap.ratio.max = -1.0 (default)
+2023-11-04 17:28:23,136 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.snapshot.chunk.size.max = 16MB (=16777216) (default)
+2023-11-04 17:28:23,137 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:23,137 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.element-limit = 0 (default)
+2023-11-04 17:28:23,139 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.wait-time.min = 1ms (default)
+2023-11-04 17:28:23,141 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.snapshot.chunk.size.max = 16MB (=16777216) (default)
+2023-11-04 17:28:23,143 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.byte-limit = 4MB (=4194304) (default)
+2023-11-04 17:28:23,143 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.buffer.element-limit = 0 (default)
+2023-11-04 17:28:23,143 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServerConfigKeys (ConfUtils.java:logGet(46)) - raft.server.log.appender.wait-time.min = 1ms (default)
+2023-11-04 17:28:23,144 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(138)) - s0: start s0@group-E1A9FA04EB8B-LeaderStateImpl
+2023-11-04 17:28:23,145 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(562)) - s0@group-E1A9FA04EB8B: set firstElectionSinceStartup to false for becomeLeader
+2023-11-04 17:28:23,146 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServer$Division (ServerState.java:setLeader(265)) - s0@group-E1A9FA04EB8B: change Leader from null to s0 at term 1 for becomeLeader, leader elected after 648ms
+2023-11-04 17:28:23,174 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(428)) - s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker: Starting segment from index:0
+2023-11-04 17:28:23,195 [s0@group-E1A9FA04EB8B-LeaderElection1] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(382)) - s0@group-E1A9FA04EB8B: set configuration 0: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,214 [HandlerDaemon-2] INFO  server.RaftServer$Division (ServerState.java:setLeader(265)) - s2@group-E1A9FA04EB8B: change Leader from null to s0 at term 1 for appendEntries, leader elected after 673ms
+2023-11-04 17:28:23,223 [HandlerDaemon-2] INFO  server.RaftServer$Division (ServerState.java:setLeader(265)) - s1@group-E1A9FA04EB8B: change Leader from null to s0 at term 1 for appendEntries, leader elected after 726ms
+2023-11-04 17:28:23,242 [HandlerDaemon-0] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(382)) - s2@group-E1A9FA04EB8B: set configuration 0: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,244 [HandlerDaemon-0] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(382)) - s1@group-E1A9FA04EB8B: set configuration 0: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null
+2023-11-04 17:28:23,245 [HandlerDaemon-0] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(428)) - s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker: Starting segment from index:0
+2023-11-04 17:28:23,246 [HandlerDaemon-0] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(428)) - s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker: Starting segment from index:0
+2023-11-04 17:28:23,288 [s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(632)) - s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s0/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/log_inprogress_0
+2023-11-04 17:28:23,291 [s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(632)) - s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s1/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/log_inprogress_0
+2023-11-04 17:28:23,299 [s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(632)) - s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/94e6333b/MiniRaftClusterWithSimulatedRpc118a0e97/s2/97e44ff9-7499-4f66-8ccd-e1a9fa04eb8b/current/log_inprogress_0
+2023-11-04 17:28:23,301 [s0@group-E1A9FA04EB8B-StateMachineUpdater] INFO  server.RaftServer$Division (LeaderStateImpl.java:isApplied(308)) - leader is ready since appliedIndex == 0 >= startIndex == 0
+2023-11-04 17:28:23,436 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(831)) - ************************************************************** 
+2023-11-04 17:28:23,436 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(832)) - *** 
+2023-11-04 17:28:23,436 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(833)) - ***     Stopping MiniRaftClusterWithSimulatedRpc
+2023-11-04 17:28:23,436 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(834)) - *** 
+2023-11-04 17:28:23,436 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(835)) - ************************************************************** 
+2023-11-04 17:28:23,437 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(836)) - printing ALL groups
+  s0:  RUNNING    LEADER s0@group-E1A9FA04EB8B:t1, leader=s0, voted=s0, raftlog=Memoized:s0@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c4, conf=0: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-E1A9FA04EB8B:t1, leader=s0, voted=s0, raftlog=Memoized:s1@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c3, conf=0: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-E1A9FA04EB8B:t1, leader=s0, voted=s0, raftlog=Memoized:s2@group-E1A9FA04EB8B-SegmentedRaftLog:OPENED:c3, conf=0: peers:[s0|localhost:39957, s1|localhost:39633, s2|localhost:38535]|listeners:[], old=null RUNNING
+2023-11-04 17:28:23,439 [MiniRaftCluster-1] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(416)) - s0: close
+2023-11-04 17:28:23,446 [MiniRaftCluster-2] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(416)) - s1: close
+2023-11-04 17:28:23,453 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.clientHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,448 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.clientHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,448 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.clientHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,448 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$3(514)) - s0@group-E1A9FA04EB8B: shutdown
+2023-11-04 17:28:23,455 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(73)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-E1A9FA04EB8B,id=s0
+2023-11-04 17:28:23,455 [s0-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderState(92)) - s0: shutdown s0@group-E1A9FA04EB8B-LeaderStateImpl
+2023-11-04 17:28:23,455 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$3(514)) - s1@group-E1A9FA04EB8B: shutdown
+2023-11-04 17:28:23,455 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(73)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-E1A9FA04EB8B,id=s1
+2023-11-04 17:28:23,455 [s1-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(109)) - s1: shutdown s1@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,455 [s1-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(157)) - s1@group-E1A9FA04EB8B-StateMachineUpdater: set stopIndex = 3
+2023-11-04 17:28:23,455 [s0-impl-thread1] INFO  impl.PendingRequests (PendingRequests.java:sendNotLeaderResponses(289)) - s0@group-E1A9FA04EB8B-PendingRequests: sendNotLeaderResponses
+2023-11-04 17:28:23,456 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.serverHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,456 [s0@group-E1A9FA04EB8B->s1-LogAppenderDefault-LogAppenderDaemon] INFO  leader.LogAppenderDaemon (LogAppenderDaemon.java:run(83)) - s0@group-E1A9FA04EB8B->s1-LogAppenderDefault-LogAppenderDaemon was interrupted: java.lang.InterruptedException
+2023-11-04 17:28:23,456 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.clientHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,456 [s1@group-E1A9FA04EB8B-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s1@group-E1A9FA04EB8B-FollowerState was interrupted
+2023-11-04 17:28:23,456 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.clientHandler2 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,454 [MiniRaftCluster-3] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(416)) - s2: close
+2023-11-04 17:28:23,457 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.serverHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,456 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s0.serverHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,456 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.clientHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,456 [s0@group-E1A9FA04EB8B->s2-LogAppenderDefault-LogAppenderDaemon] INFO  leader.LogAppenderDaemon (LogAppenderDaemon.java:run(83)) - s0@group-E1A9FA04EB8B->s2-LogAppenderDefault-LogAppenderDaemon was interrupted: java.lang.InterruptedException
+2023-11-04 17:28:23,460 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.serverHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,460 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.serverHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,460 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s1.serverHandler2 is interrupted by java.io.InterruptedIOException: 
+11/4/23, 5:28:23 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.state_machine.s1@group-E1A9FA04EB8B.appliedIndex
+             value = 3
+ratis.state_machine.s1@group-E1A9FA04EB8B.applyCompletedIndex
+             value = 3
+
+-- Timers ----------------------------------------------------------------------
+ratis.state_machine.s1@group-E1A9FA04EB8B.takeSnapshot
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+
+
+2023-11-04 17:28:23,467 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$3(514)) - s2@group-E1A9FA04EB8B: shutdown
+2023-11-04 17:28:23,467 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(73)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-E1A9FA04EB8B,id=s2
+2023-11-04 17:28:23,467 [s2-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(109)) - s2: shutdown s2@group-E1A9FA04EB8B-FollowerState
+2023-11-04 17:28:23,468 [s2@group-E1A9FA04EB8B-FollowerState] INFO  impl.FollowerState (FollowerState.java:run(152)) - s2@group-E1A9FA04EB8B-FollowerState was interrupted
+2023-11-04 17:28:23,470 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.clientHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,468 [s2-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(157)) - s2@group-E1A9FA04EB8B-StateMachineUpdater: set stopIndex = 3
+2023-11-04 17:28:23,470 [s1-impl-thread1] INFO  server.RaftServer$Division (ServerState.java:close(423)) - s1@group-E1A9FA04EB8B: applyIndex: 3
+11/4/23, 5:28:23 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.state_machine.s2@group-E1A9FA04EB8B.appliedIndex
+11/4/23, 5:28:23 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.log_appender.s0@group-E1A9FA04EB8B.follower_s1_match_index
+             value = 4
+ratis.log_appender.s0@group-E1A9FA04EB8B.follower_s1_next_index
+             value = 5
+ratis.log_appender.s0@group-E1A9FA04EB8B.follower_s1_rpc_response_time
+             value = 39
+ratis.log_appender.s0@group-E1A9FA04EB8B.follower_s2_match_index
+             value = 4
+ratis.log_appender.s0@group-E1A9FA04EB8B.follower_s2_next_index
+             value = 5
+ratis.log_appender.s0@group-E1A9FA04EB8B.follower_s2_rpc_response_time
+             value = 38
+
+
+2023-11-04 17:28:23,474 [s1@group-E1A9FA04EB8B-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s1@group-E1A9FA04EB8B-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+             value = 3
+ratis.state_machine.s2@group-E1A9FA04EB8B.applyCompletedIndex
+             value = 3
+
+-- Timers ----------------------------------------------------------------------
+ratis.state_machine.s2@group-E1A9FA04EB8B.takeSnapshot
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+11/4/23, 5:28:23 PM =            median = 0.00 milliseconds
+=========              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+====              98% <= 0.00 milliseconds
+========              99% <= 0.00 milliseconds
+==========            99.9% <= 0.00 milliseconds
+=
+=
+==========================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.server.s0@group-E1A9FA04EB8B.numPendingRequestInQueue
+             value = 4096
+ratis.server.s0@group-E1A9FA04EB8B.numPendingRequestMegaByteSize
+             value = 64
+ratis.server.s0@group-E1A9FA04EB8B.retryCacheEntryCount
+2023-11-04 17:28:23,478 [s2-impl-thread1] INFO  server.RaftServer$Division (ServerState.java:close(423)) - s2@group-E1A9FA04EB8B: applyIndex: 3
+2023-11-04 17:28:23,478 [s2@group-E1A9FA04EB8B-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s2@group-E1A9FA04EB8B-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+             value = 1
+ratis.server.s0@group-E1A9FA04EB8B.retryCacheHitCount
+             value = 2
+ratis.server.s0@group-E1A9FA04EB8B.retryCacheHitRate
+             value = 0.4
+ratis.server.s0@group-E1A9FA04EB8B.retryCacheMissCount
+             value = 3
+ratis.server.s0@group-E1A9FA04EB8B.retryCacheMissRate
+             value = 0.6
+ratis.server.s0@group-E1A9FA04EB8B.s0_peerCommitIndex
+             value = 4
+ratis.server.s0@group-E1A9FA04EB8B.s1_lastHeartbeatElapsedTime
+             value = 1375369
+ratis.server.s0@group-E1A9FA04EB8B.s1_peerCommitIndex
+             value = 2
+ratis.server.s0@group-E1A9FA04EB8B.s2_lastHeartbeatElapsedTime
+             value = 2411422
+ratis.server.s0@group-E1A9FA04EB8B.s2_peerCommitIndex
+             value = 2
+
+-- Counters --------------------------------------------------------------------
+ratis.server.s0@group-E1A9FA04EB8B.numFailedClientReadOnServer
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numFailedClientStaleReadOnServer
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numFailedClientStreamOnServer
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numFailedClientWatchOnServer
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numFailedClientWriteOnServer
+             count = 2
+ratis.server.s0@group-E1A9FA04EB8B.numInstallSnapshot
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numRequestQueueLimitHits
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numRequestsByteSizeLimitHits
+             count = 0
+ratis.server.s0@group-E1A9FA04EB8B.numResourceLimitHits
+             count = 0
+
+-- Timers ----------------------------------------------------------------------
+ratis.server.s0@group-E1A9FA04EB8B.clientReadRequest
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientStaleReadRequest
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+2023-11-04 17:28:23,484 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.clientHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,497 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.clientHandler2 is interrupted by java.io.InterruptedIOException: 
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientWatch-ALLRequest
+2023-11-04 17:28:23,499 [HandlerDaemon-0] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.serverHandler0 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,499 [HandlerDaemon-1] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.serverHandler1 is interrupted by java.io.InterruptedIOException: 
+2023-11-04 17:28:23,499 [HandlerDaemon-2] INFO  simulation.RequestHandler (RequestHandler.java:run(127)) - s2.serverHandler2 is interrupted by java.io.InterruptedIOException: 
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientWatch-ALL_COMMITTEDRequest
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientWatch-MAJORITY_COMMITTEDRequest
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientWatch-UNRECOGNIZEDRequest
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientWatchRequest
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.clientWriteRequest
+             count = 4
+         mean rate = 4.35 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 4.28 milliseconds
+               max = 28.67 milliseconds
+              mean = 15.62 milliseconds
+            stddev = 8.81 milliseconds
+            median = 16.83 milliseconds
+              75% <= 28.67 milliseconds
+              95% <= 28.67 milliseconds
+              98% <= 28.67 milliseconds
+              99% <= 28.67 milliseconds
+            99.9% <= 28.67 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.follower_append_entry_latency
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s0@group-E1A9FA04EB8B.follower_append_entry_latency_heartbeat
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+
+
+2023-11-04 17:28:23,510 [s0-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(157)) - s0@group-E1A9FA04EB8B-StateMachineUpdater: set stopIndex = 4
+11/4/23, 5:28:23 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.state_machine.s0@group-E1A9FA04EB8B.appliedIndex
+             value = 4
+ratis.state_machine.s0@group-E1A9FA04EB8B.applyCompletedIndex
+             value = 4
+
+-- Timers ----------------------------------------------------------------------
+ratis.state_machine.s0@group-E1A9FA04EB8B.takeSnapshot
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+
+
+2023-11-04 17:28:23,513 [s0-impl-thread1] INFO  server.RaftServer$Division (ServerState.java:close(423)) - s0@group-E1A9FA04EB8B: applyIndex: 4
+2023-11-04 17:28:23,514 [s0@group-E1A9FA04EB8B-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s0@group-E1A9FA04EB8B-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+2023-11-04 17:28:24,437 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(243)) - s1@group-E1A9FA04EB8B-SegmentedRaftLogWorker close()
+2023-11-04 17:28:24,438 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(243)) - s2@group-E1A9FA04EB8B-SegmentedRaftLogWorker close()
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges -----------------------------2023-11-04 17:28:24,441 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(243)) - s0@group-E1A9FA04EB8B-SegmentedRaftLogWorker close()
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.log_worker.s0@group-E1A9FA04EB8B.closedSegmentsNum
+-----------------------------------------
+ratis.log_worker.s2@group-E1A9FA04EB8B.closedSegmentsNum
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.log_worker.s1@group-E1A9FA04EB8B.closedSegmentsNum
+             value = 0
+ratis.log_worker.s1@group-E1A9FA04EB8B.closedSegmentsSizeInBytes
+             value = 0
+ratis.log_worker.s0@group-E1A9FA04EB8B.closedSegmentsSizeInBytes
+             value = 0
+ratis.log_worker.s1@group-E1A9FA04EB8B.dataQueueSize
+             value = 0
+ratis.log_worker.s0@group-E1A9FA04EB8B.dataQueueSize
+             value = 0
+ratis.log_worker.s1@group-E1A9FA04EB8B.openSegmentSizeInBytes
+             value = 0
+ratis.log_worker.s0@group-E1A9FA04EB8B.openSegmentSizeInBytes
+             value = 0
+ratis.log_worker.s1@group-E1A9FA04EB8B.syncBatchSize
+             value = 0
+ratis.log_worker.s0@group-E1A9FA04EB8B.syncBatchSize
+             value = 1
+ratis.log_worker.s1@group-E1A9FA04EB8B.workerQueueSize
+             value = 1
+ratis.log_worker.s0@group-E1A9FA04EB8B.workerQueueSize
+             value = 0
+
+-- Counters -------             value = --0---
+------------------             value = -----0-
+------ratis.log_worker.s2@group-E1A9FA04EB8B.closedSegmentsSizeInBytes
+--------             value = ---0--
+-----ratis.log_worker.s2@group-E1A9FA04EB8B.dataQueueSize
+--------
+ratis.log_worker.s1@group-E1A9FA04EB8B.appendEntryCount
+             value = 0
+ratis.log_worker.s2@group-E1A9FA04EB8B.openSegmentSizeInBytes
+             count = 5
+ratis.log_worker.s1@group-E1A9FA04EB8B.cacheHitCount
+             value = 0
+ratis.log_worker.s2@group-E1A9FA04EB8B.syncBatchSize
+             count = 4
+ratis.log_worker.s1@group-E1A9FA04EB8B.cacheMissCount
+             value = 1
+ratis.log_worker.s2@group-E1A9FA04EB8B.workerQueueSize
+             count = 0
+ratis.log_worker.s1@group-E1A9FA04EB8B.configLogEntryCount
+             value = 0
+
+-- Counters ----             count = -----0--
+----ratis.log_worker.s1@group-E1A9FA04EB8B.flushCount
+---------             count = -----5-
+----ratis.log_worker.s1@group-E1A9FA04EB8B.metadataLogEntryCount
+---------             count = ---0--
+--ratis.log_worker.s1@group-E1A9FA04EB8B.numStateMachineDataReadTimeout
+---------             count = ------0-
+--
+ratis.log_worker.s1@group-E1A9FA04EB8B.numStateMachineDataWriteTimeout
+ratis.log_worker.s2@group-E1A9FA04EB8B.appendEntryCount
+             count = 0
+ratis.log_worker.s1@group-E1A9FA04EB8B.stateMachineLogEntryCount
+             count = 5
+ratis.log_worker.s2@group-E1A9FA04EB8B.cacheHitCount
+             count = 0
+
+-- Timers -----             count = ------4--
+----ratis.log_worker.s2@group-E1A9FA04EB8B.cacheMissCount
+----------             count = -----0--
+---ratis.log_worker.s2@group-E1A9FA04EB8B.configLogEntryCount
+---------             count = -----0----
+--ratis.log_worker.s2@group-E1A9FA04EB8B.flushCount
+--------             count = -----5
+
+ratis.log_worker.s1@group-E1A9FA04EB8B.appendEntryLatency
+ratis.log_worker.s2@group-E1A9FA04EB8B.metadataLogEntryCount
+             count = 0
+ratis.log_worker.s2@group-E1A9FA04EB8B.numStateMachineDataReadTimeout
+             count = 0
+ratis.log_worker.s2@group-E1A9FA04EB8B.numStateMachineDataWriteTimeout
+             count = 0
+ratis.log_worker.s2@group-E1A9FA04EB8B.stateMachineLogEntryCount
+             count = 5
+             count = 0
+
+-- Timers -----------------------------------------------         mean rate = 2.98 calls/second
+-----------------------
+ratis.log_worker.s2@group-E1A9FA04EB8B.appendEntryLatency
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+             count = 5
+    15-minute rate = 0.00 calls/second
+               min = 0.81 milliseconds
+         mean rate = 3.10 calls/second
+               max = 49.10 milliseconds
+     1-minute rate = 0.00 calls/second
+              mean = 11.18 milliseconds
+     5-minute rate = 0.00 calls/second
+            stddev = 18.99 milliseconds
+    15-minute rate = 0.00 calls/second
+            median = 1.23 milliseconds
+               min = 0.69 milliseconds
+              75% <= 3.62 milliseconds
+               max = 62.58 milliseconds
+              mean = 13.19 milliseconds
+              95% <= 49.10 milliseconds
+            stddev = 24.69 milliseconds
+              98% <= 49.10 milliseconds
+            median = 0.91 milliseconds
+              99% <= 49.10 milliseconds
+              75% <= 0.93 milliseconds
+            99.9% <= 49.10 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.enqueuedTime
+             count = 6
+              95% <= 62.58 milliseconds
+         mean rate = 3.56 calls/second
+              98% <= 62.58 milliseconds
+     1-minute rate = 0.00 calls/second
+              99% <= 62.58 milliseconds
+     5-minute rate = 0.00 calls/second
+            99.9% <= 62.58 milliseconds
+    15-minute rate = 0.00 calls/second
+ratis.log_worker.s2@group-E1A9FA04EB8B.enqueuedTime
+               min = 0.08 milliseconds
+             count = 5
+               max = 45.87 milliseconds
+         mean rate = 3.09 calls/second
+              mean = 8.31 milliseconds
+     1-minute rate = 0.00 calls/second
+            stddev = 16.83 milliseconds
+     5-minute rate = 0.00 calls/second
+            median = 0.66 milliseconds
+    15-minute rate = 0.00 calls/second
+              75% <= 2.96 milliseconds
+               min = 0.07 milliseconds
+              95% <= 45.87 milliseconds
+               max = 52.89 milliseconds
+              98% <= 45.87 milliseconds
+              mean = 10.69 milliseconds
+              99% <= 45.87 milliseconds
+            stddev = 21.10 milliseconds
+            99.9% <= 45.87 milliseconds
+            median = 0.08 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.flushTime
+              75% <= 0.31 milliseconds
+             count = 5
+         mean rate = 2.97 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.37 milliseconds
+               max = 0.84 milliseconds
+              95% <= 52.89 milliseconds
+              mean = 0.59 milliseconds
+              98% <= 52.89 milliseconds
+            stddev = 0.21 milliseconds
+              99% <= 52.89 milliseconds
+            median = 0.51 milliseconds
+            99.9% <= 52.89 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.flushTime
+              75% <= 0.83 milliseconds
+              95% <= 0.84 milliseconds
+             count = 5
+              98% <= 0.84 milliseconds
+         mean rate = 3.09 calls/second
+              99% <= 0.84 milliseconds
+     1-minute rate = 0.00 calls/second
+            99.9% <= 0.84 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.purgeLog
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+             count = 0
+               min = 0.34 milliseconds
+         mean rate = 0.00 calls/second
+               max = 8.62 milliseconds
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+              mean = 2.12 milliseconds
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+
+               max = 0.00 milliseconds
+-- Counters ------------              mean = 0.00 milliseconds
+-------------------            stddev = 0.00 milliseconds
+-------------------            median = 0.00 milliseconds
+------------------
+              75% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.appendEntryCount
+              95% <= 0.00 milliseconds
+             count = 5
+              98% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.cacheHitCount
+             count = 17
+              99% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.cacheMissCount
+             count = 0            99.9% <= 0.00 milliseconds
+
+ratis.log_worker.s1@group-E1A9FA04EB8B.queueingDelay
+ratis.log_worker.s0@group-E1A9FA04EB8B.configLogEntryCount
+             count = 1
+ratis.log_worker.s0@group-E1A9FA04EB8B.flushCount
+             count = 5
+ratis.log_worker.s0@group-E1A9FA04EB8B.metadataLogEntryCount
+             count = 6
+             count = 2
+ratis.log_worker.s0@group-E1A9FA04EB8B.numStateMachineDataReadTimeout
+             count =          mean rate = 3.56 calls/second
+0
+ratis.log_worker.s0@group-E1A9FA04EB8B.numStateMachineDataWriteTimeout
+             count =      1-minute rate = 0.00 calls/second
+0
+ratis.log_worker.s0@group-E1A9FA04EB8B.stateMachineLogEntryCount
+             count =      5-minute rate = 0.00 calls/second
+2
+
+-- Timers -------------    15-minute rate = 0.00 calls/second
+-------------------------------               min = 0.01 milliseconds
+--------------------------               max = 0.04 milliseconds
+
+ratis.log_worker.s0@group-E1A9FA04EB8B.appendEntryLatency
+              mean = 0.03 milliseconds
+             count = 5
+            stddev = 0.01 milliseconds
+         mean rate = 2.83 calls/second
+            median = 0.03 milliseconds
+     1-minute rate = 0.00 calls/second
+              75% <= 0.04 milliseconds
+     5-minute rate = 0.00 calls/second
+              95% <= 0.04 milliseconds
+    15-minute rate = 0.00 calls/second
+              98% <= 0.04 milliseconds
+               min = 1.48 milliseconds
+              99% <= 0.04 milliseconds
+               max = 119.70 milliseconds
+            99.9% <= 0.04 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.readEntryLatency
+              mean = 26.63 milliseconds
+             count = 0
+            stddev = 46.55 milliseconds
+         mean rate = 0.00 calls/second
+            median = 4.19 milliseconds
+     1-minute rate = 0.00 calls/second
+              75% <= 5.36 milliseconds
+     5-minute rate = 0.00 calls/second
+              95% <= 119.70 milliseconds
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+              98% <= 119.70 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+              99% <= 119.70 milliseconds
+            stddev = 0.00 milliseconds
+            99.9% <= 119.70 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.enqueuedTime
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+             count = 3
+              95% <= 0.00 milliseconds
+         mean rate = 1.70 calls/second
+              98% <= 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              99% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.segmentLoadLatency
+    15-minute rate = 0.00 calls/second
+             count = 0
+               min = 0.68 milliseconds
+         mean rate = 0.00 calls/second
+               max = 98.26 milliseconds
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+              mean = 34.17 milliseconds
+    15-minute rate = 0.00 calls/second
+            stddev = 45.34 milliseconds
+               min = 0.00 milliseconds
+            median = 3.56 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+              75% <= 98.26 milliseconds
+            stddev = 0.00 milliseconds
+              95% <= 98.26 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              98% <= 98.26 milliseconds
+              95% <= 0.00 milliseconds
+              99% <= 98.26 milliseconds
+              98% <= 0.00 milliseconds
+            99.9% <= 98.26 milliseconds
+              99% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.flushTime
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.startlogsegmentExecutionTime
+             count = 5
+             count = 1
+         mean rate = 2.82 calls/second
+         mean rate = 0.82 calls/second
+     1-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.29 milliseconds
+               min = 45.37 milliseconds
+               max = 2.25 milliseconds
+               max = 45.37 milliseconds
+              mean = 1.29 milliseconds
+              mean = 45.37 milliseconds
+            stddev = 0.77 milliseconds
+            stddev = 0.00 milliseconds
+            median = 1.63 milliseconds
+            median = 45.37 milliseconds
+              75% <= 1.81 milliseconds
+              75% <= 45.37 milliseconds
+              95% <= 2.25 milliseconds
+              95% <= 45.37 milliseconds
+              98% <= 2.25 milliseconds
+              98% <= 45.37 milliseconds
+              99% <= 2.25 milliseconds
+              99% <= 45.37 milliseconds
+            99.9% <= 2.25 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.purgeLog
+            99.9% <= 45.37 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.syncTime
+             count = 0
+             count = 5
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+         mean rate = 2.96 calls/second
+     5-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+               max = 0.00 milliseconds
+               min = 0.25 milliseconds
+              mean = 0.00 milliseconds
+               max = 0.79 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              mean = 0.43 milliseconds
+              75% <= 0.00 milliseconds
+            stddev = 0.19 milliseconds
+              95% <= 0.00 milliseconds
+            median = 0.34 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+              75% <= 0.48 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.queueingDelay
+              95% <= 0.79 milliseconds
+             count = 6
+              98% <= 0.79 milliseconds
+         mean rate = 3.39 calls/second
+              99% <= 0.79 milliseconds
+     1-minute rate = 0.00 calls/second
+            99.9% <= 0.79 milliseconds
+ratis.log_worker.s1@group-E1A9FA04EB8B.writelogExecutionTime
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+             count = 5
+               min = 0.02 milliseconds
+         mean rate = 4.27 calls/second
+               max = 12.75 milliseconds
+     1-minute rate = 0.00 calls/second
+              mean = 3.06 milliseconds
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+            stddev = 4.55 milliseconds
+               min = 0.43 milliseconds
+            median = 1.22 milliseconds
+               max = 2.66 milliseconds
+              75% <= 4.08 milliseconds
+              mean = 1.00 milliseconds
+              95% <= 12.75 milliseconds
+            stddev = 0.84 milliseconds
+              98% <= 12.75 milliseconds
+            median = 0.55 milliseconds
+              99% <= 12.75 milliseconds
+              75% <= 0.91 milliseconds
+            99.9% <= 12.75 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.readEntryLatency
+              95% <= 2.66 milliseconds
+             count = 0
+              98% <= 2.66 milliseconds
+         mean rate = 0.00 calls/second
+              99% <= 2.66 milliseconds
+     1-minute rate = 0.00 calls/second
+            99.9% <= 2.66 milliseconds
+
+
+            stddev = 3.25 milliseconds
+            median = 0.59 milliseconds
+              75% <= 0.64 milliseconds
+              95% <= 8.62 milliseconds
+              98% <= 8.62 milliseconds
+              99% <= 8.62 milliseconds
+            99.9% <= 8.62 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.purgeLog
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.queueingDelay
+             count = 6
+         mean rate = 3.68 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.02 milliseconds
+               max = 0.32 milliseconds
+              mean = 0.07 milliseconds
+            stddev = 0.11 milliseconds
+            median = 0.02 milliseconds
+              75% <= 0.04 milliseconds
+              95% <= 0.32 milliseconds
+              98% <= 0.32 milliseconds
+              99% <= 0.32 milliseconds
+            99.9% <= 0.32 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.readEntryLatency
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.segmentLoadLatency
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.startlogsegmentExecutionTime
+             count = 1
+         mean rate = 0.82 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 52.96 milliseconds
+               max = 52.96 milliseconds
+              mean = 52.96 milliseconds
+            stddev = 0.00 milliseconds
+            median = 52.96 milliseconds
+              75% <= 52.96 milliseconds
+              95% <= 52.96 milliseconds
+              98% <= 52.96 milliseconds
+              99% <= 52.96 milliseconds
+            99.9% <= 52.96 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.syncTime
+             count = 5
+         mean rate = 3.06 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.31 milliseconds
+               max = 8.55 milliseconds
+              mean = 2.08 milliseconds
+            stddev = 3.24 milliseconds
+            median = 0.55 milliseconds
+              75% <= 0.61 milliseconds
+              95% <= 8.55 milliseconds
+              98% <= 8.55 milliseconds
+              99% <= 8.55 milliseconds
+            99.9% <= 8.55 milliseconds
+ratis.log_worker.s2@group-E1A9FA04EB8B.writelogExecutionTime
+             count = 5
+         mean rate = 4.27 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.41 milliseconds
+               max = 8.87 milliseconds
+              mean = 2.23 milliseconds
+            stddev = 3.32 milliseconds
+            median = 0.65 milliseconds
+              75% <= 0.71 milliseconds
+              95% <= 8.87 milliseconds
+              98% <= 8.87 milliseconds
+              99% <= 8.87 milliseconds
+            99.9% <= 8.87 milliseconds
+
+
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.segmentLoadLatency
+             count = 0
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.startlogsegmentExecutionTime
+             count = 1
+         mean rate = 0.77 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 112.81 milliseconds
+               max = 112.81 milliseconds
+              mean = 112.81 milliseconds
+            stddev = 0.00 milliseconds
+            median = 112.81 milliseconds
+              75% <= 112.81 milliseconds
+              95% <= 112.81 milliseconds
+              98% <= 112.81 milliseconds
+              99% <= 112.81 milliseconds
+            99.9% <= 112.81 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.syncTime
+             count = 5
+         mean rate = 2.81 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.22 milliseconds
+               max = 2.19 milliseconds
+              mean = 1.02 milliseconds
+            stddev = 0.75 milliseconds
+            median = 0.77 milliseconds
+              75% <= 1.57 milliseconds
+              95% <= 2.19 milliseconds
+              98% <= 2.19 milliseconds
+              99% <= 2.19 milliseconds
+            99.9% <= 2.19 milliseconds
+ratis.log_worker.s0@group-E1A9FA04EB8B.writelogExecutionTime
+             count = 5
+         mean rate = 4.22 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.41 milliseconds
+               max = 2.96 milliseconds
+              mean = 1.60 milliseconds
+            stddev = 0.98 milliseconds
+            median = 1.69 milliseconds
+              75% <= 2.33 milliseconds
+              95% <= 2.96 milliseconds
+              98% <= 2.96 milliseconds
+              99% <= 2.96 milliseconds
+            99.9% <= 2.96 milliseconds
+
+
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.leader_election.s1@group-E1A9FA04EB8B.lastLeaderElapsedTime
+             value = 0
+ratis.leader_election.s1@group-E1A9FA04EB8B.lastLeaderElectionElapsedTime
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.leader_election.s2@group-E1A9FA04EB8B.lastLeaderElapsedTime
+             value = -1
+
+-- Counters ------------------------             value = ---------0---
+---------------ratis.leader_election.s2@group-E1A9FA04EB8B.lastLeaderElectionElapsedTime
+-----------------
+             value = ratis.leader_election.s1@group-E1A9FA04EB8B.electionCount
+-1
+
+-- Counters ---------             count = ----------0---
+----ratis.leader_election.s1@group-E1A9FA04EB8B.timeoutCount
+---------             count = ------0--
+----ratis.leader_election.s1@group-E1A9FA04EB8B.transferLeadershipCount
+---------             count = ----------0--
+
+
+ratis.leader_election.s2@group-E1A9FA04EB8B.electionCount
+-- Timers ---------             count = ---------0--
+----ratis.leader_election.s2@group-E1A9FA04EB8B.timeoutCount
+---------             count = ------0-
+----ratis.leader_election.s2@group-E1A9FA04EB8B.transferLeadershipCount
+------             count = ---0--
+--
+---- Timers- --------------------
+---ratis.leader_election.s1@group-E1A9FA04EB8B.electionTime
+---------------------------------------------------------             count = 0
+
+ratis.leader_election.s2@group-E1A9FA04EB8B.electionTime
+         mean rate = 0.00 calls/second
+             count = 0
+     1-minute rate = 0.00 calls/second
+         mean rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              mean = 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+            stddev = 0.00 milliseconds
+               min = 0.00 milliseconds
+            median = 0.00 milliseconds
+               max = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              mean = 0.00 milliseconds
+              95% <= 0.00 milliseconds
+            stddev = 0.00 milliseconds
+              98% <= 0.00 milliseconds
+            median = 0.00 milliseconds
+              99% <= 0.00 milliseconds
+              75% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+
+
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+
+
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.leader_election.s0@group-E1A9FA04EB8B.lastLeaderElapsedTime
+             value = 0
+ratis.leader_election.s0@group-E1A9FA04EB8B.lastLeaderElectionElapsedTime
+             value = 1287
+
+-- Counters --------------------------------------------------------------------
+ratis.leader_election.s0@group-E1A9FA04EB8B.electionCount
+             count = 1
+ratis.leader_election.s0@group-E1A9FA04EB8B.timeoutCount
+             count = 1
+ratis.leader_election.s0@group-E1A9FA04EB8B.transferLeadershipCount
+             count = 0
+
+-- Timers ----------------------------------------------------------------------
+ratis.leader_election.s0@group-E1A9FA04EB8B.electionTime
+             count = 1
+         mean rate = 0.52 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+11/4/23, 5:28:24 PM ============================================================
+
+-- Gauges ----------------------------------------------------------------------
+ratis.server.s1@group-E1A9FA04EB8B.retryCacheEntryCount
+11/4/23, 5:28:24 PM ================================             value = ======2==
+===ratis.server.s1@group-E1A9FA04EB8B.retryCacheHitCount
+=================
+
+-- Gauges ------------------------             value = --0-
+---ratis.server.s1@group-E1A9FA04EB8B.retryCacheHitRate
+---------------             value = ------0.0-
+----ratis.server.s1@group-E1A9FA04EB8B.retryCacheMissCount
+--------------
+ratis.server.s2@group-E1A9FA04EB8B.retryCacheEntryCount
+             value = 2
+ratis.server.s1@group-E1A9FA04EB8B.retryCacheMissRate
+             value = 1.0
+ratis.server.s1@group-E1A9FA04EB8B.s1_peerCommitIndex
+             value = 2
+ratis.server.s2@group-E1A9FA04EB8B.retryCacheHitCount
+             value = 3
+
+-- Counters ----------------------------             value = ---0--
+-----ratis.server.s2@group-E1A9FA04EB8B.retryCacheHitRate
+---------------             value = -------0.0-
+----ratis.server.s2@group-E1A9FA04EB8B.retryCacheMissCount
+---
+ratis.server.s1@group-E1A9FA04EB8B.numFailedClientReadOnServer
+             count = 0
+ratis.server.s1@group-E1A9FA04EB8B.numFailedClientStaleReadOnServer
+             value = 2
+ratis.server.s2@group-E1A9FA04EB8B.retryCacheMissRate
+             count = 0
+ratis.server.s1@group-E1A9FA04EB8B.numFailedClientStreamOnServer
+             value = 1.0
+ratis.server.s2@group-E1A9FA04EB8B.s2_peerCommitIndex
+             count = 0
+ratis.server.s1@group-E1A9FA04EB8B.numFailedClientWatchOnServer
+             value = 3
+
+-- Counters ---             count = ----0--
+------ratis.server.s1@group-E1A9FA04EB8B.numFailedClientWriteOnServer
+-------             count = -----1-
+---ratis.server.s1@group-E1A9FA04EB8B.numInstallSnapshot
+-------             count = ----0--
+----ratis.server.s1@group-E1A9FA04EB8B.numRequestQueueLimitHits
+-------             count = -----0-
+----ratis.server.s1@group-E1A9FA04EB8B.numRequestsByteSizeLimitHits
+---
+             count = ratis.server.s2@group-E1A9FA04EB8B.numFailedClientReadOnServer
+0
+ratis.server.s1@group-E1A9FA04EB8B.numResourceLimitHits
+             count = 0
+ratis.server.s2@group-E1A9FA04EB8B.numFailedClientStaleReadOnServer
+             count = 0
+
+-- Timers -----             count = ------0-
+----ratis.server.s2@group-E1A9FA04EB8B.numFailedClientStreamOnServer
+------             count = ----0---
+----ratis.server.s2@group-E1A9FA04EB8B.numFailedClientWatchOnServer
+------             count = ----0-
+---ratis.server.s2@group-E1A9FA04EB8B.numFailedClientWriteOnServer
+------             count = ----1--
+----ratis.server.s2@group-E1A9FA04EB8B.numInstallSnapshot
+-------             count = 
+0ratis.server.s1@group-E1A9FA04EB8B.clientReadRequest
+
+ratis.server.s2@group-E1A9FA04EB8B.numRequestQueueLimitHits
+             count = 0
+ratis.server.s2@group-E1A9FA04EB8B.numRequestsByteSizeLimitHits
+             count = 0
+             count = 0
+ratis.server.s2@group-E1A9FA04EB8B.numResourceLimitHits
+             count =          mean rate = 0.00 calls/second
+0
+
+-- Timers ---------     1-minute rate = 0.00 calls/second
+-----------------     5-minute rate = 0.00 calls/second
+----------------    15-minute rate = 0.00 calls/second
+--------------------               min = 0.00 milliseconds
+--------
+ratis.server.s2@group-E1A9FA04EB8B.clientReadRequest
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+             count = 0
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+         mean rate = 0.00 calls/second
+              75% <= 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              95% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              98% <= 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+              99% <= 0.00 milliseconds
+               min = 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientStaleReadRequest
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+             count = 0
+            stddev = 0.00 milliseconds
+         mean rate = 0.00 calls/second
+            median = 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              75% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              95% <= 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+              98% <= 0.00 milliseconds
+               min = 0.00 milliseconds
+              99% <= 0.00 milliseconds
+               max = 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientStaleReadRequest
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+             count = 0
+            median = 0.00 milliseconds
+         mean rate = 0.00 calls/second
+              75% <= 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              95% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              98% <= 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+              99% <= 0.00 milliseconds
+               min = 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientWatch-ALLRequest
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+             count = 0
+            stddev = 0.00 milliseconds
+         mean rate = 0.00 calls/second
+            median = 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              75% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              95% <= 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+              98% <= 0.00 milliseconds
+               min = 0.00 milliseconds
+              99% <= 0.00 milliseconds
+               max = 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientWatch-ALLRequest
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+             count = 0
+            median = 0.00 milliseconds
+         mean rate = 0.00 calls/second
+              75% <= 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              95% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              98% <= 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+              99% <= 0.00 milliseconds
+               min = 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientWatch-ALL_COMMITTEDRequest
+               max = 0.00 milliseconds
+             count = 0
+              mean = 0.00 milliseconds
+         mean rate = 0.00 calls/second
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+     1-minute rate = 0.00 calls/second
+              75% <= 0.00 milliseconds
+     5-minute rate = 0.00 calls/second
+              95% <= 0.00 milliseconds
+               min = 172.42 milliseconds
+               max = 172.42 milliseconds
+              98% <= 0.00 milliseconds
+              mean = 172.42 milliseconds
+              99% <= 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientWatch-ALL_COMMITTEDRequest
+            median = 172.42 milliseconds
+             count = 0
+              75% <= 172.42 milliseconds
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+              95% <= 172.42 milliseconds
+     5-minute rate = 0.00 calls/second
+              98% <= 172.42 milliseconds
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+              99% <= 172.42 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            99.9% <= 172.42 milliseconds
+
+
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientWatch-MAJORITY_COMMITTEDRequest
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientWatch-MAJORITY_COMMITTEDRequest
+             count = 0
+         mean rate = 0.00 calls/second
+             count = 0
+     1-minute rate = 0.00 calls/second
+         mean rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+               max = 0.00 milliseconds
+               min = 0.00 milliseconds
+              mean = 0.00 milliseconds
+               max = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            median = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+            median = 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientWatch-UNRECOGNIZEDRequest
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientWatch-UNRECOGNIZEDRequest
+             count = 0
+         mean rate = 0.00 calls/second
+             count = 0
+     1-minute rate = 0.00 calls/second
+         mean rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+    15-minute rate = 0.00 calls/second
+               max = 0.00 milliseconds
+               min = 0.00 milliseconds
+              mean = 0.00 milliseconds
+               max = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            median = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+            median = 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientWatchRequest
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientWatchRequest
+             count = 0
+             count = 0
+         mean rate = 0.00 calls/second
+         mean rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.00 milliseconds
+               min = 0.00 milliseconds
+               max = 0.00 milliseconds
+               max = 0.00 milliseconds
+              mean = 0.00 milliseconds
+              mean = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.00 milliseconds
+            median = 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              75% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              95% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              98% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+              99% <= 0.00 milliseconds
+            99.9% <= 0.00 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.clientWriteRequest
+            99.9% <= 0.00 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.clientWriteRequest
+             count = 1
+             count = 1
+         mean rate = 0.53 calls/second
+         mean rate = 0.52 calls/second
+     1-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 0.21 milliseconds
+               min = 0.22 milliseconds
+               max = 0.21 milliseconds
+               max = 0.22 milliseconds
+              mean = 0.21 milliseconds
+              mean = 0.22 milliseconds
+            stddev = 0.00 milliseconds
+            stddev = 0.00 milliseconds
+            median = 0.21 milliseconds
+            median = 0.22 milliseconds
+              75% <= 0.21 milliseconds
+              75% <= 0.22 milliseconds
+              95% <= 0.21 milliseconds
+              95% <= 0.22 milliseconds
+              98% <= 0.21 milliseconds
+              98% <= 0.22 milliseconds
+              99% <= 0.21 milliseconds
+              99% <= 0.22 milliseconds
+            99.9% <= 0.21 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.follower_append_entry_latency
+            99.9% <= 0.22 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.follower_append_entry_latency
+             count = 5
+             count = 5
+         mean rate = 2.63 calls/second
+         mean rate = 2.61 calls/second
+     1-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 1.38 milliseconds
+               min = 0.90 milliseconds
+               max = 50.37 milliseconds
+               max = 67.75 milliseconds
+              mean = 11.79 milliseconds
+              mean = 14.54 milliseconds
+            stddev = 19.31 milliseconds
+            stddev = 26.60 milliseconds
+            median = 1.80 milliseconds
+            median = 1.25 milliseconds
+              75% <= 3.83 milliseconds
+              75% <= 1.76 milliseconds
+              95% <= 50.37 milliseconds
+              95% <= 67.75 milliseconds
+              98% <= 50.37 milliseconds
+              98% <= 67.75 milliseconds
+              99% <= 50.37 milliseconds
+              99% <= 67.75 milliseconds
+            99.9% <= 50.37 milliseconds
+ratis.server.s1@group-E1A9FA04EB8B.follower_append_entry_latency_heartbeat
+            99.9% <= 67.75 milliseconds
+ratis.server.s2@group-E1A9FA04EB8B.follower_append_entry_latency_heartbeat
+             count = 2
+             count = 2
+         mean rate = 1.05 calls/second
+         mean rate = 1.05 calls/second
+     1-minute rate = 0.00 calls/second
+     1-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+     5-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+    15-minute rate = 0.00 calls/second
+               min = 1.62 milliseconds
+               min = 0.21 milliseconds
+               max = 19.69 milliseconds
+               max = 22.86 milliseconds
+              mean = 10.65 milliseconds
+              mean = 11.54 milliseconds
+            stddev = 9.03 milliseconds
+            stddev = 11.33 milliseconds
+            median = 19.69 milliseconds
+            median = 22.86 milliseconds
+              75% <= 19.69 milliseconds
+              75% <= 22.86 milliseconds
+              95% <= 19.69 milliseconds
+              95% <= 22.86 milliseconds
+              98% <= 22.86 milliseconds
+              99% <= 22.86 milliseconds
+            99.9% <= 22.86 milliseconds
+
+
+2023-11-04 17:28:24,507 [JvmPauseMonitor0] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s0: Stopped
+              98% <= 19.69 milliseconds
+              99% <= 19.69 milliseconds
+            99.9% <= 19.69 milliseconds
+
+
+2023-11-04 17:28:24,514 [JvmPauseMonitor1] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s1: Stopped
+2023-11-04 17:28:24,514 [JvmPauseMonitor2] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s2: Stopped
+2023-11-04 17:28:24,515 [Time-limited test] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(855)) - MiniRaftClusterWithSimulatedRpc shutdown completed
+]]></system-out>
+  </testcase>
+</testsuite>
