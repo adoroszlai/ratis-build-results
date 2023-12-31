@@ -1,0 +1,543 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="org.apache.ratis.server.storage.TestRaftStorage" time="5.162" tests="7" errors="0" skipped="0" failures="1">
+  <properties>
+    <property name="awt.toolkit" value="sun.awt.X11.XToolkit"/>
+    <property name="file.encoding.pkg" value="sun.io"/>
+    <property name="java.specification.version" value="1.8"/>
+    <property name="sun.cpu.isalist" value=""/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.5/ratis-thirdparty-misc-1.0.5.jar:/home/runner/work/ratis/ratis/ratis-proto/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.76/bcprov-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.76/bcpkix-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.76/bcutil-jdk18on-1.76.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/2.0.7/slf4j-reload4j-2.0.7.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="java.vm.vendor" value="Temurin"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value=""/>
+    <property name="java.vm.specification.version" value="1.8"/>
+    <property name="os.name" value="Linux"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/amd64"/>
+    <property name="sun.java.command" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter-20231231064207685_301.jar /home/runner/work/ratis/ratis/ratis-test/target/surefire 2023-12-31T06-41-41_390-jvmRun1 surefire-20231231064207685_299tmp surefire_33-20231231064207685_300tmp"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.5/ratis-thirdparty-misc-1.0.5.jar:/home/runner/work/ratis/ratis/ratis-proto/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.76/bcprov-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.76/bcpkix-jdk18on-1.76.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.76/bcutil-jdk18on-1.76.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/2.0.7/slf4j-reload4j-2.0.7.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre"/>
+    <property name="basedir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="file.separator" value="/"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.awt.graphicsenv" value="sun.awt.X11GraphicsEnvironment"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter-20231231064207685_301.jar:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.11/org.jacoco.agent-0.8.11-runtime.jar"/>
+    <property name="sun.boot.class.path" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/resources.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/rt.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/sunrsasign.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/jsse.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/jce.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/charsets.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/jfr.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/classes"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="1.8.0_392-b08"/>
+    <property name="java.net.preferIPv4Stack" value="true"/>
+    <property name="user.name" value="runner"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="5.15.0-1053-azure"/>
+    <property name="java.endorsed.dirs" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/endorsed"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="1.8.0_392"/>
+    <property name="user.dir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="ratis.tmp.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/tmp"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="java.awt.printerjob" value="sun.print.PSPrinterJob"/>
+    <property name="ratis.log.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/log"/>
+    <property name="sun.os.patch.level" value="unknown"/>
+    <property name="java.library.path" value="/usr/java/packages/lib/amd64:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode"/>
+    <property name="java.vendor" value="Temurin"/>
+    <property name="java.vm.version" value="25.392-b08"/>
+    <property name="java.specification.maintenance.version" value="5"/>
+    <property name="java.ext.dirs" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/ext:/usr/java/packages/lib/ext"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="52.0"/>
+  </properties>
+  <testcase name="testCleanMetaTmpFile" classname="org.apache.ratis.server.storage.TestRaftStorage" time="0.227">
+    <system-out><![CDATA[2023-12-31 06:51:58,281 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:51:58,288 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-12-31 06:51:58,318 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile does not exist. Creating ...
+2023-12-31 06:51:58,321 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile
+2023-12-31 06:51:58,329 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:51:58,330 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.deleteIfExists target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp
+2023-12-31 06:51:58,330 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current
+2023-12-31 06:51:58,330 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/sm
+2023-12-31 06:51:58,404 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@4a39f0d5
+2023-12-31 06:51:58,411 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:51:58,411 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile has been successfully formatted.
+2023-12-31 06:51:58,411 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta to target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp
+2023-12-31 06:51:58,412 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:51:58,412 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.deleteIfExists target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp
+2023-12-31 06:51:58,414 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:clearDirectory(90)) - target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current already exists.  Deleting it ...
+2023-12-31 06:51:58,414 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current
+2023-12-31 06:51:58,417 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current
+2023-12-31 06:51:58,417 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current
+2023-12-31 06:51:58,417 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:clearDirectory(90)) - target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/sm already exists.  Deleting it ...
+2023-12-31 06:51:58,418 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/sm
+2023-12-31 06:51:58,418 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/sm
+2023-12-31 06:51:58,418 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/sm
+2023-12-31 06:51:58,418 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@1bd8c369
+2023-12-31 06:51:58,420 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:51:58,420 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile has been successfully formatted.
+2023-12-31 06:51:58,421 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:51:58,421 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.deleteIfExists target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta.tmp
+2023-12-31 06:51:58,422 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied Files.newInputStream target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta with options []: sun.nio.ch.ChannelInputStream@4103c543
+2023-12-31 06:51:58,423 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:analyzeAndRecoverStorage(119)) - Read RaftStorageMetadata{term=0, votedFor=} from target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta
+2023-12-31 06:51:58,423 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:51:58,424 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/sm
+2023-12-31 06:51:58,424 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/in_use.lock
+2023-12-31 06:51:58,424 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current/raft-meta
+2023-12-31 06:51:58,424 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile/current
+2023-12-31 06:51:58,425 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testCleanMetaTmpFile
+2023-12-31 06:51:58,425 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage
+]]></system-out>
+  </testcase>
+  <testcase name="testSnapshotFileName" classname="org.apache.ratis.server.storage.TestRaftStorage" time="0.006">
+    <system-out><![CDATA[2023-12-31 06:51:58,426 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:51:58,426 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+name = snapshot.4420886296226150787_6763686652743365832
+file = target/test/data/73c49406/TestRaftStorage/testSnapshotFileName/snapshot.4420886296226150787_6763686652743365832
+ti = (t:4420886296226150787, i:6763686652743365832)
+Good java.lang.IllegalArgumentException: File "target/test/data/73c49406/TestRaftStorage/testSnapshotFileName/foo" does not match snapshot file name pattern "snapshot\.(\d+)_(\d+)"
+2023-12-31 06:51:58,432 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:51:58,432 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/73c49406/TestRaftStorage does not exist.
+]]></system-out>
+  </testcase>
+  <testcase name="testNotEnoughSpace" classname="org.apache.ratis.server.storage.TestRaftStorage" time="0.751">
+    <system-out><![CDATA[2023-12-31 06:51:58,432 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:51:58,432 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-12-31 06:51:59,176 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testNotEnoughSpace does not exist. Creating ...
+2023-12-31 06:51:59,177 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testNotEnoughSpace
+2023-12-31 06:51:59,182 [Time-limited test] WARN  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(162)) - NO_SPACE in directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testNotEnoughSpace: free space = 100 < required = 100M (=104857600)
+2023-12-31 06:51:59,182 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:51:59,183 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotEnoughSpace
+2023-12-31 06:51:59,183 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage
+]]></system-out>
+  </testcase>
+  <testcase name="testMetaFile" classname="org.apache.ratis.server.storage.TestRaftStorage" time="0.047">
+    <system-out><![CDATA[2023-12-31 06:51:59,184 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:51:59,184 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-12-31 06:51:59,185 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testMetaFile does not exist. Creating ...
+2023-12-31 06:51:59,186 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testMetaFile
+2023-12-31 06:51:59,187 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testMetaFile/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:51:59,187 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testMetaFile/current
+2023-12-31 06:51:59,187 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testMetaFile/sm
+2023-12-31 06:51:59,188 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@3c1a7667
+2023-12-31 06:51:59,193 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:51:59,193 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testMetaFile has been successfully formatted.
+2023-12-31 06:51:59,194 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied Files.newInputStream target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta with options []: sun.nio.ch.ChannelInputStream@17c9ea67
+2023-12-31 06:51:59,194 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@2ef62011
+2023-12-31 06:51:59,197 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:51:59,227 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied Files.newInputStream target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta with options []: sun.nio.ch.ChannelInputStream@45c2644c
+2023-12-31 06:51:59,228 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:51:59,228 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testMetaFile/sm
+2023-12-31 06:51:59,228 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testMetaFile/in_use.lock
+2023-12-31 06:51:59,229 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testMetaFile/current/raft-meta
+2023-12-31 06:51:59,229 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testMetaFile/current
+2023-12-31 06:51:59,229 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testMetaFile
+2023-12-31 06:51:59,229 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage
+]]></system-out>
+  </testcase>
+  <testcase name="testSnapshotCleanup" classname="org.apache.ratis.server.storage.TestRaftStorage" time="0.022">
+    <failure type="java.lang.AssertionError"><![CDATA[java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at org.apache.ratis.server.storage.TestRaftStorage.testSnapshotCleanup(TestRaftStorage.java:256)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+]]></failure>
+    <system-out><![CDATA[2023-12-31 06:51:59,230 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:51:59,230 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-12-31 06:51:59,238 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup does not exist. Creating ...
+2023-12-31 06:51:59,238 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup
+2023-12-31 06:51:59,239 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:51:59,240 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.deleteIfExists target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current/raft-meta.tmp
+2023-12-31 06:51:59,240 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current
+2023-12-31 06:51:59,240 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm
+2023-12-31 06:51:59,240 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@449e8b98
+2023-12-31 06:51:59,242 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:51:59,242 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup has been successfully formatted.
+2023-12-31 06:51:59,245 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:51:59,245 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm/snapshot.1_90.md5
+2023-12-31 06:51:59,246 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm/snapshot.2_614
+2023-12-31 06:51:59,246 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm/snapshot.5_818
+2023-12-31 06:51:59,246 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm/snapshot.6_847
+2023-12-31 06:51:59,246 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm/snapshot.1_38.md5
+2023-12-31 06:51:59,246 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm/snapshot.3_590
+2023-12-31 06:51:59,246 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/sm
+2023-12-31 06:51:59,247 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/in_use.lock
+2023-12-31 06:51:59,247 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current/raft-meta
+2023-12-31 06:51:59,247 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup/current
+2023-12-31 06:51:59,247 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testSnapshotCleanup
+2023-12-31 06:51:59,247 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage
+]]></system-out>
+  </testcase>
+  <testcase name="testNotExistent" classname="org.apache.ratis.server.storage.TestRaftStorage" time="4.028">
+    <system-out><![CDATA[2023-12-31 06:51:59,252 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:51:59,252 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-12-31 06:51:59,253 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage/testNotExistent
+2023-12-31 06:51:59,253 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/73c49406/TestRaftStorage/testNotExistent does not exist.
+2023-12-31 06:51:59,253 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testNotExistent does not exist. Creating ...
+2023-12-31 06:51:59,253 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testNotExistent
+2023-12-31 06:51:59,254 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testNotExistent/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:51:59,255 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.deleteIfExists target/test/data/73c49406/TestRaftStorage/testNotExistent/current/raft-meta.tmp
+2023-12-31 06:51:59,255 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testNotExistent/current
+2023-12-31 06:51:59,255 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testNotExistent/sm
+2023-12-31 06:51:59,255 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testNotExistent/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@65a9f297
+2023-12-31 06:51:59,257 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testNotExistent/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testNotExistent/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:51:59,257 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testNotExistent has been successfully formatted.
+2023-12-31 06:51:59,258 [Time-limited test] ERROR storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(231)) - It appears that another process has already locked the storage directory: target/test/data/73c49406/TestRaftStorage/testNotExistent
+java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+2023-12-31 06:51:59,264 [Time-limited test] WARN  util.FileUtils (JavaUtils.java:attempt(231)) - FAILED "tryLock target/test/data/73c49406/TestRaftStorage/testNotExistent/in_use.lock", attempt #1/5: java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked, sleep 1s and then retry.
+java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:234)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+Caused by: java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	... 23 more
+2023-12-31 06:52:00,271 [Time-limited test] ERROR storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(231)) - It appears that another process has already locked the storage directory: target/test/data/73c49406/TestRaftStorage/testNotExistent
+java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+2023-12-31 06:52:00,272 [Time-limited test] WARN  util.FileUtils (JavaUtils.java:attempt(231)) - FAILED "tryLock target/test/data/73c49406/TestRaftStorage/testNotExistent/in_use.lock", attempt #2/5: java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked, sleep 1s and then retry.
+java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:234)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+Caused by: java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	... 23 more
+2023-12-31 06:52:01,273 [Time-limited test] ERROR storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(231)) - It appears that another process has already locked the storage directory: target/test/data/73c49406/TestRaftStorage/testNotExistent
+java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+2023-12-31 06:52:01,274 [Time-limited test] WARN  util.FileUtils (JavaUtils.java:attempt(231)) - FAILED "tryLock target/test/data/73c49406/TestRaftStorage/testNotExistent/in_use.lock", attempt #3/5: java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked, sleep 1s and then retry.
+java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:234)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+Caused by: java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	... 23 more
+2023-12-31 06:52:02,274 [Time-limited test] ERROR storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(231)) - It appears that another process has already locked the storage directory: target/test/data/73c49406/TestRaftStorage/testNotExistent
+java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+2023-12-31 06:52:02,275 [Time-limited test] WARN  util.FileUtils (JavaUtils.java:attempt(231)) - FAILED "tryLock target/test/data/73c49406/TestRaftStorage/testNotExistent/in_use.lock", attempt #4/5: java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked, sleep 1s and then retry.
+java.io.IOException: Failed to lock storage target/test/data/73c49406/TestRaftStorage/testNotExistent. The directory is already locked
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:234)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+Caused by: java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	... 23 more
+2023-12-31 06:52:03,276 [Time-limited test] ERROR storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(231)) - It appears that another process has already locked the storage directory: target/test/data/73c49406/TestRaftStorage/testNotExistent
+java.nio.channels.OverlappingFileLockException
+	at sun.nio.ch.SharedFileLockTable.checkList(FileLockTable.java:255)
+	at sun.nio.ch.SharedFileLockTable.add(FileLockTable.java:152)
+	at sun.nio.ch.FileChannelImpl.tryLock(FileChannelImpl.java:1107)
+	at java.nio.channels.FileChannel.tryLock(FileChannel.java:1155)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.tryLock(RaftStorageDirectoryImpl.java:222)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lambda$lock$0(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$7(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.FileUtils.attempt(FileUtils.java:45)
+	at org.apache.ratis.server.storage.RaftStorageDirectoryImpl.lock(RaftStorageDirectoryImpl.java:193)
+	at org.apache.ratis.server.storage.RaftStorageImpl.initialize(RaftStorageImpl.java:62)
+	at org.apache.ratis.server.storage.TestRaftStorage.formatRaftStorage(TestRaftStorage.java:82)
+	at org.apache.ratis.server.storage.TestRaftStorage.testNotExistent(TestRaftStorage.java:95)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+2023-12-31 06:52:03,276 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage/testNotExistent
+2023-12-31 06:52:03,277 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotExistent/sm
+2023-12-31 06:52:03,278 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotExistent/in_use.lock
+2023-12-31 06:52:03,279 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotExistent/current/raft-meta
+2023-12-31 06:52:03,279 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotExistent/current
+2023-12-31 06:52:03,279 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotExistent
+2023-12-31 06:52:03,279 [Time-limited test] WARN  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(143)) - /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testNotExistent is not a directory
+2023-12-31 06:52:03,279 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:52:03,280 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testNotExistent
+2023-12-31 06:52:03,280 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage
+]]></system-out>
+  </testcase>
+  <testcase name="testStorage" classname="org.apache.ratis.server.storage.TestRaftStorage" time="0.012">
+    <system-out><![CDATA[2023-12-31 06:52:03,280 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2023-12-31 06:52:03,281 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2023-12-31 06:52:03,281 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage does not exist. Creating ...
+2023-12-31 06:52:03,282 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testStorage
+2023-12-31 06:52:03,283 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testStorage/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:52:03,283 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testStorage/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:52:03,283 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.deleteIfExists target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp
+2023-12-31 06:52:03,283 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testStorage/current
+2023-12-31 06:52:03,284 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testStorage/sm
+2023-12-31 06:52:03,284 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@1e07201b
+2023-12-31 06:52:03,285 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:52:03,285 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testStorage has been successfully formatted.
+2023-12-31 06:52:03,285 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied Files.newInputStream target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta with options []: sun.nio.ch.ChannelInputStream@6bf9a9ac
+2023-12-31 06:52:03,286 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@922127b
+2023-12-31 06:52:03,287 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:52:03,287 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied Files.newInputStream target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta with options []: sun.nio.ch.ChannelInputStream@3144a8f1
+2023-12-31 06:52:03,288 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(228)) - Lock on target/test/data/73c49406/TestRaftStorage/testStorage/in_use.lock acquired by nodename 12406@fv-az571-482
+2023-12-31 06:52:03,288 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:clearDirectory(90)) - target/test/data/73c49406/TestRaftStorage/testStorage/current already exists.  Deleting it ...
+2023-12-31 06:52:03,288 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage/testStorage/current
+2023-12-31 06:52:03,288 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta
+2023-12-31 06:52:03,289 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/current
+2023-12-31 06:52:03,289 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testStorage/current
+2023-12-31 06:52:03,289 [Time-limited test] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:clearDirectory(90)) - target/test/data/73c49406/TestRaftStorage/testStorage/sm already exists.  Deleting it ...
+2023-12-31 06:52:03,289 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage/testStorage/sm
+2023-12-31 06:52:03,289 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/sm
+2023-12-31 06:52:03,289 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories target/test/data/73c49406/TestRaftStorage/testStorage/sm
+2023-12-31 06:52:03,289 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@6114f414
+2023-12-31 06:52:03,290 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta with options [REPLACE_EXISTING]
+2023-12-31 06:52:03,291 [Time-limited test] INFO  storage.RaftStorage (RaftStorageImpl.java:format(99)) - Storage directory target/test/data/73c49406/TestRaftStorage/testStorage has been successfully formatted.
+2023-12-31 06:52:03,291 [Time-limited test] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied Files.newInputStream target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta with options []: sun.nio.ch.ChannelInputStream@46d6f31f
+2023-12-31 06:52:03,291 [Time-limited test] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/73c49406/TestRaftStorage
+2023-12-31 06:52:03,291 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/sm
+2023-12-31 06:52:03,291 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/in_use.lock
+2023-12-31 06:52:03,291 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/current/raft-meta
+2023-12-31 06:52:03,292 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage/current
+2023-12-31 06:52:03,292 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage/testStorage
+2023-12-31 06:52:03,292 [Time-limited test] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.delete target/test/data/73c49406/TestRaftStorage
+]]></system-out>
+  </testcase>
+</testsuite>
