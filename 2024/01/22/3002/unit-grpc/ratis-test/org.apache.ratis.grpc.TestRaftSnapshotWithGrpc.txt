@@ -1,0 +1,41 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestRaftSnapshotWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 107.235 s <<< FAILURE! - in org.apache.ratis.grpc.TestRaftSnapshotWithGrpc
+org.apache.ratis.grpc.TestRaftSnapshotWithGrpc.testInstallSnapshotDuringBootstrap  Time elapsed: 100.102 s  <<< ERROR!
+org.junit.runners.model.TestTimedOutException: test timed out after 100 seconds
+	at sun.misc.Unsafe.park(Native Method)
+	at java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls$ThreadlessExecutor.waitAndDrain(ClientCalls.java:717)
+	at org.apache.ratis.thirdparty.io.grpc.stub.ClientCalls.blockingUnaryCall(ClientCalls.java:159)
+	at org.apache.ratis.proto.grpc.AdminProtocolServiceGrpc$AdminProtocolServiceBlockingStub.setConfiguration(AdminProtocolServiceGrpc.java:451)
+	at org.apache.ratis.grpc.client.GrpcClientProtocolClient.lambda$setConfiguration$6(GrpcClientProtocolClient.java:191)
+	at org.apache.ratis.grpc.client.GrpcClientProtocolClient$$Lambda$613/2136424541.get(Unknown Source)
+	at org.apache.ratis.grpc.client.GrpcClientProtocolClient.blockingCall(GrpcClientProtocolClient.java:221)
+	at org.apache.ratis.grpc.client.GrpcClientProtocolClient.setConfiguration(GrpcClientProtocolClient.java:189)
+	at org.apache.ratis.grpc.client.GrpcClientRpc.sendRequest(GrpcClientRpc.java:102)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequest(BlockingImpl.java:145)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:109)
+	at org.apache.ratis.client.impl.AdminImpl.setConfiguration(AdminImpl.java:46)
+	at org.apache.ratis.client.api.AdminApi.setConfiguration(AdminApi.java:51)
+	at org.apache.ratis.client.api.AdminApi.setConfiguration(AdminApi.java:45)
+	at org.apache.ratis.server.impl.MiniRaftCluster.setConfiguration(MiniRaftCluster.java:821)
+	at org.apache.ratis.statemachine.RaftSnapshotBaseTest.lambda$testInstallSnapshotDuringBootstrap$6(RaftSnapshotBaseTest.java:308)
+	at org.apache.ratis.statemachine.RaftSnapshotBaseTest$$Lambda$598/1745832445.accept(Unknown Source)
+	at org.apache.ratis.server.impl.RaftServerTestUtil.runWithMinorityPeers(RaftServerTestUtil.java:215)
+	at org.apache.ratis.statemachine.RaftSnapshotBaseTest.testInstallSnapshotDuringBootstrap(RaftSnapshotBaseTest.java:307)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters.java:27)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:299)
+	at org.junit.internal.runners.statements.FailOnTimeout$CallableStatement.call(FailOnTimeout.java:293)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+
