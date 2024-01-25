@@ -1,0 +1,41 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestRaftAsyncWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 63.809 s <<< FAILURE! - in org.apache.ratis.grpc.TestRaftAsyncWithGrpc
+org.apache.ratis.grpc.TestRaftAsyncWithGrpc.testWithLoadAsync  Time elapsed: 11.446 s  <<< ERROR!
+java.lang.IndexOutOfBoundsException: Index: 1083, Size: 1083
+	at java.util.ArrayList.rangeCheck(ArrayList.java:659)
+	at java.util.ArrayList.get(ArrayList.java:435)
+	at org.apache.ratis.server.raftlog.segmented.LogSegment.getLogRecord(LogSegment.java:410)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.getFromSegment(SegmentedRaftLogCache.java:561)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.access$100(SegmentedRaftLogCache.java:51)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache$LogSegmentList.getTermIndex(SegmentedRaftLogCache.java:277)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.getTermIndices(SegmentedRaftLogCache.java:552)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLog.getEntries(SegmentedRaftLog.java:350)
+	at org.apache.ratis.RaftTestUtil.logEntriesContains(RaftTestUtil.java:181)
+	at org.apache.ratis.RaftTestUtil.logEntriesContains(RaftTestUtil.java:171)
+	at org.apache.ratis.RaftTestUtil.lambda$assertLogEntries$5(RaftTestUtil.java:249)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:174)
+	at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:193)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:175)
+	at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:193)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:175)
+	at java.util.concurrent.ConcurrentHashMap$ValueSpliterator.forEachRemaining(ConcurrentHashMap.java:3564)
+	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:482)
+	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:472)
+	at java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:708)
+	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.util.stream.LongPipeline.reduce(LongPipeline.java:461)
+	at java.util.stream.LongPipeline.sum(LongPipeline.java:419)
+	at java.util.stream.ReferencePipeline.count(ReferencePipeline.java:593)
+	at org.apache.ratis.RaftTestUtil.assertLogEntries(RaftTestUtil.java:250)
+	at org.apache.ratis.RaftTestUtil.assertLogEntries(RaftTestUtil.java:241)
+	at org.apache.ratis.RaftBasicTests.testWithLoad(RaftBasicTests.java:421)
+	at org.apache.ratis.RaftAsyncTests.lambda$testWithLoadAsync$6(RaftAsyncTests.java:274)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:140)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:120)
+	at org.apache.ratis.RaftAsyncTests.testWithLoadAsync(RaftAsyncTests.java:273)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+	at java.lang.Thread.run(Thread.java:750)
+
