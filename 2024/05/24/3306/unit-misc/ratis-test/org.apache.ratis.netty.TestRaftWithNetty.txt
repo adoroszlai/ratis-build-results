@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftWithNetty
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 158.323 s <<< FAILURE! - in org.apache.ratis.netty.TestRaftWithNetty
+org.apache.ratis.netty.TestRaftWithNetty.testBasicAppendEntries  Time elapsed: 100.078 s  <<< ERROR!
+java.util.concurrent.TimeoutException: testBasicAppendEntries() timed out after 100 seconds
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	Suppressed: java.io.InterruptedIOException: s0 interrupted.
+		at org.apache.ratis.util.IOUtils.toInterruptedIOException(IOUtils.java:49)
+		at org.apache.ratis.util.IOUtils.getFromFuture(IOUtils.java:69)
+		at org.apache.ratis.server.impl.RaftServerProxy.getImpls(RaftServerProxy.java:381)
+		at org.apache.ratis.server.impl.RaftServerProxy.startImpl(RaftServerProxy.java:406)
+		at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:277)
+		at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:402)
+		at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:368)
+		at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:359)
+		at org.apache.ratis.RaftBasicTests.runTestBasicAppendEntries(RaftBasicTests.java:122)
+		at org.apache.ratis.RaftBasicTests.lambda$testBasicAppendEntries$0(RaftBasicTests.java:89)
+		at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:143)
+		at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+		at org.apache.ratis.RaftBasicTests.testBasicAppendEntries(RaftBasicTests.java:88)
+		at java.lang.reflect.Method.invoke(Method.java:498)
+		... 2 more
+	Caused by: java.lang.InterruptedException
+		at java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:347)
+		at java.util.concurrent.CompletableFuture.get(CompletableFuture.java:1908)
+		at org.apache.ratis.util.IOUtils.getFromFuture(IOUtils.java:66)
+		... 14 more
+
