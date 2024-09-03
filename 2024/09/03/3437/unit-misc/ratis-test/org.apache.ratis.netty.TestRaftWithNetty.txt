@@ -1,0 +1,38 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftWithNetty
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 42.737 s <<< FAILURE! - in org.apache.ratis.netty.TestRaftWithNetty
+org.apache.ratis.netty.TestRaftWithNetty.testWithLoad  Time elapsed: 9.453 s  <<< ERROR!
+java.lang.IllegalStateException: Failed to retain: object has already been completely released.
+	at org.apache.ratis.util.ReferenceCountedLeakDetector$Impl.retain(ReferenceCountedLeakDetector.java:116)
+	at org.apache.ratis.util.ReferenceCountedObject$3.retain(ReferenceCountedObject.java:145)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLog.retainLog(SegmentedRaftLog.java:310)
+	at org.apache.ratis.server.raftlog.segmented.SegmentedRaftLog.get(SegmentedRaftLog.java:285)
+	at org.apache.ratis.RaftTestUtil.logEntriesContains(RaftTestUtil.java:187)
+	at org.apache.ratis.RaftTestUtil.logEntriesContains(RaftTestUtil.java:172)
+	at org.apache.ratis.RaftTestUtil.lambda$assertLogEntries$5(RaftTestUtil.java:250)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:174)
+	at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:193)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:175)
+	at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:193)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:175)
+	at java.util.concurrent.ConcurrentHashMap$ValueSpliterator.forEachRemaining(ConcurrentHashMap.java:3564)
+	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:482)
+	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:472)
+	at java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:708)
+	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.util.stream.LongPipeline.reduce(LongPipeline.java:461)
+	at java.util.stream.LongPipeline.sum(LongPipeline.java:419)
+	at java.util.stream.ReferencePipeline.count(ReferencePipeline.java:593)
+	at org.apache.ratis.RaftTestUtil.assertLogEntries(RaftTestUtil.java:251)
+	at org.apache.ratis.RaftTestUtil.assertLogEntries(RaftTestUtil.java:242)
+	at org.apache.ratis.RaftBasicTests.testWithLoad(RaftBasicTests.java:424)
+	at org.apache.ratis.RaftBasicTests.lambda$testWithLoad$8(RaftBasicTests.java:344)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:143)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.RaftBasicTests.testWithLoad(RaftBasicTests.java:344)
+	at org.apache.ratis.netty.TestRaftWithNetty.testWithLoad(TestRaftWithNetty.java:31)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
