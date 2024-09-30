@@ -1,0 +1,79 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestLeaderElectionWithNetty
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 3, Errors: 3, Skipped: 0, Time elapsed: 200.593 s <<< FAILURE! - in org.apache.ratis.netty.TestLeaderElectionWithNetty
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testTransferLeaderTimeout  Time elapsed: 100.073 s  <<< ERROR!
+java.util.concurrent.TimeoutException: testTransferLeaderTimeout() timed out after 100 seconds
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	Suppressed: java.lang.InterruptedException: sleep interrupted
+		at java.lang.Thread.sleep(Native Method)
+		at java.lang.Thread.sleep(Thread.java:342)
+		at java.util.concurrent.TimeUnit.sleep(TimeUnit.java:386)
+		at org.apache.ratis.util.TimeDuration.sleep(TimeDuration.java:353)
+		at org.apache.ratis.util.TimeDuration.sleep(TimeDuration.java:338)
+		at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:236)
+		at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+		at org.apache.ratis.util.JavaUtils.attemptRepeatedly(JavaUtils.java:204)
+		at org.apache.ratis.server.impl.LeaderElectionTests.testTransferLeaderTimeout(LeaderElectionTests.java:274)
+		at java.lang.reflect.Method.invoke(Method.java:498)
+		... 2 more
+
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testBasicLeaderElection  Time elapsed: 47.147 s  <<< ERROR!
+java.lang.IllegalStateException: 
+No leader yet : printing ALL groups
+  s3:   CLOSED    LEADER s3@group-F6AC43880EBC:t2, leader=s3, voted=s3, raftlog=Memoized:s3@group-F6AC43880EBC-SegmentedRaftLog:CLOSED:c2, conf=conf: {index: 1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} CLOSED
+  s4:  RUNNING CANDIDATE s4@group-F6AC43880EBC:t2, leader=null, voted=s3, raftlog=Memoized:s4@group-F6AC43880EBC-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} RUNNING
+  s0:   CLOSED    LEADER s0@group-F6AC43880EBC:t1, leader=s0, voted=s0, raftlog=Memoized:s0@group-F6AC43880EBC-SegmentedRaftLog:CLOSED:c0, conf=conf: {index: 0, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} CLOSED
+  s1:  RUNNING CANDIDATE s1@group-F6AC43880EBC:t0, leader=null, voted=, raftlog=Memoized:s1@group-F6AC43880EBC-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} RUNNING
+  s2:  RUNNING CANDIDATE s2@group-F6AC43880EBC:t2, leader=null, voted=s3, raftlog=Memoized:s2@group-F6AC43880EBC-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} RUNNING
+	at org.apache.ratis.server.impl.MiniRaftCluster.newIllegalStateExceptionForNoLeaders(MiniRaftCluster.java:587)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$1(RaftTestUtil.java:111)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:621)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:614)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$3(RaftTestUtil.java:120)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:118)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:99)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:94)
+	at org.apache.ratis.RaftTestUtil.waitAndKillLeader(RaftTestUtil.java:144)
+	at org.apache.ratis.server.impl.LeaderElectionTests.testBasicLeaderElection(LeaderElectionTests.java:93)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testChangeFollowerToListener  Time elapsed: 1.694 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
+	at org.apache.ratis.server.impl.LeaderElectionTests.testChangeFollowerToListener(LeaderElectionTests.java:455)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testTransferLeader  Time elapsed: 1.67 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
+	at org.apache.ratis.server.impl.LeaderElectionTests.testTransferLeader(LeaderElectionTests.java:186)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testYieldLeaderToHigherPriority  Time elapsed: 1.675 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
+	at org.apache.ratis.server.impl.LeaderElectionTests.testYieldLeaderToHigherPriority(LeaderElectionTests.java:214)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testLeaderLeaseDuringReconfiguration  Time elapsed: 1.675 s  <<< ERROR!
+java.lang.IndexOutOfBoundsException: Index: 1, Size: 1
+	at java.util.ArrayList.rangeCheck(ArrayList.java:659)
+	at java.util.ArrayList.get(ArrayList.java:435)
+	at org.apache.ratis.server.impl.LeaderElectionTests.runTestLeaderLeaseDuringReconfiguration(LeaderElectionTests.java:692)
+	at org.apache.ratis.server.impl.LeaderElectionTests.runLeaseTest(LeaderElectionTests.java:639)
+	at org.apache.ratis.server.impl.LeaderElectionTests.lambda$testLeaderLeaseDuringReconfiguration$9(LeaderElectionTests.java:675)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:143)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.server.impl.LeaderElectionTests.testLeaderLeaseDuringReconfiguration(LeaderElectionTests.java:675)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
