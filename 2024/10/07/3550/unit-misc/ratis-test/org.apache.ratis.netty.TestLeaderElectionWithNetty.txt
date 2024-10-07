@@ -1,0 +1,27 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestLeaderElectionWithNetty
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 114.065 s <<< FAILURE! - in org.apache.ratis.netty.TestLeaderElectionWithNetty
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testBasicLeaderElection  Time elapsed: 46.303 s  <<< ERROR!
+java.lang.IllegalStateException: 
+No leader yet : printing ALL groups
+  s3:  RUNNING  FOLLOWER s3@group-F5D0649D4159:t1, leader=null, voted=null, raftlog=Memoized:s3@group-F5D0649D4159-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} RUNNING
+  s4:   CLOSED    LEADER s4@group-F5D0649D4159:t2, leader=s4, voted=s4, raftlog=Memoized:s4@group-F5D0649D4159-SegmentedRaftLog:CLOSED:c2, conf=conf: {index: 1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} CLOSED
+  s0:  RUNNING CANDIDATE s0@group-F5D0649D4159:t2, leader=null, voted=s4, raftlog=Memoized:s0@group-F5D0649D4159-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} RUNNING
+  s1:  RUNNING CANDIDATE s1@group-F5D0649D4159:t2, leader=null, voted=s4, raftlog=Memoized:s1@group-F5D0649D4159-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} RUNNING
+  s2:   CLOSED    LEADER s2@group-F5D0649D4159:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-F5D0649D4159-SegmentedRaftLog:CLOSED:c0, conf=conf: {index: 0, cur=peers:[s3|localhost:15152, s4|localhost:15156, s0|localhost:15140, s1|localhost:15144, s2|localhost:15148]|listeners:[], old=null} CLOSED
+	at org.apache.ratis.server.impl.MiniRaftCluster.newIllegalStateExceptionForNoLeaders(MiniRaftCluster.java:587)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$1(RaftTestUtil.java:111)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:621)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:614)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$3(RaftTestUtil.java:120)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:118)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:99)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:94)
+	at org.apache.ratis.RaftTestUtil.waitAndKillLeader(RaftTestUtil.java:144)
+	at org.apache.ratis.server.impl.LeaderElectionTests.testBasicLeaderElection(LeaderElectionTests.java:93)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
