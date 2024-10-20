@@ -1,0 +1,966 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="org.apache.ratis.grpc.TestRaftLogTruncateWithGrpc" time="11.716" tests="1" errors="0" skipped="0" failures="1">
+  <properties>
+    <property name="awt.toolkit" value="sun.awt.X11.XToolkit"/>
+    <property name="file.encoding.pkg" value="sun.io"/>
+    <property name="java.specification.version" value="1.8"/>
+    <property name="sun.cpu.isalist" value=""/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.6/ratis-thirdparty-misc-1.0.6.jar:/home/runner/work/ratis/ratis/ratis-proto/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.78.1/bcprov-jdk18on-1.78.1.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.78.1/bcpkix-jdk18on-1.78.1.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.78.1/bcutil-jdk18on-1.78.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/2.0.7/slf4j-reload4j-2.0.7.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.11.2/junit-jupiter-engine-5.11.2.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/1.11.2/junit-platform-engine-1.11.2.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.11.2/junit-jupiter-api-5.11.2.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/1.11.2/junit-platform-commons-1.11.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.11.2/junit-jupiter-params-5.11.2.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="java.vm.vendor" value="Temurin"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://adoptium.net/"/>
+    <property name="user.timezone" value="Etc/UTC"/>
+    <property name="java.vm.specification.version" value="1.8"/>
+    <property name="os.name" value="Linux"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="sun.boot.library.path" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/amd64"/>
+    <property name="sun.java.command" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter4432330312295063722.jar /home/runner/work/ratis/ratis/ratis-test/target/surefire 2024-10-20T10-31-27_081-jvmRun1 surefire8163036851678972345tmp surefire_98406567572434711543tmp"/>
+    <property name="surefire.test.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/test-classes:/home/runner/work/ratis/ratis/ratis-test/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/classes:/home/runner/.m2/repository/org/apache/ratis/ratis-thirdparty-misc/1.0.6/ratis-thirdparty-misc-1.0.6.jar:/home/runner/work/ratis/ratis/ratis-proto/target/classes:/home/runner/work/ratis/ratis/ratis-common/target/test-classes:/home/runner/work/ratis/ratis/ratis-client/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/classes:/home/runner/work/ratis/ratis/ratis-server-api/target/classes:/home/runner/work/ratis/ratis/ratis-metrics-api/target/classes:/home/runner/work/ratis/ratis/ratis-server/target/test-classes:/home/runner/work/ratis/ratis/ratis-metrics-default/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/classes:/home/runner/work/ratis/ratis/ratis-netty/target/test-classes:/home/runner/work/ratis/ratis/ratis-grpc/target/classes:/home/runner/work/ratis/ratis/ratis-grpc/target/test-classes:/home/runner/work/ratis/ratis/ratis-shell/target/classes:/home/runner/.m2/repository/commons-cli/commons-cli/1.5.0/commons-cli-1.5.0.jar:/home/runner/.m2/repository/org/reflections/reflections/0.10.2/reflections-0.10.2.jar:/home/runner/.m2/repository/org/javassist/javassist/3.28.0-GA/javassist-3.28.0-GA.jar:/home/runner/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar:/home/runner/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.78.1/bcprov-jdk18on-1.78.1.jar:/home/runner/.m2/repository/org/bouncycastle/bcpkix-jdk18on/1.78.1/bcpkix-jdk18on-1.78.1.jar:/home/runner/.m2/repository/org/bouncycastle/bcutil-jdk18on/1.78.1/bcutil-jdk18on-1.78.1.jar:/home/runner/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar:/home/runner/.m2/repository/org/slf4j/slf4j-reload4j/2.0.7/slf4j-reload4j-2.0.7.jar:/home/runner/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/home/runner/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/home/runner/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.11.2/junit-jupiter-engine-5.11.2.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-engine/1.11.2/junit-platform-engine-1.11.2.jar:/home/runner/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.11.2/junit-jupiter-api-5.11.2.jar:/home/runner/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/runner/.m2/repository/org/junit/platform/junit-platform-commons/1.11.2/junit-platform-commons-1.11.2.jar:/home/runner/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.11.2/junit-jupiter-params-5.11.2.jar:/home/runner/.m2/repository/org/mockito/mockito-core/4.3.1/mockito-core-4.3.1.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy/1.12.7/byte-buddy-1.12.7.jar:/home/runner/.m2/repository/net/bytebuddy/byte-buddy-agent/1.12.7/byte-buddy-agent-1.12.7.jar:/home/runner/.m2/repository/org/objenesis/objenesis/3.2/objenesis-3.2.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/runner"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.home" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre"/>
+    <property name="basedir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="file.separator" value="/"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.awt.graphicsenv" value="sun.awt.X11GraphicsEnvironment"/>
+    <property name="surefire.real.class.path" value="/home/runner/work/ratis/ratis/ratis-test/target/surefire/surefirebooter4432330312295063722.jar:/home/runner/.m2/repository/org/jacoco/org.jacoco.agent/0.8.12/org.jacoco.agent-0.8.12-runtime.jar"/>
+    <property name="sun.boot.class.path" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/resources.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/rt.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/sunrsasign.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/jsse.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/jce.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/charsets.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/jfr.jar:/usr/lib/jvm/temurin-8-jdk-amd64/jre/classes"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="1.8.0_422-b05"/>
+    <property name="java.net.preferIPv4Stack" value="true"/>
+    <property name="user.name" value="runner"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="5.15.0-1073-azure"/>
+    <property name="java.endorsed.dirs" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/endorsed"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="localRepository" value="/home/runner/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="1.8.0_422"/>
+    <property name="user.dir" value="/home/runner/work/ratis/ratis/ratis-test"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="ratis.tmp.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/tmp"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="java.awt.printerjob" value="sun.print.PSPrinterJob"/>
+    <property name="ratis.log.dir" value="/home/runner/work/ratis/ratis/ratis-test/target/log"/>
+    <property name="sun.os.patch.level" value="unknown"/>
+    <property name="org.apache.ratis.thirdparty.io.netty.allocator.useCacheForAllThreads" value="false"/>
+    <property name="java.library.path" value="/usr/java/packages/lib/amd64:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode"/>
+    <property name="java.vendor" value="Temurin"/>
+    <property name="java.vm.version" value="25.422-b05"/>
+    <property name="java.specification.maintenance.version" value="5"/>
+    <property name="java.ext.dirs" value="/usr/lib/jvm/temurin-8-jdk-amd64/jre/lib/ext:/usr/java/packages/lib/ext"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="52.0"/>
+  </properties>
+  <testcase name="testLogTruncate" classname="org.apache.ratis.grpc.TestRaftLogTruncateWithGrpc" time="11.463">
+    <failure type="org.opentest4j.AssertionFailedError"><![CDATA[org.opentest4j.AssertionFailedError: s3 TransactionContextMap is non-empty: {(t:1, i:9)=Memoized:org.apache.ratis.statemachine.impl.TransactionContextImpl@50628080} ==> expected: <true> but was: <false>
+	at org.apache.ratis.RaftLogTruncateTests.assertEmptyTransactionContextMap(RaftLogTruncateTests.java:244)
+	at org.apache.ratis.RaftLogTruncateTests.runTestLogTruncate(RaftLogTruncateTests.java:148)
+	at org.apache.ratis.RaftLogTruncateTests.runTestLogTruncate(RaftLogTruncateTests.java:116)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:144)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.RaftLogTruncateTests.testLogTruncate(RaftLogTruncateTests.java:94)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+]]></failure>
+    <system-out><![CDATA[2024-10-20 10:42:02,041 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.conf.ConfUtils log level to WARN
+2024-10-20 10:42:02,046 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.util.FileUtils log level to TRACE
+2024-10-20 10:42:02,171 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.server.impl.TransactionManager log level to TRACE
+2024-10-20 10:42:02,175 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.client.impl.OrderedAsync log level to ERROR
+2024-10-20 10:42:02,179 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.server.RaftServerConfigKeys log level to ERROR
+2024-10-20 10:42:02,180 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.client.RaftClientConfigKeys log level to ERROR
+2024-10-20 10:42:02,180 [main] INFO  util.LogUtils (Slf4jUtils.java:setLogLevel(38)) - Successfully set org.apache.ratis.client.RaftClientConfigKeys log level to ERROR
+2024-10-20 10:42:02,217 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:runWithNewCluster(137)) - Running runWithNewCluster
+2024-10-20 10:42:02,254 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:<init>(319)) - new MiniRaftClusterWithGrpc with group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]
+2024-10-20 10:42:02,254 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(352)) - .............................................................. 
+2024-10-20 10:42:02,255 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(353)) - ... 
+2024-10-20 10:42:02,255 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(354)) - ...     Starting MiniRaftClusterWithGrpc
+2024-10-20 10:42:02,255 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(355)) - ... 
+2024-10-20 10:42:02,255 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:start(356)) - .............................................................. 
+2024-10-20 10:42:02,255 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:initServers(331)) - servers = {}
+2024-10-20 10:42:02,263 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(396)) - newRaftServer: s3, group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008], format? true
+2024-10-20 10:42:02,265 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3
+2024-10-20 10:42:02,267 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3 does not exist.
+2024-10-20 10:42:02,267 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(401)) - Formatted directory target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3
+2024-10-20 10:42:02,295 [main] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = GRPC (default)
+2024-10-20 10:42:02,397 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.admin.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,398 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.admin.port = 15013 (custom)
+2024-10-20 10:42:02,399 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.client.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,400 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.client.port = 15014 (custom)
+2024-10-20 10:42:02,400 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.host = null (default)
+2024-10-20 10:42:02,400 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.port = 15012 (custom)
+2024-10-20 10:42:02,401 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.message.size.max = 64MB (=67108864) (default)
+2024-10-20 10:42:02,402 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.flow.control.window = 1MB (=1048576) (default)
+2024-10-20 10:42:02,421 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:02,422 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.zerocopy.enabled = true (custom)
+2024-10-20 10:42:02,487 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.cached = true (default)
+2024-10-20 10:42:02,487 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.size = 32 (default)
+2024-10-20 10:42:02,803 [main] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2024-10-20 10:42:02,821 [main] INFO  server.RaftServer (RaftServerProxy.java:addNew(101)) - s3: addNew group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] returns group-3BF9AB4BDA06:java.util.concurrent.CompletableFuture@d02c00[Not completed]
+2024-10-20 10:42:02,821 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(396)) - newRaftServer: s4, group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008], format? true
+2024-10-20 10:42:02,824 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4
+2024-10-20 10:42:02,824 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4 does not exist.
+2024-10-20 10:42:02,825 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(401)) - Formatted directory target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4
+2024-10-20 10:42:02,826 [main] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = GRPC (default)
+2024-10-20 10:42:02,826 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.admin.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,827 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.admin.port = 15017 (custom)
+2024-10-20 10:42:02,827 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.client.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,827 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.client.port = 15018 (custom)
+2024-10-20 10:42:02,828 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.host = null (default)
+2024-10-20 10:42:02,828 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.port = 15016 (custom)
+2024-10-20 10:42:02,829 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.message.size.max = 64MB (=67108864) (default)
+2024-10-20 10:42:02,829 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.flow.control.window = 1MB (=1048576) (default)
+2024-10-20 10:42:02,830 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:02,832 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.zerocopy.enabled = true (custom)
+2024-10-20 10:42:02,833 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.cached = true (default)
+2024-10-20 10:42:02,833 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.size = 32 (default)
+2024-10-20 10:42:02,837 [main] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2024-10-20 10:42:02,842 [s3-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(257)) - s3: new RaftServerImpl for group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] with SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:02,843 [main] INFO  server.RaftServer (RaftServerProxy.java:addNew(101)) - s4: addNew group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] returns group-3BF9AB4BDA06:java.util.concurrent.CompletableFuture@333a2df2[Not completed]
+2024-10-20 10:42:02,843 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(396)) - newRaftServer: s0, group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008], format? true
+2024-10-20 10:42:02,843 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0
+2024-10-20 10:42:02,844 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0 does not exist.
+2024-10-20 10:42:02,844 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(401)) - Formatted directory target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0
+2024-10-20 10:42:02,845 [main] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = GRPC (default)
+2024-10-20 10:42:02,845 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.admin.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,845 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.admin.port = 15001 (custom)
+2024-10-20 10:42:02,846 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.client.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,846 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.client.port = 15002 (custom)
+2024-10-20 10:42:02,846 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.host = null (default)
+2024-10-20 10:42:02,847 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.port = 15000 (custom)
+2024-10-20 10:42:02,847 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.message.size.max = 64MB (=67108864) (default)
+2024-10-20 10:42:02,847 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.flow.control.window = 1MB (=1048576) (default)
+2024-10-20 10:42:02,848 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:02,848 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.zerocopy.enabled = true (custom)
+2024-10-20 10:42:02,848 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.cached = true (default)
+2024-10-20 10:42:02,849 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.size = 32 (default)
+2024-10-20 10:42:02,852 [main] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2024-10-20 10:42:02,853 [s4-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(257)) - s4: new RaftServerImpl for group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] with SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:02,855 [s4-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(114)) - s4@group-3BF9AB4BDA06: ConfigurationManager, init=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}, confs=<EMPTY_MAP>
+2024-10-20 10:42:02,854 [s3-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(114)) - s3@group-3BF9AB4BDA06: ConfigurationManager, init=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}, confs=<EMPTY_MAP>
+2024-10-20 10:42:02,857 [main] INFO  server.RaftServer (RaftServerProxy.java:addNew(101)) - s0: addNew group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] returns group-3BF9AB4BDA06:java.util.concurrent.CompletableFuture@6719f206[Not completed]
+2024-10-20 10:42:02,858 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(396)) - newRaftServer: s1, group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008], format? true
+2024-10-20 10:42:02,858 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1
+2024-10-20 10:42:02,858 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1 does not exist.
+2024-10-20 10:42:02,858 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(401)) - Formatted directory target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1
+2024-10-20 10:42:02,859 [main] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = GRPC (default)
+2024-10-20 10:42:02,859 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.admin.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,860 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.admin.port = 15005 (custom)
+2024-10-20 10:42:02,860 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.client.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,860 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.client.port = 15006 (custom)
+2024-10-20 10:42:02,861 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.host = null (default)
+2024-10-20 10:42:02,861 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.port = 15004 (custom)
+2024-10-20 10:42:02,861 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.message.size.max = 64MB (=67108864) (default)
+2024-10-20 10:42:02,862 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.flow.control.window = 1MB (=1048576) (default)
+2024-10-20 10:42:02,862 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:02,862 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.zerocopy.enabled = true (custom)
+2024-10-20 10:42:02,865 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.cached = true (default)
+2024-10-20 10:42:02,865 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.size = 32 (default)
+2024-10-20 10:42:02,867 [s0-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(257)) - s0: new RaftServerImpl for group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] with SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:02,868 [main] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2024-10-20 10:42:02,871 [s0-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(114)) - s0@group-3BF9AB4BDA06: ConfigurationManager, init=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}, confs=<EMPTY_MAP>
+2024-10-20 10:42:02,874 [main] INFO  server.RaftServer (RaftServerProxy.java:addNew(101)) - s1: addNew group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] returns group-3BF9AB4BDA06:java.util.concurrent.CompletableFuture@3051e476[Not completed]
+2024-10-20 10:42:02,874 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(396)) - newRaftServer: s2, group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008], format? true
+2024-10-20 10:42:02,874 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(305)) - deleteFully target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2
+2024-10-20 10:42:02,875 [main] TRACE util.FileUtils (FileUtils.java:deleteFully(318)) - deleteFully: target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2 does not exist.
+2024-10-20 10:42:02,879 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:newRaftServer(401)) - Formatted directory target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2
+2024-10-20 10:42:02,880 [main] INFO  server.RaftServer (ConfUtils.java:logGet(46)) - raft.rpc.type = GRPC (default)
+2024-10-20 10:42:02,880 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.admin.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,880 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.admin.port = 15009 (custom)
+2024-10-20 10:42:02,880 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logFallback(53)) - raft.grpc.client.host = null (fallback to raft.grpc.server.host)
+2024-10-20 10:42:02,881 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.client.port = 15010 (custom)
+2024-10-20 10:42:02,881 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.host = null (default)
+2024-10-20 10:42:02,881 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.port = 15008 (custom)
+2024-10-20 10:42:02,882 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.message.size.max = 64MB (=67108864) (default)
+2024-10-20 10:42:02,885 [s1-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(257)) - s1: new RaftServerImpl for group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] with SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:02,886 [s1-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(114)) - s1@group-3BF9AB4BDA06: ConfigurationManager, init=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}, confs=<EMPTY_MAP>
+2024-10-20 10:42:02,887 [main] INFO  server.GrpcServicesImpl (ConfUtils.java:logGet(46)) - raft.grpc.flow.control.window = 1MB (=1048576) (default)
+2024-10-20 10:42:02,888 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:02,888 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.zerocopy.enabled = true (custom)
+2024-10-20 10:42:02,888 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.cached = true (default)
+2024-10-20 10:42:02,889 [main] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.async.request.thread.pool.size = 32 (default)
+2024-10-20 10:42:02,891 [main] INFO  impl.DataStreamServerImpl (ConfUtils.java:logGet(46)) - raft.datastream.type = DISABLED (default)
+2024-10-20 10:42:02,893 [main] INFO  server.RaftServer (RaftServerProxy.java:addNew(101)) - s2: addNew group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] returns group-3BF9AB4BDA06:java.util.concurrent.CompletableFuture@9825465[Not completed]
+2024-10-20 10:42:02,896 [s2-groupManagement] INFO  server.RaftServer$Division (RaftServerImpl.java:<init>(257)) - s2: new RaftServerImpl for group-3BF9AB4BDA06:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008] with SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:02,899 [s2-groupManagement] INFO  server.RaftServer$Division (ServerState.java:<init>(114)) - s2@group-3BF9AB4BDA06: ConfigurationManager, init=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}, confs=<EMPTY_MAP>
+2024-10-20 10:42:02,929 [s3-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06 does not exist. Creating ...
+2024-10-20 10:42:02,930 [s3-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:02,933 [s3-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(229)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/in_use.lock acquired by nodename 9301@fv-az889-899
+2024-10-20 10:42:02,933 [s3-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current
+2024-10-20 10:42:02,933 [s3-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/sm
+2024-10-20 10:42:02,938 [s3-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@34297ab2
+2024-10-20 10:42:02,945 [s3-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:02,945 [s3-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(98)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06 has been successfully formatted.
+2024-10-20 10:42:02,945 [s3-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(214)) - Initializing SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:02,972 [s3-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(298)) - Loading snapshot null
+2024-10-20 10:42:03,000 [s3-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s3@group-3BF9AB4BDA06-cacheEviction-AwaitToRun,5,main] started
+2024-10-20 10:42:03,007 [s3-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(188)) - new s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,024 [s3-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,024 [s3-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,026 [s3-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(393)) - s3@group-3BF9AB4BDA06: start as a follower, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:03,026 [s3-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s3@group-3BF9AB4BDA06: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2024-10-20 10:42:03,028 [s3-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s3: start s3@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:03,029 [s3-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s3
+2024-10-20 10:42:03,029 [s3-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:register(58)) - register mxBean class org.apache.ratis.server.impl.RaftServerJmxAdapter as Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s3
+2024-10-20 10:42:03,036 [s3-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(407)) - s3@group-3BF9AB4BDA06: Successfully started.
+2024-10-20 10:42:03,037 [main] INFO  server.RaftServer (RaftServerProxy.java:startImpl(408)) - s3: start RPC server
+2024-10-20 10:42:03,104 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s3: GrpcServicesImpl started, listening on 15014
+2024-10-20 10:42:03,105 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s3: GrpcServicesImpl started, listening on 15012
+2024-10-20 10:42:03,106 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s3: GrpcServicesImpl started, listening on 15013
+2024-10-20 10:42:03,108 [JvmPauseMonitor0] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s3: Started
+2024-10-20 10:42:03,109 [s4-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06 does not exist. Creating ...
+2024-10-20 10:42:03,109 [s4-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,110 [s4-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(229)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/in_use.lock acquired by nodename 9301@fv-az889-899
+2024-10-20 10:42:03,110 [s4-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current
+2024-10-20 10:42:03,111 [s4-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/sm
+2024-10-20 10:42:03,111 [s4-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@54b5ea1
+2024-10-20 10:42:03,114 [s4-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:03,114 [s4-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(98)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06 has been successfully formatted.
+2024-10-20 10:42:03,114 [s4-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(214)) - Initializing SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:03,114 [s4-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(298)) - Loading snapshot null
+2024-10-20 10:42:03,116 [s4-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s4@group-3BF9AB4BDA06-cacheEviction-AwaitToRun,5,main] started
+2024-10-20 10:42:03,116 [s4-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(188)) - new s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,118 [s4-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,119 [s4-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,119 [s4-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(393)) - s4@group-3BF9AB4BDA06: start as a follower, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:03,119 [s4-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s4@group-3BF9AB4BDA06: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2024-10-20 10:42:03,119 [s4-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s4: start s4@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:03,120 [s4-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s4
+2024-10-20 10:42:03,120 [s4-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:register(58)) - register mxBean class org.apache.ratis.server.impl.RaftServerJmxAdapter as Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s4
+2024-10-20 10:42:03,123 [s4-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(407)) - s4@group-3BF9AB4BDA06: Successfully started.
+2024-10-20 10:42:03,123 [main] INFO  server.RaftServer (RaftServerProxy.java:startImpl(408)) - s4: start RPC server
+2024-10-20 10:42:03,124 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s4: GrpcServicesImpl started, listening on 15018
+2024-10-20 10:42:03,124 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s4: GrpcServicesImpl started, listening on 15016
+2024-10-20 10:42:03,125 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s4: GrpcServicesImpl started, listening on 15017
+2024-10-20 10:42:03,125 [JvmPauseMonitor1] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s4: Started
+2024-10-20 10:42:03,126 [s0-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06 does not exist. Creating ...
+2024-10-20 10:42:03,126 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,128 [s0-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(229)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/in_use.lock acquired by nodename 9301@fv-az889-899
+2024-10-20 10:42:03,128 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current
+2024-10-20 10:42:03,128 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/sm
+2024-10-20 10:42:03,129 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@5db6487f
+2024-10-20 10:42:03,130 [s0-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:03,131 [s0-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(98)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06 has been successfully formatted.
+2024-10-20 10:42:03,131 [s0-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(214)) - Initializing SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:03,131 [s0-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(298)) - Loading snapshot null
+2024-10-20 10:42:03,132 [s0-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s0@group-3BF9AB4BDA06-cacheEviction-AwaitToRun,5,main] started
+2024-10-20 10:42:03,133 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(188)) - new s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,135 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,135 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,135 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(393)) - s0@group-3BF9AB4BDA06: start as a follower, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:03,135 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s0@group-3BF9AB4BDA06: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2024-10-20 10:42:03,135 [s0-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s0: start s0@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:03,136 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s0
+2024-10-20 10:42:03,136 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:register(58)) - register mxBean class org.apache.ratis.server.impl.RaftServerJmxAdapter as Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s0
+2024-10-20 10:42:03,137 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(407)) - s0@group-3BF9AB4BDA06: Successfully started.
+2024-10-20 10:42:03,137 [main] INFO  server.RaftServer (RaftServerProxy.java:startImpl(408)) - s0: start RPC server
+2024-10-20 10:42:03,137 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s0: GrpcServicesImpl started, listening on 15002
+2024-10-20 10:42:03,138 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s0: GrpcServicesImpl started, listening on 15000
+2024-10-20 10:42:03,139 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s0: GrpcServicesImpl started, listening on 15001
+2024-10-20 10:42:03,140 [s1-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06 does not exist. Creating ...
+2024-10-20 10:42:03,140 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,140 [JvmPauseMonitor2] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s0: Started
+2024-10-20 10:42:03,141 [s1-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(229)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/in_use.lock acquired by nodename 9301@fv-az889-899
+2024-10-20 10:42:03,142 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current
+2024-10-20 10:42:03,142 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/sm
+2024-10-20 10:42:03,142 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@10e8d123
+2024-10-20 10:42:03,144 [s1-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:03,144 [s1-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(98)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06 has been successfully formatted.
+2024-10-20 10:42:03,145 [s1-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(214)) - Initializing SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:03,145 [s1-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(298)) - Loading snapshot null
+2024-10-20 10:42:03,146 [s1-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s1@group-3BF9AB4BDA06-cacheEviction-AwaitToRun,5,main] started
+2024-10-20 10:42:03,146 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(188)) - new s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,149 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,149 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,159 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(393)) - s1@group-3BF9AB4BDA06: start as a follower, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:03,159 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s1@group-3BF9AB4BDA06: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2024-10-20 10:42:03,159 [s1-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s1: start s1@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:03,159 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s1
+2024-10-20 10:42:03,160 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:register(58)) - register mxBean class org.apache.ratis.server.impl.RaftServerJmxAdapter as Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s1
+2024-10-20 10:42:03,160 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(407)) - s1@group-3BF9AB4BDA06: Successfully started.
+2024-10-20 10:42:03,160 [main] INFO  server.RaftServer (RaftServerProxy.java:startImpl(408)) - s1: start RPC server
+2024-10-20 10:42:03,161 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s1: GrpcServicesImpl started, listening on 15006
+2024-10-20 10:42:03,162 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s1: GrpcServicesImpl started, listening on 15004
+2024-10-20 10:42:03,162 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s1: GrpcServicesImpl started, listening on 15005
+2024-10-20 10:42:03,163 [JvmPauseMonitor3] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s1: Started
+2024-10-20 10:42:03,163 [s2-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:analyzeStorage(138)) - The storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06 does not exist. Creating ...
+2024-10-20 10:42:03,163 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,165 [s2-impl-thread1] INFO  storage.RaftStorageDirectory (RaftStorageDirectoryImpl.java:tryLock(229)) - Lock on /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/in_use.lock acquired by nodename 9301@fv-az889-899
+2024-10-20 10:42:03,165 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current
+2024-10-20 10:42:03,165 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Files.createDirectories /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/sm
+2024-10-20 10:42:03,165 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@13d3dbfb
+2024-10-20 10:42:03,167 [s2-impl-thread1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:03,168 [s2-impl-thread1] INFO  storage.RaftStorage (RaftStorageImpl.java:format(98)) - Storage directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06 has been successfully formatted.
+2024-10-20 10:42:03,168 [s2-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:initialize(214)) - Initializing SimpleStateMachine4Testing:uninitialized
+2024-10-20 10:42:03,168 [s2-impl-thread1] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:loadSnapshot(298)) - Loading snapshot null
+2024-10-20 10:42:03,170 [s2-impl-thread1] INFO  util.AwaitToRun (AwaitToRun.java:start(81)) - Thread[s2@group-3BF9AB4BDA06-cacheEviction-AwaitToRun,5,main] started
+2024-10-20 10:42:03,170 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:<init>(188)) - new s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker for RaftStorageImpl:Storage Directory /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06
+2024-10-20 10:42:03,172 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker: flushIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,172 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:lambda$new$0(139)) - s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker: safeCacheEvictIndex: setUnconditionally 0 -> -1
+2024-10-20 10:42:03,175 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(393)) - s2@group-3BF9AB4BDA06: start as a follower, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:03,175 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s2@group-3BF9AB4BDA06: changes role from      null to FOLLOWER at term 0 for startAsFollower
+2024-10-20 10:42:03,175 [s2-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s2: start s2@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:03,176 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:tryRegister(44)) - Successfully registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s2
+2024-10-20 10:42:03,177 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:register(58)) - register mxBean class org.apache.ratis.server.impl.RaftServerJmxAdapter as Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s2
+2024-10-20 10:42:03,179 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:start(407)) - s2@group-3BF9AB4BDA06: Successfully started.
+2024-10-20 10:42:03,179 [main] INFO  server.RaftServer (RaftServerProxy.java:startImpl(408)) - s2: start RPC server
+2024-10-20 10:42:03,180 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s2: GrpcServicesImpl started, listening on 15010
+2024-10-20 10:42:03,181 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s2: GrpcServicesImpl started, listening on 15008
+2024-10-20 10:42:03,181 [main] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:startImpl(353)) - s2: GrpcServicesImpl started, listening on 15009
+2024-10-20 10:42:03,183 [JvmPauseMonitor4] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(146)) - JvmPauseMonitor-s2: Started
+2024-10-20 10:42:03,190 [main] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(107)) - printing ALL groups
+  s3:  RUNNING  FOLLOWER s3@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s4:  RUNNING  FOLLOWER s4@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s0:  RUNNING  FOLLOWER s0@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+2024-10-20 10:42:03,193 [main] WARN  ratis.RaftTestUtil (RaftTestUtil.java:lambda$waitForLeader$3(126)) - Attempt #1 failed: java.lang.IllegalStateException: No leader yet : printing ALL groups
+  s3:  RUNNING  FOLLOWER s3@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s4:  RUNNING  FOLLOWER s4@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s0:  RUNNING  FOLLOWER s0@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+2024-10-20 10:42:04,210 [s0@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(161)) - s0@group-3BF9AB4BDA06-FollowerState: change to CANDIDATE, lastRpcElapsedTime:1074274525ns, electionTimeout:1072ms
+2024-10-20 10:42:04,210 [s0@group-3BF9AB4BDA06-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s0: shutdown s0@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,210 [s0@group-3BF9AB4BDA06-FollowerState] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s0@group-3BF9AB4BDA06: changes role from  FOLLOWER to CANDIDATE at term 0 for changeToCandidate
+2024-10-20 10:42:04,214 [s0@group-3BF9AB4BDA06-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s0: start s0@group-3BF9AB4BDA06-LeaderElection1
+2024-10-20 10:42:04,217 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(333)) - s0@group-3BF9AB4BDA06-LeaderElection1 PRE_VOTE round 0: submit vote requests at term 0 for conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,251 [s0@group-3BF9AB4BDA06-LeaderElection1-3] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s1|localhost:15004
+2024-10-20 10:42:04,251 [s0@group-3BF9AB4BDA06-LeaderElection1-2] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s4|localhost:15016
+2024-10-20 10:42:04,255 [s0@group-3BF9AB4BDA06-LeaderElection1-4] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s2|localhost:15008
+2024-10-20 10:42:04,255 [s0@group-3BF9AB4BDA06-LeaderElection1-1] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s3|localhost:15012
+2024-10-20 10:42:04,298 [s3@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(161)) - s3@group-3BF9AB4BDA06-FollowerState: change to CANDIDATE, lastRpcElapsedTime:1270285848ns, electionTimeout:1263ms
+2024-10-20 10:42:04,298 [s3@group-3BF9AB4BDA06-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s3: shutdown s3@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,298 [s3@group-3BF9AB4BDA06-FollowerState] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s3@group-3BF9AB4BDA06: changes role from  FOLLOWER to CANDIDATE at term 0 for changeToCandidate
+2024-10-20 10:42:04,298 [s3@group-3BF9AB4BDA06-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s3: start s3@group-3BF9AB4BDA06-LeaderElection2
+2024-10-20 10:42:04,299 [s3@group-3BF9AB4BDA06-LeaderElection2] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(333)) - s3@group-3BF9AB4BDA06-LeaderElection2 PRE_VOTE round 0: submit vote requests at term 0 for conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,300 [s3@group-3BF9AB4BDA06-LeaderElection2-1] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s4|localhost:15016
+2024-10-20 10:42:04,307 [s3@group-3BF9AB4BDA06-LeaderElection2-2] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s0|localhost:15000
+2024-10-20 10:42:04,323 [s3@group-3BF9AB4BDA06-LeaderElection2-4] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s2|localhost:15008
+2024-10-20 10:42:04,327 [s3@group-3BF9AB4BDA06-LeaderElection2-3] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s1|localhost:15004
+2024-10-20 10:42:04,429 [s4@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(161)) - s4@group-3BF9AB4BDA06-FollowerState: change to CANDIDATE, lastRpcElapsedTime:1309879447ns, electionTimeout:1308ms
+2024-10-20 10:42:04,429 [s4@group-3BF9AB4BDA06-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s4: shutdown s4@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,430 [s4@group-3BF9AB4BDA06-FollowerState] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s4@group-3BF9AB4BDA06: changes role from  FOLLOWER to CANDIDATE at term 0 for changeToCandidate
+2024-10-20 10:42:04,430 [s4@group-3BF9AB4BDA06-FollowerState] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s4: start s4@group-3BF9AB4BDA06-LeaderElection3
+2024-10-20 10:42:04,432 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(333)) - s4@group-3BF9AB4BDA06-LeaderElection3 PRE_VOTE round 0: submit vote requests at term 0 for conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,434 [s4@group-3BF9AB4BDA06-LeaderElection3-1] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s3|localhost:15012
+2024-10-20 10:42:04,436 [s4@group-3BF9AB4BDA06-LeaderElection3-2] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s0|localhost:15000
+2024-10-20 10:42:04,436 [s4@group-3BF9AB4BDA06-LeaderElection3-3] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s1|localhost:15004
+2024-10-20 10:42:04,439 [s4@group-3BF9AB4BDA06-LeaderElection3-4] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:<init>(65)) - Build channel for s2|localhost:15008
+2024-10-20 10:42:04,744 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s0@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s3, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,744 [grpc-default-executor-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s3@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s0, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,744 [grpc-default-executor-4] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s4@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s0, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,744 [grpc-default-executor-10] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s1@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s0, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,745 [grpc-default-executor-9] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s1@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s4, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,744 [grpc-default-executor-8] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s4@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s3, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,746 [grpc-default-executor-6] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s1@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s3, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,747 [grpc-default-executor-2] INFO  impl.VoteContext (VoteContext.java:log(49)) - s0@group-3BF9AB4BDA06-CANDIDATE: accept PRE_VOTE from s3: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,747 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s3@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s4, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,747 [grpc-default-executor-3] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s2@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s0, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,747 [grpc-default-executor-3] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-3BF9AB4BDA06-FOLLOWER: accept PRE_VOTE from s0: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,747 [grpc-default-executor-4] INFO  impl.VoteContext (VoteContext.java:log(49)) - s4@group-3BF9AB4BDA06-CANDIDATE: accept PRE_VOTE from s0: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,750 [grpc-default-executor-5] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s2@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s4, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,750 [grpc-default-executor-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s2@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s3, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,751 [grpc-default-executor-11] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s0@group-3BF9AB4BDA06: receive requestVote(PRE_VOTE, s4, group-3BF9AB4BDA06, 0, (t:0, i:0))
+2024-10-20 10:42:04,747 [grpc-default-executor-10] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-3BF9AB4BDA06-FOLLOWER: accept PRE_VOTE from s0: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,747 [grpc-default-executor-1] INFO  impl.VoteContext (VoteContext.java:log(49)) - s3@group-3BF9AB4BDA06-CANDIDATE: accept PRE_VOTE from s0: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,757 [grpc-default-executor-3] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s2@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s0<-s2#0:OK-t0. Peer's state: s2@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,757 [grpc-default-executor-1] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s3@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s0<-s3#0:OK-t0. Peer's state: s3@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,757 [grpc-default-executor-0] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-3BF9AB4BDA06-FOLLOWER: accept PRE_VOTE from s3: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,757 [grpc-default-executor-0] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s2@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s3<-s2#0:OK-t0. Peer's state: s2@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,758 [grpc-default-executor-5] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-3BF9AB4BDA06-FOLLOWER: accept PRE_VOTE from s4: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,758 [grpc-default-executor-5] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s2@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s4<-s2#0:OK-t0. Peer's state: s2@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,757 [grpc-default-executor-4] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s4@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s0<-s4#0:OK-t0. Peer's state: s4@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,757 [grpc-default-executor-10] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s1@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s0<-s1#0:OK-t0. Peer's state: s1@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,760 [grpc-default-executor-8] INFO  impl.VoteContext (VoteContext.java:log(49)) - s4@group-3BF9AB4BDA06-CANDIDATE: accept PRE_VOTE from s3: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,760 [grpc-default-executor-8] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s4@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s3<-s4#0:OK-t0. Peer's state: s4@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,761 [grpc-default-executor-6] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-3BF9AB4BDA06-FOLLOWER: accept PRE_VOTE from s3: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,761 [grpc-default-executor-6] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s1@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s3<-s1#0:OK-t0. Peer's state: s1@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,761 [grpc-default-executor-9] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-3BF9AB4BDA06-FOLLOWER: accept PRE_VOTE from s4: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,762 [grpc-default-executor-9] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s1@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s4<-s1#0:OK-t0. Peer's state: s1@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,757 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s0@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s3<-s0#0:OK-t0. Peer's state: s0@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,757 [grpc-default-executor-7] INFO  impl.VoteContext (VoteContext.java:log(49)) - s3@group-3BF9AB4BDA06-CANDIDATE: accept PRE_VOTE from s4: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,764 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s3@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s4<-s3#0:OK-t0. Peer's state: s3@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,765 [grpc-default-executor-11] INFO  impl.VoteContext (VoteContext.java:log(49)) - s0@group-3BF9AB4BDA06-CANDIDATE: accept PRE_VOTE from s4: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,765 [grpc-default-executor-11] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s0@group-3BF9AB4BDA06 replies to PRE_VOTE vote request: s4<-s0#0:OK-t0. Peer's state: s0@group-3BF9AB4BDA06:t0, leader=null, voted=, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,768 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(90)) - s0@group-3BF9AB4BDA06-LeaderElection1: PRE_VOTE PASSED received 2 response(s) and 0 exception(s):
+2024-10-20 10:42:04,768 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 0: s0<-s4#0:OK-t0
+2024-10-20 10:42:04,768 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 1: s0<-s2#0:OK-t0
+2024-10-20 10:42:04,768 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(335)) - s0@group-3BF9AB4BDA06-LeaderElection1 PRE_VOTE round 0: result PASSED
+2024-10-20 10:42:04,769 [s0@group-3BF9AB4BDA06-LeaderElection1] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@54992660
+2024-10-20 10:42:04,771 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(90)) - s4@group-3BF9AB4BDA06-LeaderElection3: PRE_VOTE PASSED received 2 response(s) and 0 exception(s):
+2024-10-20 10:42:04,771 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 0: s4<-s3#0:OK-t0
+2024-10-20 10:42:04,771 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 1: s4<-s1#0:OK-t0
+2024-10-20 10:42:04,771 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(335)) - s4@group-3BF9AB4BDA06-LeaderElection3 PRE_VOTE round 0: result PASSED
+2024-10-20 10:42:04,772 [s4@group-3BF9AB4BDA06-LeaderElection3] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@37626655
+2024-10-20 10:42:04,773 [s0@group-3BF9AB4BDA06-LeaderElection1] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:04,773 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(333)) - s0@group-3BF9AB4BDA06-LeaderElection1 ELECTION round 0: submit vote requests at term 1 for conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,773 [s3@group-3BF9AB4BDA06-LeaderElection2] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(90)) - s3@group-3BF9AB4BDA06-LeaderElection2: PRE_VOTE PASSED received 2 response(s) and 0 exception(s):
+2024-10-20 10:42:04,774 [s3@group-3BF9AB4BDA06-LeaderElection2] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 0: s3<-s4#0:OK-t0
+2024-10-20 10:42:04,774 [s3@group-3BF9AB4BDA06-LeaderElection2] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 1: s3<-s1#0:OK-t0
+2024-10-20 10:42:04,774 [s4@group-3BF9AB4BDA06-LeaderElection3] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:04,775 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(333)) - s4@group-3BF9AB4BDA06-LeaderElection3 ELECTION round 0: submit vote requests at term 1 for conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,779 [grpc-default-executor-6] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s3@group-3BF9AB4BDA06: receive requestVote(ELECTION, s4, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,779 [grpc-default-executor-6] INFO  impl.VoteContext (VoteContext.java:log(49)) - s3@group-3BF9AB4BDA06-CANDIDATE: accept ELECTION from s4: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,779 [grpc-default-executor-6] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s3@group-3BF9AB4BDA06: changes role from CANDIDATE to FOLLOWER at term 0 for candidate:s4
+2024-10-20 10:42:04,779 [grpc-default-executor-6] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderElection(141)) - s3: shutdown s3@group-3BF9AB4BDA06-LeaderElection2
+2024-10-20 10:42:04,781 [grpc-default-executor-11] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s3@group-3BF9AB4BDA06: receive requestVote(ELECTION, s0, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,782 [s3@group-3BF9AB4BDA06-LeaderElection2] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(335)) - s3@group-3BF9AB4BDA06-LeaderElection2 PRE_VOTE round 0: result PASSED
+2024-10-20 10:42:04,789 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s1@group-3BF9AB4BDA06: receive requestVote(ELECTION, s0, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,789 [grpc-default-executor-7] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-3BF9AB4BDA06-FOLLOWER: accept ELECTION from s0: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,789 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s1@group-3BF9AB4BDA06: changes role from  FOLLOWER to FOLLOWER at term 0 for candidate:s0
+2024-10-20 10:42:04,789 [grpc-default-executor-7] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s1: shutdown s1@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,790 [grpc-default-executor-7] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s1: start s1@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,790 [s1@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(170)) - s1@group-3BF9AB4BDA06-FollowerState was interrupted
+2024-10-20 10:42:04,790 [grpc-default-executor-5] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s4@group-3BF9AB4BDA06: receive requestVote(ELECTION, s0, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,790 [grpc-default-executor-5] INFO  impl.VoteContext (VoteContext.java:log(49)) - s4@group-3BF9AB4BDA06-CANDIDATE: reject ELECTION from s0: already has voted for s4 at current term 1
+2024-10-20 10:42:04,790 [grpc-default-executor-5] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s4@group-3BF9AB4BDA06 replies to ELECTION vote request: s0<-s4#0:FAIL-t1. Peer's state: s4@group-3BF9AB4BDA06:t1, leader=null, voted=s4, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,791 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(564)) - s1@group-3BF9AB4BDA06: set firstElectionSinceStartup to false for candidate:s0
+2024-10-20 10:42:04,791 [grpc-default-executor-7] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@4a9d1605
+2024-10-20 10:42:04,792 [grpc-default-executor-6] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s3: start s3@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,793 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s2@group-3BF9AB4BDA06: receive requestVote(ELECTION, s4, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,793 [grpc-default-executor-5] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s1@group-3BF9AB4BDA06: receive requestVote(ELECTION, s4, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,793 [grpc-default-executor-2] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-3BF9AB4BDA06-FOLLOWER: accept ELECTION from s4: our priority 0 <= candidate's priority 0
+2024-10-20 10:42:04,793 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s2@group-3BF9AB4BDA06: changes role from  FOLLOWER to FOLLOWER at term 0 for candidate:s4
+2024-10-20 10:42:04,793 [grpc-default-executor-7] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:04,793 [grpc-default-executor-2] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s2: shutdown s2@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,793 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s1@group-3BF9AB4BDA06 replies to ELECTION vote request: s0<-s1#0:OK-t1. Peer's state: s1@group-3BF9AB4BDA06:t1, leader=null, voted=s0, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,794 [grpc-default-executor-6] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(564)) - s3@group-3BF9AB4BDA06: set firstElectionSinceStartup to false for candidate:s4
+2024-10-20 10:42:04,794 [grpc-default-executor-5] INFO  impl.VoteContext (VoteContext.java:log(49)) - s1@group-3BF9AB4BDA06-FOLLOWER: reject ELECTION from s4: already has voted for s0 at current term 1
+2024-10-20 10:42:04,794 [grpc-default-executor-6] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@476dd8dd
+2024-10-20 10:42:04,795 [grpc-default-executor-2] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s2: start s2@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,795 [s2@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(170)) - s2@group-3BF9AB4BDA06-FollowerState was interrupted
+2024-10-20 10:42:04,795 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(564)) - s2@group-3BF9AB4BDA06: set firstElectionSinceStartup to false for candidate:s4
+2024-10-20 10:42:04,794 [grpc-default-executor-5] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s1@group-3BF9AB4BDA06 replies to ELECTION vote request: s4<-s1#0:FAIL-t1. Peer's state: s1@group-3BF9AB4BDA06:t1, leader=null, voted=s0, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,795 [grpc-default-executor-2] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@10ce2cf6
+2024-10-20 10:42:04,798 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s0@group-3BF9AB4BDA06: receive requestVote(ELECTION, s4, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,798 [grpc-default-executor-7] INFO  impl.VoteContext (VoteContext.java:log(49)) - s0@group-3BF9AB4BDA06-CANDIDATE: reject ELECTION from s4: already has voted for s0 at current term 1
+2024-10-20 10:42:04,798 [grpc-default-executor-7] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s0@group-3BF9AB4BDA06 replies to ELECTION vote request: s4<-s0#0:FAIL-t1. Peer's state: s0@group-3BF9AB4BDA06:t1, leader=null, voted=s0, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,798 [grpc-default-executor-6] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:04,798 [grpc-default-executor-6] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s3@group-3BF9AB4BDA06 replies to ELECTION vote request: s4<-s3#0:OK-t1. Peer's state: s3@group-3BF9AB4BDA06:t1, leader=null, voted=s4, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,799 [grpc-default-executor-11] INFO  impl.VoteContext (VoteContext.java:log(49)) - s3@group-3BF9AB4BDA06-FOLLOWER: reject ELECTION from s0: already has voted for s4 at current term 1
+2024-10-20 10:42:04,799 [grpc-default-executor-11] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s3@group-3BF9AB4BDA06 replies to ELECTION vote request: s0<-s3#0:FAIL-t1. Peer's state: s3@group-3BF9AB4BDA06:t1, leader=null, voted=s4, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,799 [grpc-default-executor-2] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta with options [REPLACE_EXISTING]
+2024-10-20 10:42:04,800 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s2@group-3BF9AB4BDA06 replies to ELECTION vote request: s4<-s2#0:OK-t1. Peer's state: s2@group-3BF9AB4BDA06:t1, leader=null, voted=s4, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(90)) - s4@group-3BF9AB4BDA06-LeaderElection3: ELECTION PASSED received 4 response(s) and 0 exception(s):
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 0: s4<-s3#0:OK-t1
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 1: s4<-s0#0:FAIL-t1
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 2: s4<-s1#0:FAIL-t1
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 3: s4<-s2#0:OK-t1
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(335)) - s4@group-3BF9AB4BDA06-LeaderElection3 ELECTION round 0: result PASSED
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderElection(141)) - s4: shutdown s4@group-3BF9AB4BDA06-LeaderElection3
+2024-10-20 10:42:04,809 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s4@group-3BF9AB4BDA06: changes role from CANDIDATE to LEADER at term 1 for changeToLeader
+2024-10-20 10:42:04,813 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1447)) - s2@group-3BF9AB4BDA06: receive requestVote(ELECTION, s0, group-3BF9AB4BDA06, 1, (t:0, i:0))
+2024-10-20 10:42:04,813 [grpc-default-executor-2] INFO  impl.VoteContext (VoteContext.java:log(49)) - s2@group-3BF9AB4BDA06-FOLLOWER: reject ELECTION from s0: already has voted for s4 at current term 1
+2024-10-20 10:42:04,813 [grpc-default-executor-2] INFO  server.RaftServer$Division (RaftServerImpl.java:requestVote(1480)) - s2@group-3BF9AB4BDA06 replies to ELECTION vote request: s0<-s2#0:FAIL-t1. Peer's state: s2@group-3BF9AB4BDA06:t1, leader=null, voted=s4, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c-1:lastnull, conf=conf: {index: -1, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(90)) - s0@group-3BF9AB4BDA06-LeaderElection1: ELECTION REJECTED received 4 response(s) and 0 exception(s):
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 0: s0<-s3#0:FAIL-t1
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 1: s0<-s4#0:FAIL-t1
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 2: s0<-s1#0:OK-t1
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:logAndReturn(94)) -   Response 3: s0<-s2#0:FAIL-t1
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.LeaderElection (LeaderElection.java:askForVotes(335)) - s0@group-3BF9AB4BDA06-LeaderElection1 ELECTION round 0: result REJECTED
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  server.RaftServer$Division (RaftServerImpl.java:setRole(380)) - s0@group-3BF9AB4BDA06: changes role from CANDIDATE to FOLLOWER at term 1 for REJECTED
+2024-10-20 10:42:04,816 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderElection(141)) - s0: shutdown s0@group-3BF9AB4BDA06-LeaderElection1
+2024-10-20 10:42:04,817 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s0: start s0@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:04,821 [s0@group-3BF9AB4BDA06-LeaderElection1] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(564)) - s0@group-3BF9AB4BDA06: set firstElectionSinceStartup to false for REJECTED
+2024-10-20 10:42:04,849 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.leader.outstanding.appends.max = 8 (default)
+2024-10-20 10:42:04,850 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.element-limit = 8 (default)
+2024-10-20 10:42:04,850 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.timeout = 3000ms (default)
+2024-10-20 10:42:04,850 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.log-message.batch.duration = 5s (default)
+2024-10-20 10:42:04,850 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:04,853 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.leader.outstanding.appends.max = 8 (default)
+2024-10-20 10:42:04,854 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.element-limit = 8 (default)
+2024-10-20 10:42:04,854 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.timeout = 3000ms (default)
+2024-10-20 10:42:04,854 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.log-message.batch.duration = 5s (default)
+2024-10-20 10:42:04,854 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:04,855 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.leader.outstanding.appends.max = 8 (default)
+2024-10-20 10:42:04,855 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.element-limit = 8 (default)
+2024-10-20 10:42:04,855 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.timeout = 3000ms (default)
+2024-10-20 10:42:04,855 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.log-message.batch.duration = 5s (default)
+2024-10-20 10:42:04,856 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:04,856 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.leader.outstanding.appends.max = 8 (default)
+2024-10-20 10:42:04,857 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.element-limit = 8 (default)
+2024-10-20 10:42:04,857 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.install_snapshot.request.timeout = 3000ms (default)
+2024-10-20 10:42:04,857 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.log-message.batch.duration = 5s (default)
+2024-10-20 10:42:04,857 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  grpc.GrpcConfigKeys (ConfUtils.java:logGet(46)) - raft.grpc.server.heartbeat.channel = true (default)
+2024-10-20 10:42:04,858 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  impl.RoleInfo (RoleInfo.java:updateAndGet(148)) - s4: start s4@group-3BF9AB4BDA06-LeaderStateImpl
+2024-10-20 10:42:04,858 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  server.RaftServer$Division (RaftServerImpl.java:setFirstElection(564)) - s4@group-3BF9AB4BDA06: set firstElectionSinceStartup to false for becomeLeader
+2024-10-20 10:42:04,858 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  server.RaftServer$Division (ServerState.java:setLeader(272)) - s4@group-3BF9AB4BDA06: change Leader from null to s4 at term 1 for becomeLeader, leader elected after 1992ms
+2024-10-20 10:42:04,876 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  util.LeakDetector (LeakDetector.java:start(124)) - Starting leak detector thread SIMPLE0.
+2024-10-20 10:42:05,039 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(442)) - s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker: Starting segment from index:0
+2024-10-20 10:42:05,046 [s4@group-3BF9AB4BDA06-LeaderElection3] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(386)) - s4@group-3BF9AB4BDA06: set configuration conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:05,106 [s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.BufferedWriteChannel (BufferedWriteChannel.java:open(61)) - open log_inprogress_0 at position 0
+2024-10-20 10:42:05,113 [s3-server-thread1] INFO  server.RaftServer$Division (ServerState.java:setLeader(272)) - s3@group-3BF9AB4BDA06: change Leader from null to s4 at term 1 for appendEntries, leader elected after 2251ms
+2024-10-20 10:42:05,117 [s0-server-thread1] INFO  server.RaftServer$Division (ServerState.java:setLeader(272)) - s0@group-3BF9AB4BDA06: change Leader from null to s4 at term 1 for appendEntries, leader elected after 2244ms
+2024-10-20 10:42:05,117 [s1-server-thread1] INFO  server.RaftServer$Division (ServerState.java:setLeader(272)) - s1@group-3BF9AB4BDA06: change Leader from null to s4 at term 1 for appendEntries, leader elected after 2231ms
+2024-10-20 10:42:05,121 [s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(663)) - s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/log_inprogress_0
+2024-10-20 10:42:05,131 [s2-server-thread1] INFO  server.RaftServer$Division (ServerState.java:setLeader(272)) - s2@group-3BF9AB4BDA06: change Leader from null to s4 at term 1 for appendEntries, leader elected after 2231ms
+2024-10-20 10:42:05,131 [s0-server-thread1] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(386)) - s0@group-3BF9AB4BDA06: set configuration conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:05,133 [s0-server-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(442)) - s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker: Starting segment from index:0
+2024-10-20 10:42:05,133 [s1-server-thread2] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(386)) - s1@group-3BF9AB4BDA06: set configuration conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:05,133 [s1-server-thread2] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(442)) - s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker: Starting segment from index:0
+2024-10-20 10:42:05,134 [s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.BufferedWriteChannel (BufferedWriteChannel.java:open(61)) - open log_inprogress_0 at position 0
+2024-10-20 10:42:05,134 [s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.BufferedWriteChannel (BufferedWriteChannel.java:open(61)) - open log_inprogress_0 at position 0
+2024-10-20 10:42:05,146 [s3-server-thread2] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(386)) - s3@group-3BF9AB4BDA06: set configuration conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:05,146 [s3-server-thread2] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(442)) - s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker: Starting segment from index:0
+2024-10-20 10:42:05,146 [s2-server-thread2] INFO  server.RaftServer$Division (ServerState.java:setRaftConf(386)) - s2@group-3BF9AB4BDA06: set configuration conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null}
+2024-10-20 10:42:05,146 [s2-server-thread2] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:startLogSegment(442)) - s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker: Starting segment from index:0
+2024-10-20 10:42:05,148 [s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.BufferedWriteChannel (BufferedWriteChannel.java:open(61)) - open log_inprogress_0 at position 0
+2024-10-20 10:42:05,148 [s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(663)) - s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/log_inprogress_0
+2024-10-20 10:42:05,149 [s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.BufferedWriteChannel (BufferedWriteChannel.java:open(61)) - open log_inprogress_0 at position 0
+2024-10-20 10:42:05,165 [s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(663)) - s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/log_inprogress_0
+2024-10-20 10:42:05,167 [s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(663)) - s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/log_inprogress_0
+2024-10-20 10:42:05,168 [s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:execute(663)) - s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker: created new log segment /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/log_inprogress_0
+2024-10-20 10:42:05,172 [s4@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@299dbfc0
+2024-10-20 10:42:05,178 [s4@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s4/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf with options [REPLACE_EXISTING]
+2024-10-20 10:42:05,178 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  server.RaftServer$Division (LeaderStateImpl.java:checkStartIndex(314)) - Leader s4@group-3BF9AB4BDA06-LeaderStateImpl is ready since appliedIndex == startIndex == 0
+2024-10-20 10:42:06,665 [s1@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@31a57e61
+2024-10-20 10:42:06,670 [s1@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s1/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf with options [REPLACE_EXISTING]
+2024-10-20 10:42:06,677 [s0@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@95996d8
+2024-10-20 10:42:06,682 [s3@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@286814b3
+2024-10-20 10:42:06,691 [s0@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s0/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf with options [REPLACE_EXISTING]
+2024-10-20 10:42:06,683 [s2@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:supplyAndLog(69)) - Successfully supplied FileChannel.open /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp with options [CREATE, WRITE]: sun.nio.ch.FileChannelImpl@2bf037c
+2024-10-20 10:42:06,695 [s3@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s3/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf with options [REPLACE_EXISTING]
+2024-10-20 10:42:06,696 [s2@group-3BF9AB4BDA06-StateMachineUpdater] TRACE util.FileUtils (LogUtils.java:runAndLog(49)) - Successfully ran Atomic Files.move /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf.tmp to /home/runner/work/ratis/ratis/ratis-test/target/test/data/a9870d7c/MiniRaftClusterWithGrpc23b1c150/s2/1f971c43-3b46-4f06-9694-3bf9ab4bda06/current/raft-meta.conf with options [REPLACE_EXISTING]
+2024-10-20 10:42:12,195 [main] INFO  ratis.RaftTestUtil (RaftTestUtil.java:waitForLeader(131)) - printing ALL groups
+  s3:  RUNNING  FOLLOWER s3@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c0:last(t:1, i:0), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s4:  RUNNING    LEADER s4@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c0:last(t:1, i:0), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s0:  RUNNING  FOLLOWER s0@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c0:last(t:1, i:0), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c0:last(t:1, i:0), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c0:last(t:1, i:0), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+2024-10-20 10:42:12,200 [main] INFO  grpc.TestRaftLogTruncateWithGrpc (RaftLogTruncateTests.java:runTestLogTruncate(128)) - oldLeader: s4, term=1
+2024-10-20 10:42:12,200 [main] INFO  grpc.TestRaftLogTruncateWithGrpc (RaftLogTruncateTests.java:runTestLogTruncate(129)) - killedPeers   : [s3, s0, s1]
+2024-10-20 10:42:12,200 [main] INFO  grpc.TestRaftLogTruncateWithGrpc (RaftLogTruncateTests.java:runTestLogTruncate(130)) - remainingPeers: [s4, s2]
+2024-10-20 10:42:12,202 [main] DEBUG impl.TransactionManager (TransactionManager.java:getMap(49)) - s3-TransactionManager <empty>
+2024-10-20 10:42:12,202 [main] DEBUG impl.TransactionManager (TransactionManager.java:getMap(49)) - s4-TransactionManager <empty>
+2024-10-20 10:42:12,202 [main] DEBUG impl.TransactionManager (TransactionManager.java:getMap(49)) - s0-TransactionManager <empty>
+2024-10-20 10:42:12,202 [main] DEBUG impl.TransactionManager (TransactionManager.java:getMap(49)) - s1-TransactionManager <empty>
+2024-10-20 10:42:12,203 [main] DEBUG impl.TransactionManager (TransactionManager.java:getMap(49)) - s2-TransactionManager <empty>
+2024-10-20 10:42:12,316 [s0-server-thread1] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:1): s0-TransactionManager
+  (t:1, i:1): initialized? false
+2024-10-20 10:42:12,319 [s1-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:1): s1-TransactionManager
+  (t:1, i:1): initialized? false
+2024-10-20 10:42:12,317 [s2-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:1): s2-TransactionManager
+  (t:1, i:1): initialized? false
+2024-10-20 10:42:12,319 [s3-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:1): s3-TransactionManager
+  (t:1, i:1): initialized? false
+2024-10-20 10:42:12,325 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 1
+2024-10-20 10:42:12,326 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s4: put 1, first0 -> (t:1, i:1), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,340 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 1
+2024-10-20 10:42:12,340 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 1
+2024-10-20 10:42:12,341 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s2: put 1, first0 -> (t:1, i:1), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,341 [s2@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:1): s2-TransactionManager <empty>
+2024-10-20 10:42:12,341 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s3: put 1, first0 -> (t:1, i:1), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,343 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 1
+2024-10-20 10:42:12,343 [s3@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:1): s3-TransactionManager <empty>
+2024-10-20 10:42:12,343 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s1: put 1, first0 -> (t:1, i:1), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,344 [s1@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:1): s1-TransactionManager <empty>
+2024-10-20 10:42:12,344 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 1
+2024-10-20 10:42:12,344 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s0: put 1, first0 -> (t:1, i:1), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,344 [s0@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:1): s0-TransactionManager <empty>
+2024-10-20 10:42:12,387 [s2-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:3): s2-TransactionManager
+  (t:1, i:3): initialized? false
+2024-10-20 10:42:12,388 [s1-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:3): s1-TransactionManager
+  (t:1, i:3): initialized? false
+2024-10-20 10:42:12,389 [s3-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:3): s3-TransactionManager
+  (t:1, i:3): initialized? false
+2024-10-20 10:42:12,390 [s0-server-thread1] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:3): s0-TransactionManager
+  (t:1, i:3): initialized? false
+2024-10-20 10:42:12,394 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 3
+2024-10-20 10:42:12,394 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s4: put 3, first1 -> (t:1, i:3), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,397 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 3
+2024-10-20 10:42:12,398 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s2: put 3, first1 -> (t:1, i:3), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,398 [s2@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:3): s2-TransactionManager <empty>
+2024-10-20 10:42:12,400 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 3
+2024-10-20 10:42:12,400 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s3: put 3, first1 -> (t:1, i:3), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,401 [s3@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:3): s3-TransactionManager <empty>
+2024-10-20 10:42:12,405 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 3
+2024-10-20 10:42:12,405 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s0: put 3, first1 -> (t:1, i:3), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,406 [s0@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:3): s0-TransactionManager <empty>
+2024-10-20 10:42:12,406 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 3
+2024-10-20 10:42:12,406 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s1: put 3, first1 -> (t:1, i:3), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,407 [s1@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:3): s1-TransactionManager <empty>
+2024-10-20 10:42:12,412 [s1-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:5): s1-TransactionManager
+  (t:1, i:5): initialized? false
+2024-10-20 10:42:12,412 [s2-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:5): s2-TransactionManager
+  (t:1, i:5): initialized? false
+2024-10-20 10:42:12,413 [s3-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:5): s3-TransactionManager
+  (t:1, i:5): initialized? false
+2024-10-20 10:42:12,414 [s0-server-thread1] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:5): s0-TransactionManager
+  (t:1, i:5): initialized? false
+2024-10-20 10:42:12,417 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 5
+2024-10-20 10:42:12,417 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s4: put 5, first2 -> (t:1, i:5), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,421 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 5
+2024-10-20 10:42:12,421 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s3: put 5, first2 -> (t:1, i:5), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,421 [s3@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:5): s3-TransactionManager <empty>
+2024-10-20 10:42:12,423 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 5
+2024-10-20 10:42:12,423 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s1: put 5, first2 -> (t:1, i:5), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,423 [s1@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:5): s1-TransactionManager <empty>
+2024-10-20 10:42:12,424 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 5
+2024-10-20 10:42:12,424 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s2: put 5, first2 -> (t:1, i:5), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,424 [s2@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:5): s2-TransactionManager <empty>
+2024-10-20 10:42:12,428 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 5
+2024-10-20 10:42:12,428 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s0: put 5, first2 -> (t:1, i:5), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,428 [s0@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:5): s0-TransactionManager <empty>
+2024-10-20 10:42:12,432 [s1-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:7): s1-TransactionManager
+  (t:1, i:7): initialized? false
+2024-10-20 10:42:12,433 [s2-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:7): s2-TransactionManager
+  (t:1, i:7): initialized? false
+2024-10-20 10:42:12,433 [s3-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:7): s3-TransactionManager
+  (t:1, i:7): initialized? false
+2024-10-20 10:42:12,435 [s0-server-thread1] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:7): s0-TransactionManager
+  (t:1, i:7): initialized? false
+2024-10-20 10:42:12,436 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 7
+2024-10-20 10:42:12,437 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s4: put 7, first3 -> (t:1, i:7), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,442 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 7
+2024-10-20 10:42:12,443 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s3: put 7, first3 -> (t:1, i:7), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,443 [s3@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:7): s3-TransactionManager <empty>
+2024-10-20 10:42:12,447 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 7
+2024-10-20 10:42:12,447 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s1: put 7, first3 -> (t:1, i:7), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,447 [s1@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:7): s1-TransactionManager <empty>
+2024-10-20 10:42:12,448 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 7
+2024-10-20 10:42:12,448 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 7
+2024-10-20 10:42:12,448 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s2: put 7, first3 -> (t:1, i:7), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,448 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s0: put 7, first3 -> (t:1, i:7), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,448 [s2@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:7): s2-TransactionManager <empty>
+2024-10-20 10:42:12,448 [s0@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:7): s0-TransactionManager <empty>
+2024-10-20 10:42:12,453 [s3-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:9): s3-TransactionManager
+  (t:1, i:9): initialized? false
+2024-10-20 10:42:12,455 [s1-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:9): s1-TransactionManager
+  (t:1, i:9): initialized? false
+2024-10-20 10:42:12,457 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 9
+2024-10-20 10:42:12,457 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s4: put 9, first4 -> (t:1, i:9), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,461 [s2-server-thread2] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:9): s2-TransactionManager
+  (t:1, i:9): initialized? false
+2024-10-20 10:42:12,463 [s0-server-thread1] DEBUG impl.TransactionManager (TransactionManager.java:computeIfAbsent(60)) - (t:1, i:9): s0-TransactionManager
+  (t:1, i:9): initialized? false
+2024-10-20 10:42:12,467 [main] DEBUG impl.TransactionManager (TransactionManager.java:getMap(49)) - s3-TransactionManager
+  (t:1, i:9): initialized? true
+2024-10-20 10:42:12,469 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 9
+2024-10-20 10:42:12,469 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s2: put 9, first4 -> (t:1, i:9), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,469 [s2@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:9): s2-TransactionManager <empty>
+2024-10-20 10:42:12,471 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 9
+2024-10-20 10:42:12,472 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s0: put 9, first4 -> (t:1, i:9), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,472 [s0@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:9): s0-TransactionManager <empty>
+2024-10-20 10:42:12,482 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 9
+2024-10-20 10:42:12,483 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s3: put 9, first4 -> (t:1, i:9), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,483 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:applyTransaction(250)) - applyTransaction for log index 9
+2024-10-20 10:42:12,483 [s3@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:9): s3-TransactionManager <empty>
+2024-10-20 10:42:12,483 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.SimpleStateMachine4Testing (SimpleStateMachine4Testing.java:put(206)) - s1: put 9, first4 -> (t:1, i:9), STATEMACHINELOGENTRY, WRITE: logData.size=6, stateMachineData.size=17, logEntryProtoSerializedSize=0
+2024-10-20 10:42:12,483 [s1@group-3BF9AB4BDA06-StateMachineUpdater] DEBUG impl.TransactionManager (TransactionManager.java:remove(68)) - (t:1, i:9): s1-TransactionManager <empty>
+2024-10-20 10:42:12,493 [main] INFO  grpc.TestRaftLogTruncateWithGrpc (RaftLogTruncateTests.java:runTestLogTruncate(118)) - killedPeers   : [s3, s0, s1]
+2024-10-20 10:42:12,493 [main] INFO  grpc.TestRaftLogTruncateWithGrpc (RaftLogTruncateTests.java:runTestLogTruncate(119)) - remainingPeers: [s4, s2]
+2024-10-20 10:42:12,494 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:runWithNewCluster(146)) - printing ALL groups
+  s3:  RUNNING  FOLLOWER s3@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s4:  RUNNING    LEADER s4@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c10:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s0:  RUNNING  FOLLOWER s0@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+2024-10-20 10:42:12,495 [main] ERROR impl.MiniRaftCluster (MiniRaftCluster.java:runWithNewCluster(147)) - Failed org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+org.opentest4j.AssertionFailedError: s3 TransactionContextMap is non-empty: {(t:1, i:9)=Memoized:org.apache.ratis.statemachine.impl.TransactionContextImpl@50628080} ==> expected: <true> but was: <false>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+	at org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:42)
+	at org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:191)
+	at org.apache.ratis.RaftLogTruncateTests.assertEmptyTransactionContextMap(RaftLogTruncateTests.java:244)
+	at org.apache.ratis.RaftLogTruncateTests.runTestLogTruncate(RaftLogTruncateTests.java:148)
+	at org.apache.ratis.RaftLogTruncateTests.runTestLogTruncate(RaftLogTruncateTests.java:116)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:144)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.RaftLogTruncateTests.testLogTruncate(RaftLogTruncateTests.java:94)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:766)
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+	at org.junit.jupiter.engine.extension.SameThreadTimeoutInvocation.proceed(SameThreadTimeoutInvocation.java:45)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85)
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47)
+	at org.junit.platform.launcher.core.SessionPerRequestLauncher.execute(SessionPerRequestLauncher.java:63)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(JUnitPlatformProvider.java:154)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(JUnitPlatformProvider.java:123)
+	at org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:377)
+	at org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:138)
+	at org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:465)
+	at org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:451)
+2024-10-20 10:42:12,498 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(847)) - ************************************************************** 
+2024-10-20 10:42:12,498 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(848)) - *** 
+2024-10-20 10:42:12,498 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(849)) - ***     Stopping MiniRaftClusterWithGrpc
+2024-10-20 10:42:12,498 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(850)) - *** 
+2024-10-20 10:42:12,498 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(851)) - ************************************************************** 
+2024-10-20 10:42:12,499 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(852)) - printing ALL groups
+  s3:  RUNNING  FOLLOWER s3@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s4:  RUNNING    LEADER s4@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c10:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s0:  RUNNING  FOLLOWER s0@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s1:  RUNNING  FOLLOWER s1@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+  s2:  RUNNING  FOLLOWER s2@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10), conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} RUNNING
+2024-10-20 10:42:12,501 [MiniRaftCluster-1] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(418)) - s3: close
+2024-10-20 10:42:12,505 [s3-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$1(515)) - s3@group-3BF9AB4BDA06: shutdown
+2024-10-20 10:42:12,506 [s3-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(74)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s3
+2024-10-20 10:42:12,506 [s3-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s3: shutdown s3@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:12,506 [s3-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(164)) - s3@group-3BF9AB4BDA06-StateMachineUpdater: set stopIndex = 9
+2024-10-20 10:42:12,506 [s3@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(170)) - s3@group-3BF9AB4BDA06-FollowerState was interrupted
+2024-10-20 10:42:12,506 [s3@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stop(141)) - s3@group-3BF9AB4BDA06-StateMachineUpdater: closing SimpleStateMachine4Testing, lastApplied=(t:1, i:9)
+2024-10-20 10:42:12,507 [MiniRaftCluster-5] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(418)) - s2: close
+2024-10-20 10:42:12,507 [MiniRaftCluster-5] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s2: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService now
+2024-10-20 10:42:12,507 [s3-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(567)) - Start closing s3@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10)
+2024-10-20 10:42:12,507 [s3@group-3BF9AB4BDA06-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s3@group-3BF9AB4BDA06-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+2024-10-20 10:42:12,508 [s3-impl-thread1] INFO  segmented.LogSegment (LogSegment.java:close(348)) - Successfully closed EntryCache-log_inprogress_0
+2024-10-20 10:42:12,504 [MiniRaftCluster-4] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(418)) - s1: close
+2024-10-20 10:42:12,504 [MiniRaftCluster-3] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(418)) - s0: close
+2024-10-20 10:42:12,509 [MiniRaftCluster-3] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s0: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService now
+2024-10-20 10:42:12,503 [MiniRaftCluster-2] INFO  server.RaftServer (RaftServerProxy.java:lambda$close$9(418)) - s4: close
+2024-10-20 10:42:12,507 [s2-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$1(515)) - s2@group-3BF9AB4BDA06: shutdown
+2024-10-20 10:42:12,510 [s0-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$1(515)) - s0@group-3BF9AB4BDA06: shutdown
+2024-10-20 10:42:12,510 [s0-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(74)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s0
+2024-10-20 10:42:12,510 [s0-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s0: shutdown s0@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:12,510 [s0-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(164)) - s0@group-3BF9AB4BDA06-StateMachineUpdater: set stopIndex = 9
+2024-10-20 10:42:12,510 [s4-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$1(515)) - s4@group-3BF9AB4BDA06: shutdown
+2024-10-20 10:42:12,510 [s4-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(74)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s4
+2024-10-20 10:42:12,510 [s4-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownLeaderState(103)) - s4: shutdown s4@group-3BF9AB4BDA06-LeaderStateImpl
+2024-10-20 10:42:12,511 [s1-impl-thread1] INFO  server.RaftServer$Division (RaftServerImpl.java:lambda$close$1(515)) - s1@group-3BF9AB4BDA06: shutdown
+2024-10-20 10:42:12,511 [s1-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(74)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s1
+2024-10-20 10:42:12,511 [s1-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s1: shutdown s1@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:12,511 [s1-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(164)) - s1@group-3BF9AB4BDA06-StateMachineUpdater: set stopIndex = 9
+2024-10-20 10:42:12,511 [MiniRaftCluster-4] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s1: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService now
+2024-10-20 10:42:12,511 [s4-impl-thread1] INFO  impl.PendingRequests (PendingRequests.java:sendNotLeaderResponses(287)) - s4@group-3BF9AB4BDA06-PendingRequests: sendNotLeaderResponses
+2024-10-20 10:42:12,505 [MiniRaftCluster-1] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s3: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService now
+2024-10-20 10:42:12,511 [s4@group-3BF9AB4BDA06->s2-GrpcLogAppender-LogAppenderDaemon] WARN  server.GrpcLogAppender (GrpcLogAppender.java:mayWait(293)) - s4@group-3BF9AB4BDA06->s2-GrpcLogAppender: Wait interrupted by java.lang.InterruptedException
+2024-10-20 10:42:12,513 [s1@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stop(141)) - s1@group-3BF9AB4BDA06-StateMachineUpdater: closing SimpleStateMachine4Testing, lastApplied=(t:1, i:9)
+2024-10-20 10:42:12,514 [s1-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(567)) - Start closing s1@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10)
+2024-10-20 10:42:12,511 [s4@group-3BF9AB4BDA06->s1-GrpcLogAppender-LogAppenderDaemon] WARN  server.GrpcLogAppender (GrpcLogAppender.java:mayWait(293)) - s4@group-3BF9AB4BDA06->s1-GrpcLogAppender: Wait interrupted by java.lang.InterruptedException
+2024-10-20 10:42:12,511 [s4@group-3BF9AB4BDA06->s3-GrpcLogAppender-LogAppenderDaemon] WARN  server.GrpcLogAppender (GrpcLogAppender.java:mayWait(293)) - s4@group-3BF9AB4BDA06->s3-GrpcLogAppender: Wait interrupted by java.lang.InterruptedException
+2024-10-20 10:42:12,511 [s4@group-3BF9AB4BDA06->s0-GrpcLogAppender-LogAppenderDaemon] WARN  server.GrpcLogAppender (GrpcLogAppender.java:mayWait(293)) - s4@group-3BF9AB4BDA06->s0-GrpcLogAppender: Wait interrupted by java.lang.InterruptedException
+2024-10-20 10:42:12,515 [grpc-default-executor-9] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s2: Completed APPEND_ENTRIES, lastRequest: s4->s2#43-t1,previous=(t:1, i:9),leaderCommit=9,initializing? false,entries: size=1, first=(t:1, i:10), METADATAENTRY(c:9)
+2024-10-20 10:42:12,515 [grpc-default-executor-9] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s2: Completed APPEND_ENTRIES, lastReply: null
+2024-10-20 10:42:12,516 [grpc-default-executor-2] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s3: Completed APPEND_ENTRIES, lastRequest: s4->s3#35-t1,previous=(t:1, i:9),leaderCommit=9,initializing? false,entries: size=1, first=(t:1, i:10), METADATAENTRY(c:9)
+2024-10-20 10:42:12,516 [grpc-default-executor-2] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s3: Completed APPEND_ENTRIES, lastReply: null
+2024-10-20 10:42:12,511 [s1@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(170)) - s1@group-3BF9AB4BDA06-FollowerState was interrupted
+2024-10-20 10:42:12,510 [s0@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stop(141)) - s0@group-3BF9AB4BDA06-StateMachineUpdater: closing SimpleStateMachine4Testing, lastApplied=(t:1, i:9)
+2024-10-20 10:42:12,510 [s0@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(170)) - s0@group-3BF9AB4BDA06-FollowerState was interrupted
+2024-10-20 10:42:12,510 [s2-impl-thread1] INFO  util.JmxRegister (JmxRegister.java:unregister(74)) - Successfully un-registered JMX Bean with object name Ratis:service=RaftServer,group=group-3BF9AB4BDA06,id=s2
+2024-10-20 10:42:12,516 [s2-impl-thread1] INFO  impl.RoleInfo (RoleInfo.java:shutdownFollowerState(121)) - s2: shutdown s2@group-3BF9AB4BDA06-FollowerState
+2024-10-20 10:42:12,517 [s2-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(164)) - s2@group-3BF9AB4BDA06-StateMachineUpdater: set stopIndex = 9
+2024-10-20 10:42:12,517 [grpc-default-executor-2] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s3: Completed APPEND_ENTRIES, lastRequest: null
+2024-10-20 10:42:12,517 [s1@group-3BF9AB4BDA06-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s1@group-3BF9AB4BDA06-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+2024-10-20 10:42:12,510 [MiniRaftCluster-2] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s4: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService now
+2024-10-20 10:42:12,517 [s2@group-3BF9AB4BDA06-FollowerState] INFO  impl.FollowerState (FollowerState.java:runImpl(170)) - s2@group-3BF9AB4BDA06-FollowerState was interrupted
+2024-10-20 10:42:12,517 [grpc-default-executor-1] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s0: Completed APPEND_ENTRIES, lastRequest: s4->s0#45-t1,previous=(t:1, i:9),leaderCommit=9,initializing? false,entries: size=1, first=(t:1, i:10), METADATAENTRY(c:9)
+2024-10-20 10:42:12,517 [s2@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stop(141)) - s2@group-3BF9AB4BDA06-StateMachineUpdater: closing SimpleStateMachine4Testing, lastApplied=(t:1, i:9)
+2024-10-20 10:42:12,518 [s0-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(567)) - Start closing s0@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10)
+2024-10-20 10:42:12,516 [grpc-default-executor-7] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s0: Completed APPEND_ENTRIES, lastRequest: null
+2024-10-20 10:42:12,518 [grpc-default-executor-5] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s2: Completed APPEND_ENTRIES, lastRequest: null
+2024-10-20 10:42:12,518 [grpc-default-executor-11] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s1: Completed APPEND_ENTRIES, lastRequest: s4->s1#37-t1,previous=(t:1, i:9),leaderCommit=9,initializing? false,entries: size=1, first=(t:1, i:10), METADATAENTRY(c:9)
+2024-10-20 10:42:12,518 [grpc-default-executor-11] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s1: Completed APPEND_ENTRIES, lastReply: null
+2024-10-20 10:42:12,518 [grpc-default-executor-9] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s2-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,518 [grpc-default-executor-2] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s3: Completed APPEND_ENTRIES, lastReply: serverReply {
+  requestorId: "s4"
+  replyId: "s3"
+  raftGroupId {
+    id: "\037\227\034C;FO\006\226\224;\371\253K\332\006"
+  }
+  callId: 9
+  success: true
+}
+term: 1
+nextIndex: 1
+matchIndex: 18446744073709551615
+isHearbeat: true
+
+2024-10-20 10:42:12,518 [grpc-default-executor-1] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s0: Completed APPEND_ENTRIES, lastReply: null
+2024-10-20 10:42:12,517 [grpc-default-executor-6] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:onCompleted(200)) - s1: Completed APPEND_ENTRIES, lastRequest: null
+2024-10-20 10:42:12,519 [grpc-default-executor-11] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s3-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,517 [s1-impl-thread1] INFO  segmented.LogSegment (LogSegment.java:close(348)) - Successfully closed EntryCache-log_inprogress_0
+2024-10-20 10:42:12,519 [grpc-default-executor-6] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s1: Completed APPEND_ENTRIES, lastReply: serverReply {
+  requestorId: "s4"
+  replyId: "s1"
+  raftGroupId {
+    id: "\037\227\034C;FO\006\226\224;\371\253K\332\006"
+  }
+  callId: 6
+  success: true
+}
+term: 1
+nextIndex: 1
+matchIndex: 18446744073709551615
+isHearbeat: true
+
+2024-10-20 10:42:12,518 [s0@group-3BF9AB4BDA06-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s0@group-3BF9AB4BDA06-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+2024-10-20 10:42:12,518 [s2-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(567)) - Start closing s2@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c9:last(t:1, i:10)
+2024-10-20 10:42:12,518 [grpc-default-executor-5] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s2: Completed APPEND_ENTRIES, lastReply: serverReply {
+  requestorId: "s4"
+  replyId: "s2"
+  raftGroupId {
+    id: "\037\227\034C;FO\006\226\224;\371\253K\332\006"
+  }
+  callId: 10
+  success: true
+}
+term: 1
+nextIndex: 1
+matchIndex: 18446744073709551615
+isHearbeat: true
+
+2024-10-20 10:42:12,518 [grpc-default-executor-7] INFO  server.GrpcServerProtocolService (GrpcServerProtocolService.java:lambda$onCompleted$7(202)) - s0: Completed APPEND_ENTRIES, lastReply: serverReply {
+  requestorId: "s4"
+  replyId: "s0"
+  raftGroupId {
+    id: "\037\227\034C;FO\006\226\224;\371\253K\332\006"
+  }
+  callId: 8
+  success: true
+}
+term: 1
+nextIndex: 1
+matchIndex: 18446744073709551615
+isHearbeat: true
+
+2024-10-20 10:42:12,520 [s2@group-3BF9AB4BDA06-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s2@group-3BF9AB4BDA06-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+2024-10-20 10:42:12,520 [grpc-default-executor-1] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s1-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,521 [s0-impl-thread1] INFO  segmented.LogSegment (LogSegment.java:close(348)) - Successfully closed EntryCache-log_inprogress_0
+2024-10-20 10:42:12,523 [s4-impl-thread1] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stopAndJoin(164)) - s4@group-3BF9AB4BDA06-StateMachineUpdater: set stopIndex = 10
+2024-10-20 10:42:12,523 [s4@group-3BF9AB4BDA06-StateMachineUpdater] INFO  impl.StateMachineUpdater (StateMachineUpdater.java:stop(141)) - s4@group-3BF9AB4BDA06-StateMachineUpdater: closing SimpleStateMachine4Testing, lastApplied=(t:1, i:10)
+2024-10-20 10:42:12,523 [s4-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(567)) - Start closing s4@group-3BF9AB4BDA06-SegmentedRaftLog:OPENED:c10:last(t:1, i:10)
+2024-10-20 10:42:12,523 [s4@group-3BF9AB4BDA06-cacheEviction-AwaitToRun] INFO  util.AwaitToRun (AwaitToRun.java:run(49)) - s4@group-3BF9AB4BDA06-cacheEviction-AwaitToRun-AwaitForSignal is interrupted
+2024-10-20 10:42:12,525 [s2-impl-thread1] INFO  segmented.LogSegment (LogSegment.java:close(348)) - Successfully closed EntryCache-log_inprogress_0
+2024-10-20 10:42:12,525 [grpc-default-executor-7] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s0-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,525 [grpc-default-executor-7] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s0-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,525 [s4-impl-thread1] INFO  segmented.LogSegment (LogSegment.java:close(348)) - Successfully closed EntryCache-log_inprogress_0
+2024-10-20 10:42:12,525 [grpc-default-executor-1] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s3-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,526 [grpc-default-executor-7] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s1-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,526 [grpc-default-executor-7] INFO  server.GrpcLogAppender (GrpcLogAppender.java:onCompleted(559)) - s4@group-3BF9AB4BDA06->s2-AppendLogResponseHandler: follower responses appendEntries COMPLETED
+2024-10-20 10:42:12,540 [Thread-105] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s3 Close channels
+2024-10-20 10:42:12,540 [Thread-110] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s4 Close channels
+2024-10-20 10:42:12,547 [Thread-122] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s1 Close channels
+2024-10-20 10:42:12,544 [MiniRaftCluster-4] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s1: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService successfully
+2024-10-20 10:42:12,547 [MiniRaftCluster-4] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s1: shutdown server GrpcServerProtocolService now
+2024-10-20 10:42:12,548 [Thread-123] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s2 Close channels
+2024-10-20 10:42:12,544 [Thread-119] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s2 Close channels
+2024-10-20 10:42:12,544 [Thread-104] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s3 Close channels
+2024-10-20 10:42:12,544 [Thread-111] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s0 Close channels
+2024-10-20 10:42:12,544 [Thread-117] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s0 Close channels
+2024-10-20 10:42:12,544 [Thread-116] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s4 Close channels
+2024-10-20 10:42:12,544 [MiniRaftCluster-5] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s2: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService successfully
+2024-10-20 10:42:12,551 [MiniRaftCluster-5] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s2: shutdown server GrpcServerProtocolService now
+2024-10-20 10:42:12,547 [Thread-118] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s1 Close channels
+2024-10-20 10:42:12,554 [MiniRaftCluster-5] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s2: shutdown server GrpcServerProtocolService successfully
+2024-10-20 10:42:12,554 [MiniRaftCluster-5] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s2: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService now
+2024-10-20 10:42:12,555 [MiniRaftCluster-5] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s2: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService successfully
+2024-10-20 10:42:12,556 [Thread-120] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s1 Close channels
+2024-10-20 10:42:12,566 [Thread-128] INFO  server.GrpcServerProtocolClient (GrpcServerProtocolClient.java:close(105)) - s2 Close channels
+2024-10-20 10:42:12,566 [MiniRaftCluster-4] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s1: shutdown server GrpcServerProtocolService successfully
+2024-10-20 10:42:12,567 [MiniRaftCluster-4] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s1: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService now
+2024-10-20 10:42:12,567 [MiniRaftCluster-3] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s0: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService successfully
+2024-10-20 10:42:12,567 [MiniRaftCluster-3] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s0: shutdown server GrpcServerProtocolService now
+2024-10-20 10:42:12,567 [MiniRaftCluster-4] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s1: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService successfully
+2024-10-20 10:42:12,570 [MiniRaftCluster-1] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s3: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService successfully
+2024-10-20 10:42:12,570 [MiniRaftCluster-3] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s0: shutdown server GrpcServerProtocolService successfully
+2024-10-20 10:42:12,570 [MiniRaftCluster-3] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s0: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService now
+2024-10-20 10:42:12,570 [MiniRaftCluster-1] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s3: shutdown server GrpcServerProtocolService now
+2024-10-20 10:42:12,570 [MiniRaftCluster-1] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s3: shutdown server GrpcServerProtocolService successfully
+2024-10-20 10:42:12,571 [MiniRaftCluster-2] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s4: shutdown server org.apache.ratis.grpc.server.GrpcClientProtocolService successfully
+2024-10-20 10:42:12,571 [MiniRaftCluster-2] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s4: shutdown server GrpcServerProtocolService now
+2024-10-20 10:42:12,571 [MiniRaftCluster-2] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s4: shutdown server GrpcServerProtocolService successfully
+2024-10-20 10:42:12,571 [MiniRaftCluster-2] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s4: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService now
+2024-10-20 10:42:12,571 [MiniRaftCluster-2] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s4: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService successfully
+2024-10-20 10:42:12,571 [MiniRaftCluster-3] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s0: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService successfully
+2024-10-20 10:42:12,571 [MiniRaftCluster-1] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(362)) - s3: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService now
+2024-10-20 10:42:12,575 [MiniRaftCluster-1] INFO  server.GrpcServicesImpl (GrpcServicesImpl.java:closeImpl(371)) - s3: shutdown server org.apache.ratis.grpc.server.GrpcAdminProtocolService successfully
+2024-10-20 10:42:13,183 [Timer-0] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:lambda$null$7(362)) - TIMED-PRINT: printing ALL groups
+  s3:  CLOSING  FOLLOWER s3@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s3@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9, conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} CLOSING
+  s4:  CLOSING    LEADER s4@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s4@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c10, conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} CLOSING
+  s0:  CLOSING  FOLLOWER s0@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s0@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9, conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} CLOSING
+  s1:  CLOSING  FOLLOWER s1@group-3BF9AB4BDA06:t1, leader=s4, voted=s0, raftlog=Memoized:s1@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9, conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} CLOSING
+  s2:  CLOSING  FOLLOWER s2@group-3BF9AB4BDA06:t1, leader=s4, voted=s4, raftlog=Memoized:s2@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9, conf=conf: {index: 0, cur=peers:[s3|localhost:15012, s4|localhost:15016, s0|localhost:15000, s1|localhost:15004, s2|localhost:15008]|listeners:[], old=null} CLOSING
+2024-10-20 10:42:13,460 [s4-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(253)) - s4@group-3BF9AB4BDA06-SegmentedRaftLogWorker close()
+2024-10-20 10:42:13,460 [s4-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(575)) - Successfully closed s4@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c10
+2024-10-20 10:42:13,464 [JvmPauseMonitor1] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s4: Stopped
+2024-10-20 10:42:13,469 [s2-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(253)) - s2@group-3BF9AB4BDA06-SegmentedRaftLogWorker close()
+2024-10-20 10:42:13,470 [s2-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(575)) - Successfully closed s2@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9
+2024-10-20 10:42:13,473 [s0-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(253)) - s0@group-3BF9AB4BDA06-SegmentedRaftLogWorker close()
+2024-10-20 10:42:13,473 [s0-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(575)) - Successfully closed s0@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9
+2024-10-20 10:42:13,480 [JvmPauseMonitor4] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s2: Stopped
+2024-10-20 10:42:13,480 [JvmPauseMonitor2] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s0: Stopped
+2024-10-20 10:42:13,483 [s1-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(253)) - s1@group-3BF9AB4BDA06-SegmentedRaftLogWorker close()
+2024-10-20 10:42:13,484 [s3-impl-thread1] INFO  segmented.SegmentedRaftLogWorker (SegmentedRaftLogWorker.java:close(253)) - s3@group-3BF9AB4BDA06-SegmentedRaftLogWorker close()
+2024-10-20 10:42:13,484 [s1-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(575)) - Successfully closed s1@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9
+2024-10-20 10:42:13,484 [s3-impl-thread1] INFO  raftlog.RaftLog (SegmentedRaftLog.java:close(575)) - Successfully closed s3@group-3BF9AB4BDA06-SegmentedRaftLog:CLOSED:c9
+2024-10-20 10:42:13,486 [JvmPauseMonitor0] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s3: Stopped
+2024-10-20 10:42:13,486 [JvmPauseMonitor3] INFO  util.JvmPauseMonitor (JvmPauseMonitor.java:run(152)) - JvmPauseMonitor-s1: Stopped
+2024-10-20 10:42:13,487 [main] INFO  impl.MiniRaftCluster (MiniRaftCluster.java:shutdown(885)) - MiniRaftClusterWithGrpc shutdown completed
+2024-10-20 10:42:13,487 [main] INFO  ratis.RaftTestUtil (RaftTestUtil.java:gc(596)) - gc 0
+2024-10-20 10:42:13,648 [main] INFO  impl.MiniRaftCluster (MiniRaftClusterWithGrpc.java:lambda$null$2(103)) - Checking s3-group-3BF9AB4BDA06
+2024-10-20 10:42:13,648 [main] INFO  impl.MiniRaftCluster (MiniRaftClusterWithGrpc.java:lambda$null$2(103)) - Checking s4-group-3BF9AB4BDA06
+2024-10-20 10:42:13,648 [main] INFO  impl.MiniRaftCluster (MiniRaftClusterWithGrpc.java:lambda$null$2(103)) - Checking s0-group-3BF9AB4BDA06
+2024-10-20 10:42:13,648 [main] INFO  impl.MiniRaftCluster (MiniRaftClusterWithGrpc.java:lambda$null$2(103)) - Checking s1-group-3BF9AB4BDA06
+2024-10-20 10:42:13,649 [main] INFO  impl.MiniRaftCluster (MiniRaftClusterWithGrpc.java:lambda$null$2(103)) - Checking s2-group-3BF9AB4BDA06
+]]></system-out>
+  </testcase>
+</testsuite>
