@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestLeaderElectionWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 1, Skipped: 22, Time elapsed: 44.911 s <<< FAILURE! - in org.apache.ratis.grpc.TestLeaderElectionWithGrpc
+org.apache.ratis.grpc.TestLeaderElectionWithGrpc.testLateServerStart  Time elapsed: 35.46 s  <<< ERROR!
+java.lang.IllegalStateException: #leaks = 1 > 0, #leaks == set.size = 1
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:77)
+	at org.apache.ratis.util.LeakDetector$LeakTrackerSet.assertNoLeaks(LeakDetector.java:100)
+	at org.apache.ratis.util.LeakDetector$LeakTrackerSet.getNumLeaks(LeakDetector.java:94)
+	at org.apache.ratis.util.LeakDetector.assertNoLeaks(LeakDetector.java:178)
+	at org.apache.ratis.server.impl.MiniRaftCluster.shutdown(MiniRaftCluster.java:892)
+	at org.apache.ratis.grpc.MiniRaftClusterWithGrpc.shutdown(MiniRaftClusterWithGrpc.java:97)
+	at org.apache.ratis.server.impl.MiniRaftCluster.close(MiniRaftCluster.java:843)
+	at org.apache.ratis.server.impl.LeaderElectionTests.testLateServerStart(LeaderElectionTests.java:401)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
