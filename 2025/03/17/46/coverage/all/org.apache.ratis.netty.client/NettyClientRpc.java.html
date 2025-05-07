@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyClientRpc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.client</a> &gt; <span class="el_source">NettyClientRpc.java</span></div><h1>NettyClientRpc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.netty.client;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.client.impl.RaftClientRpcWithProxy;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.netty.NettyRpcProxy;
+import org.apache.ratis.protocol.*;
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.SetConfigurationRequestProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerRequestProto;
+import org.apache.ratis.util.JavaUtils;
+
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+
+public class NettyClientRpc extends RaftClientRpcWithProxy&lt;NettyRpcProxy&gt; {
+  public NettyClientRpc(ClientId clientId, RaftProperties properties) {
+<span class="nc" id="L38">    super(new NettyRpcProxy.PeerMap(clientId.toString(), properties));</span>
+<span class="nc" id="L39">  }</span>
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendRequestAsync(RaftClientRequest request) {
+<span class="nc" id="L43">    final RaftPeerId serverId = request.getServerId();</span>
+    try {
+<span class="nc" id="L45">      final NettyRpcProxy proxy = getProxies().getProxy(serverId);</span>
+<span class="nc" id="L46">      final RaftNettyServerRequestProto serverRequestProto = buildRequestProto(request);</span>
+<span class="nc" id="L47">      return proxy.sendAsync(serverRequestProto).thenApply(replyProto -&gt; {</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">        if (request instanceof GroupListRequest) {</span>
+<span class="nc" id="L49">          return ClientProtoUtils.toGroupListReply(replyProto.getGroupListReply());</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        } else if (request instanceof GroupInfoRequest) {</span>
+<span class="nc" id="L51">          return ClientProtoUtils.toGroupInfoReply(replyProto.getGroupInfoReply());</span>
+        } else {
+<span class="nc" id="L53">          return ClientProtoUtils.toRaftClientReply(replyProto.getRaftClientReply());</span>
+        }
+      });
+<span class="nc" id="L56">    } catch (Throwable e) {</span>
+<span class="nc" id="L57">      return JavaUtils.completeExceptionally(e);</span>
+    }
+  }
+
+  @Override
+  public RaftClientReply sendRequest(RaftClientRequest request) throws IOException {
+<span class="nc" id="L63">    final RaftPeerId serverId = request.getServerId();</span>
+<span class="nc" id="L64">    final NettyRpcProxy proxy = getProxies().getProxy(serverId);</span>
+
+<span class="nc" id="L66">    final RaftNettyServerRequestProto serverRequestProto = buildRequestProto(request);</span>
+<span class="nc" id="L67">    final RaftRpcRequestProto rpcRequest = getRpcRequestProto(serverRequestProto);</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (request instanceof GroupListRequest) {</span>
+<span class="nc" id="L69">      return ClientProtoUtils.toGroupListReply(</span>
+<span class="nc" id="L70">          proxy.send(rpcRequest, serverRequestProto).getGroupListReply());</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">    } else if (request instanceof GroupInfoRequest) {</span>
+<span class="nc" id="L72">      return ClientProtoUtils.toGroupInfoReply(</span>
+<span class="nc" id="L73">          proxy.send(rpcRequest, serverRequestProto).getGroupInfoReply());</span>
+    } else {
+<span class="nc" id="L75">      return ClientProtoUtils.toRaftClientReply(</span>
+<span class="nc" id="L76">          proxy.send(rpcRequest, serverRequestProto).getRaftClientReply());</span>
+    }
+  }
+
+  private RaftNettyServerRequestProto buildRequestProto(RaftClientRequest request) {
+<span class="nc" id="L81">    final RaftNettyServerRequestProto.Builder b = RaftNettyServerRequestProto.newBuilder();</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">    if (request instanceof GroupManagementRequest) {</span>
+<span class="nc" id="L83">      final GroupManagementRequestProto proto = ClientProtoUtils.toGroupManagementRequestProto(</span>
+          (GroupManagementRequest)request);
+<span class="nc" id="L85">      b.setGroupManagementRequest(proto);</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    } else if (request instanceof SetConfigurationRequest) {</span>
+<span class="nc" id="L87">      final SetConfigurationRequestProto proto = ClientProtoUtils.toSetConfigurationRequestProto(</span>
+          (SetConfigurationRequest)request);
+<span class="nc" id="L89">      b.setSetConfigurationRequest(proto);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">    } else if (request instanceof GroupListRequest) {</span>
+<span class="nc" id="L91">      final RaftProtos.GroupListRequestProto proto = ClientProtoUtils.toGroupListRequestProto(</span>
+          (GroupListRequest)request);
+<span class="nc" id="L93">      b.setGroupListRequest(proto);</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">    } else if (request instanceof GroupInfoRequest) {</span>
+<span class="nc" id="L95">      final RaftProtos.GroupInfoRequestProto proto = ClientProtoUtils.toGroupInfoRequestProto(</span>
+          (GroupInfoRequest)request);
+<span class="nc" id="L97">      b.setGroupInfoRequest(proto);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">    } else if (request instanceof TransferLeadershipRequest) {</span>
+<span class="nc" id="L99">      final RaftProtos.TransferLeadershipRequestProto proto = ClientProtoUtils.toTransferLeadershipRequestProto(</span>
+          (TransferLeadershipRequest)request);
+<span class="nc" id="L101">      b.setTransferLeadershipRequest(proto);</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">    } else if (request instanceof SnapshotManagementRequest) {</span>
+<span class="nc" id="L103">      final RaftProtos.SnapshotManagementRequestProto proto = ClientProtoUtils.toSnapshotManagementRequestProto(</span>
+          (SnapshotManagementRequest) request);
+<span class="nc" id="L105">      b.setSnapshotManagementRequest(proto);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    } else if (request instanceof LeaderElectionManagementRequest) {</span>
+<span class="nc" id="L107">      final RaftProtos.LeaderElectionManagementRequestProto proto =</span>
+<span class="nc" id="L108">          ClientProtoUtils.toLeaderElectionManagementRequestProto(</span>
+          (LeaderElectionManagementRequest) request);
+<span class="nc" id="L110">      b.setLeaderElectionManagementRequest(proto);</span>
+<span class="nc" id="L111">    } else {</span>
+<span class="nc" id="L112">      final RaftClientRequestProto proto = ClientProtoUtils.toRaftClientRequestProto(request);</span>
+<span class="nc" id="L113">      b.setRaftClientRequest(proto);</span>
+    }
+<span class="nc" id="L115">    return b.build();</span>
+  }
+
+  private RaftRpcRequestProto getRpcRequestProto(RaftNettyServerRequestProto serverRequestProto) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">    if (serverRequestProto.hasGroupManagementRequest()) {</span>
+<span class="nc" id="L120">      return serverRequestProto.getGroupManagementRequest().getRpcRequest();</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    } else if (serverRequestProto.hasSetConfigurationRequest()) {</span>
+<span class="nc" id="L122">      return serverRequestProto.getSetConfigurationRequest().getRpcRequest();</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">    } else if (serverRequestProto.hasGroupListRequest()) {</span>
+<span class="nc" id="L124">      return serverRequestProto.getGroupListRequest().getRpcRequest();</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">    } else if (serverRequestProto.hasGroupInfoRequest()) {</span>
+<span class="nc" id="L126">      return serverRequestProto.getGroupInfoRequest().getRpcRequest();</span>
+    } else {
+<span class="nc" id="L128">      return serverRequestProto.getRaftClientRequest().getRpcRequest();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

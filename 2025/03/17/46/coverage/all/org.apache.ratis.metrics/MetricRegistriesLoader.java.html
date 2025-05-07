@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetricRegistriesLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.metrics</a> &gt; <span class="el_source">MetricRegistriesLoader.java</span></div><h1>MetricRegistriesLoader.java</h1><pre class="source lang-java linenums">/*
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.metrics;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.ServiceLoader;
+import java.util.stream.Collectors;
+
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.ratis.util.ReflectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
+public final class MetricRegistriesLoader {
+<span class="nc" id="L34">  private static final Logger LOG = LoggerFactory.getLogger(MetricRegistriesLoader.class);</span>
+
+  static final String DEFAULT_CLASS = &quot;org.apache.ratis.metrics.impl.MetricRegistriesImpl&quot;;
+
+  private MetricRegistriesLoader() {
+  }
+
+  /**
+   * Creates a {@link MetricRegistries} instance using the corresponding {@link MetricRegistries}
+   * available to {@link ServiceLoader} on the classpath. If no instance is found, then default
+   * implementation will be loaded.
+   * @return A {@link MetricRegistries} implementation.
+   */
+  public static MetricRegistries load() {
+<span class="nc" id="L48">    List&lt;MetricRegistries&gt; availableImplementations = getDefinedImplementations();</span>
+<span class="nc" id="L49">    return load(availableImplementations);</span>
+  }
+
+  /**
+   * Creates a {@link MetricRegistries} instance using the corresponding {@link MetricRegistries}
+   * available to {@link ServiceLoader} on the classpath. If no instance is found, then default
+   * implementation will be loaded.
+   * @return A {@link MetricRegistries} implementation.
+   */
+  @VisibleForTesting
+  static MetricRegistries load(List&lt;MetricRegistries&gt; registries) {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">    if (registries.isEmpty()) {</span>
+      try {
+<span class="nc" id="L62">        return ReflectionUtils.newInstance(Class.forName(DEFAULT_CLASS).asSubclass(MetricRegistries.class));</span>
+<span class="nc" id="L63">      } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L64">        throw new IllegalStateException(&quot;Failed to load default MetricRegistries &quot; + DEFAULT_CLASS, e);</span>
+      }
+    }
+
+<span class="nc" id="L68">    final MetricRegistries first = registries.get(0);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">    if (registries.size() == 1) {</span>
+      // One and only one instance -- what we want/expect
+<span class="nc" id="L71">      LOG.debug(&quot;Loaded {}&quot;, first.getClass());</span>
+    } else {
+      // Tell the user they're doing something wrong, and choose the first impl.
+<span class="nc" id="L74">      final List&lt;? extends Class&lt;?&gt;&gt; classes = registries.stream().map(Object::getClass).collect(Collectors.toList());</span>
+<span class="nc" id="L75">      LOG.warn(&quot;Found multiple MetricRegistries: {}. Using the first: {}&quot;, classes, first.getClass());</span>
+    }
+<span class="nc" id="L77">    return first;</span>
+  }
+
+  private static List&lt;MetricRegistries&gt; getDefinedImplementations() {
+<span class="nc" id="L81">    ServiceLoader&lt;MetricRegistries&gt; loader = ServiceLoader.load(</span>
+        MetricRegistries.class,
+<span class="nc" id="L83">        MetricRegistries.class.getClassLoader());</span>
+<span class="nc" id="L84">    List&lt;MetricRegistries&gt; availableFactories = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    for (MetricRegistries impl : loader) {</span>
+<span class="nc" id="L86">      availableFactories.add(impl);</span>
+<span class="nc" id="L87">    }</span>
+<span class="nc" id="L88">    return availableFactories;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZeroCopyMetrics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.metrics</a> &gt; <span class="el_source">ZeroCopyMetrics.java</span></div><h1>ZeroCopyMetrics.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * &lt;p&gt;
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * &lt;p&gt;
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.metrics;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.metrics.RatisMetrics;
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.ratis.thirdparty.com.google.protobuf.AbstractMessage;
+
+import java.util.function.Supplier;
+
+public class ZeroCopyMetrics extends RatisMetrics {
+  private static final String RATIS_GRPC_METRICS_APP_NAME = &quot;ratis_grpc&quot;;
+  private static final String RATIS_GRPC_METRICS_COMP_NAME = &quot;zero_copy&quot;;
+  private static final String RATIS_GRPC_METRICS_DESC = &quot;Metrics for Ratis Grpc Zero copy&quot;;
+
+<span class="nc" id="L34">  private final LongCounter zeroCopyMessages = getRegistry().counter(&quot;num_zero_copy_messages&quot;);</span>
+<span class="nc" id="L35">  private final LongCounter nonZeroCopyMessages = getRegistry().counter(&quot;num_non_zero_copy_messages&quot;);</span>
+<span class="nc" id="L36">  private final LongCounter releasedMessages = getRegistry().counter(&quot;num_released_messages&quot;);</span>
+
+  public ZeroCopyMetrics() {
+<span class="nc" id="L39">    super(createRegistry());</span>
+<span class="nc" id="L40">  }</span>
+
+  private static RatisMetricRegistry createRegistry() {
+<span class="nc" id="L43">    return create(new MetricRegistryInfo(&quot;&quot;,</span>
+        RATIS_GRPC_METRICS_APP_NAME,
+        RATIS_GRPC_METRICS_COMP_NAME, RATIS_GRPC_METRICS_DESC));
+  }
+
+  public void addUnreleased(String name, Supplier&lt;Integer&gt; unreleased) {
+<span class="nc" id="L49">    getRegistry().gauge(name +  &quot;_num_unreleased_messages&quot;, () -&gt; unreleased);</span>
+<span class="nc" id="L50">  }</span>
+
+
+  public void onZeroCopyMessage(AbstractMessage ignored) {
+<span class="nc" id="L54">    zeroCopyMessages.inc();</span>
+<span class="nc" id="L55">  }</span>
+
+  public void onNonZeroCopyMessage(AbstractMessage ignored) {
+<span class="nc" id="L58">    nonZeroCopyMessages.inc();</span>
+<span class="nc" id="L59">  }</span>
+
+  public void onReleasedMessage(AbstractMessage ignored) {
+<span class="nc" id="L62">    releasedMessages.inc();</span>
+<span class="nc" id="L63">  }</span>
+
+  @VisibleForTesting
+  public long zeroCopyMessages() {
+<span class="nc" id="L67">    return zeroCopyMessages.getCount();</span>
+  }
+
+  @VisibleForTesting
+  public long nonZeroCopyMessages() {
+<span class="nc" id="L72">    return nonZeroCopyMessages.getCount();</span>
+  }
+
+  @VisibleForTesting
+  public long releasedMessages() {
+<span class="nc" id="L77">    return releasedMessages.getCount();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

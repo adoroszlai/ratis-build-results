@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MessageStreamRequests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">MessageStreamRequests.java</span></div><h1>MessageStreamRequests.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos.MessageStreamRequestTypeProto;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.exceptions.StreamException;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+class MessageStreamRequests {
+<span class="nc" id="L39">  public static final Logger LOG = LoggerFactory.getLogger(MessageStreamRequests.class);</span>
+
+  private static class PendingStream {
+    private final ClientInvocationId key;
+<span class="nc" id="L43">    private long nextId = -1;</span>
+<span class="nc" id="L44">    private ByteString bytes = ByteString.EMPTY;</span>
+<span class="nc" id="L45">    private final List&lt;ReferenceCountedObject&lt;RaftClientRequest&gt;&gt; pendingRefs = new LinkedList&lt;&gt;();</span>
+
+<span class="nc" id="L47">    PendingStream(ClientInvocationId key) {</span>
+<span class="nc" id="L48">      this.key = key;</span>
+<span class="nc" id="L49">    }</span>
+
+    synchronized CompletableFuture&lt;ByteString&gt; append(long messageId,
+        ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">      if (nextId == -1) {</span>
+<span class="nc" id="L54">        nextId = messageId;</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">      } else if (messageId != nextId) {</span>
+<span class="nc" id="L56">        return JavaUtils.completeExceptionally(new StreamException(</span>
+            &quot;Unexpected message id in &quot; + key + &quot;: messageId = &quot; + messageId + &quot; != nextId = &quot; + nextId));
+      }
+<span class="nc" id="L59">      nextId++;</span>
+<span class="nc" id="L60">      final Message message = requestRef.retain().getMessage();</span>
+<span class="nc" id="L61">      pendingRefs.add(requestRef);</span>
+<span class="nc" id="L62">      bytes = bytes.concat(message.getContent());</span>
+<span class="nc" id="L63">      return CompletableFuture.completedFuture(bytes);</span>
+    }
+
+    synchronized CompletableFuture&lt;ReferenceCountedObject&lt;RaftClientRequest&gt;&gt; getWriteRequest(long messageId,
+        ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L68">      return append(messageId, requestRef)</span>
+<span class="nc" id="L69">          .thenApply(appended -&gt; RaftClientRequest.toWriteRequest(requestRef.get(), () -&gt; appended))</span>
+<span class="nc" id="L70">          .thenApply(request -&gt; ReferenceCountedObject.delegateFrom(pendingRefs, request));</span>
+    }
+
+    synchronized void clear() {
+<span class="nc" id="L74">      pendingRefs.forEach(ReferenceCountedObject::release);</span>
+<span class="nc" id="L75">      pendingRefs.clear();</span>
+<span class="nc" id="L76">    }</span>
+  }
+
+<span class="nc" id="L79">  static class StreamMap {</span>
+<span class="nc" id="L80">    private final Map&lt;ClientInvocationId, PendingStream&gt; map = new HashMap&lt;&gt;();</span>
+
+    synchronized PendingStream computeIfAbsent(ClientInvocationId key) {
+<span class="nc" id="L83">      return map.computeIfAbsent(key, PendingStream::new);</span>
+    }
+
+    synchronized PendingStream remove(ClientInvocationId key) {
+<span class="nc" id="L87">      return map.remove(key);</span>
+    }
+
+    synchronized void clear() {
+<span class="nc" id="L91">      map.values().forEach(PendingStream::clear);</span>
+<span class="nc" id="L92">      map.clear();</span>
+<span class="nc" id="L93">    }</span>
+  }
+
+  private final String name;
+<span class="nc" id="L97">  private final StreamMap streams = new StreamMap();</span>
+
+<span class="nc" id="L99">  MessageStreamRequests(Object name) {</span>
+<span class="nc" id="L100">    this.name = name + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L101">  }</span>
+
+  CompletableFuture&lt;?&gt; streamAsync(ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L104">    final RaftClientRequest request = requestRef.get();</span>
+<span class="nc" id="L105">    final MessageStreamRequestTypeProto stream = request.getType().getMessageStream();</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    Preconditions.assertTrue(!stream.getEndOfRequest());</span>
+<span class="nc" id="L107">    final ClientInvocationId key = ClientInvocationId.valueOf(request.getClientId(), stream.getStreamId());</span>
+<span class="nc" id="L108">    final PendingStream pending = streams.computeIfAbsent(key);</span>
+<span class="nc" id="L109">    return pending.append(stream.getMessageId(), requestRef);</span>
+  }
+
+  CompletableFuture&lt;ReferenceCountedObject&lt;RaftClientRequest&gt;&gt; streamEndOfRequestAsync(
+      ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L114">    final RaftClientRequest request = requestRef.get();</span>
+<span class="nc" id="L115">    final MessageStreamRequestTypeProto stream = request.getType().getMessageStream();</span>
+<span class="nc" id="L116">    Preconditions.assertTrue(stream.getEndOfRequest());</span>
+<span class="nc" id="L117">    final ClientInvocationId key = ClientInvocationId.valueOf(request.getClientId(), stream.getStreamId());</span>
+
+<span class="nc" id="L119">    final PendingStream pending = streams.remove(key);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (pending == null) {</span>
+<span class="nc" id="L121">      return JavaUtils.completeExceptionally(new StreamException(name + &quot;: &quot; + key + &quot; not found&quot;));</span>
+    }
+<span class="nc" id="L123">    return pending.getWriteRequest(stream.getMessageId(), requestRef);</span>
+  }
+
+  void clear() {
+<span class="nc" id="L127">    streams.clear();</span>
+<span class="nc" id="L128">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

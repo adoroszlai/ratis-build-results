@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExitUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ExitUtils.java</span></div><h1>ExitUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+
+/** Facilitates hooking process termination for tests and debugging. */
+public interface ExitUtils {
+  class ExitException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    private final int status;
+
+    ExitException(int status, String message, Throwable throwable) {
+<span class="nc" id="L34">      super(message, throwable);</span>
+<span class="nc" id="L35">      this.status = status;</span>
+<span class="nc" id="L36">    }</span>
+
+    public int getStatus() {
+<span class="nc" id="L39">      return status;</span>
+    }
+  }
+
+  final class States {
+<span class="nc" id="L44">    private static final Logger LOG = LoggerFactory.getLogger(ExitUtils.class);</span>
+<span class="nc" id="L45">    private static final States INSTANCE = new States();</span>
+
+<span class="nc" id="L47">    private volatile boolean systemExitDisabled = false;</span>
+<span class="nc" id="L48">    private volatile boolean terminateOnUncaughtException = true;</span>
+<span class="nc" id="L49">    private final AtomicReference&lt;ExitException&gt; firstExitException = new AtomicReference&lt;&gt;();</span>
+
+<span class="nc" id="L51">    private States() {</span>
+<span class="nc" id="L52">      Thread.setDefaultUncaughtExceptionHandler((thread, exception) -&gt; {</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        if (terminateOnUncaughtException) {</span>
+<span class="nc" id="L54">          terminate(-1, thread + &quot; has thrown an uncaught exception&quot;, exception, false, LOG);</span>
+        }
+<span class="nc" id="L56">      });</span>
+<span class="nc" id="L57">    }</span>
+
+    private void setTerminateOnUncaughtException(boolean terminateOnUncaughtException) {
+<span class="nc" id="L60">      this.terminateOnUncaughtException = terminateOnUncaughtException;</span>
+<span class="nc" id="L61">    }</span>
+
+    private void disableSystemExit() {
+<span class="nc" id="L64">      systemExitDisabled = true;</span>
+<span class="nc" id="L65">    }</span>
+
+    private boolean isSystemExitDisabled() {
+<span class="nc" id="L68">      return systemExitDisabled;</span>
+    }
+
+    private ExitException getFirstExitException() {
+<span class="nc" id="L72">      return firstExitException.get();</span>
+    }
+
+    private boolean setFirstExitException(ExitException e) {
+<span class="nc" id="L76">      Objects.requireNonNull(e, &quot;e == null&quot;);</span>
+<span class="nc" id="L77">      return firstExitException.compareAndSet(null, e);</span>
+    }
+
+    private boolean clearFirstExitException() {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">      return firstExitException.getAndSet(null) != null;</span>
+    }
+  }
+
+  /**
+   * @return the first {@link ExitException} thrown, or null if none thrown yet.
+   */
+  static ExitException getFirstExitException() {
+<span class="nc" id="L89">    return States.INSTANCE.getFirstExitException();</span>
+  }
+
+  /**
+   * Clear all previous terminate(..) calls, if there are any.
+   *
+   * @return true if the state is changed.
+   */
+  static boolean clear() {
+<span class="nc" id="L98">    return States.INSTANCE.clearFirstExitException();</span>
+  }
+
+  /** @return true if one of the terminate(..) methods has been invoked. */
+  static boolean isTerminated() {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    return getFirstExitException() != null;</span>
+  }
+
+  /** @throws AssertionError if {@link #isTerminated()} == true. */
+  static void assertNotTerminated() {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">    if (ExitUtils.isTerminated()) {</span>
+<span class="nc" id="L109">      throw new AssertionError(&quot;Unexpected exit.&quot;, getFirstExitException());</span>
+    }
+<span class="nc" id="L111">  }</span>
+
+  /** Disable the use of {@link System#exit(int)}. */
+  static void disableSystemExit() {
+<span class="nc" id="L115">    States.INSTANCE.disableSystemExit();</span>
+<span class="nc" id="L116">  }</span>
+
+  /**
+   *
+   *
+   * @param status Exit status
+   * @param message message used to create the {@code ExitException}
+   * @param throwExitException decide if this method should throw {@link ExitException}
+   * @throws ExitException if throwExitException == true and System.exit is disabled.
+   */
+  static void terminate(int status, String message, Throwable throwable, boolean throwExitException, Logger log)
+      throws ExitException {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    if (log != null) {</span>
+<span class="nc" id="L129">      final String s = &quot;Terminating with exit status &quot; + status + &quot;: &quot; + message;</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">      if (status == 0) {</span>
+<span class="nc" id="L131">        log.info(s, throwable);</span>
+      } else {
+<span class="nc" id="L133">        log.error(s, throwable);</span>
+      }
+    }
+
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (!States.INSTANCE.isSystemExitDisabled()) {</span>
+<span class="nc" id="L138">      System.exit(status);</span>
+    }
+
+<span class="nc" id="L141">    final ExitException ee = new ExitException(status, message, throwable);</span>
+
+<span class="nc" id="L143">    States.INSTANCE.setFirstExitException(ee);</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">    if (throwExitException) {</span>
+<span class="nc" id="L146">      throw ee;</span>
+    }
+<span class="nc" id="L148">  }</span>
+
+  static void terminate(int status, String message, Throwable throwable, Logger log) {
+<span class="nc" id="L151">    terminate(status, message, throwable, true, log);</span>
+<span class="nc" id="L152">  }</span>
+
+  static void terminate(int status, String message, Logger log) {
+<span class="nc" id="L155">    terminate(status, message, null, log);</span>
+<span class="nc" id="L156">  }</span>
+
+  static void setTerminateOnUncaughtException(boolean terminateOnUncaughtException) {
+<span class="nc" id="L159">    States.INSTANCE.setTerminateOnUncaughtException(terminateOnUncaughtException);</span>
+<span class="nc" id="L160">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyRpcService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.server</a> &gt; <span class="el_source">NettyRpcService.java</span></div><h1>NettyRpcService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.netty.server;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.netty.NettyConfigKeys;
+import org.apache.ratis.netty.NettyRpcProxy;
+import org.apache.ratis.netty.NettyUtils;
+import org.apache.ratis.protocol.GroupInfoReply;
+import org.apache.ratis.protocol.GroupListReply;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.rpc.SupportedRpcType;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerRpcWithProxy;
+import org.apache.ratis.thirdparty.io.netty.bootstrap.ServerBootstrap;
+import org.apache.ratis.thirdparty.io.netty.channel.*;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufEncoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LogLevel;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LoggingHandler;
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyExceptionReplyProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerReplyProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerRequestProto;
+import org.apache.ratis.util.CodeInjectionForTesting;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.ProtoUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
+import java.util.Objects;
+
+/**
+ * A netty server endpoint that acts as the communication layer.
+ */
+public final class NettyRpcService extends RaftServerRpcWithProxy&lt;NettyRpcProxy, NettyRpcProxy.PeerMap&gt; {
+<span class="nc" id="L60">  public static final Logger LOG = LoggerFactory.getLogger(NettyRpcService.class);</span>
+<span class="nc" id="L61">  static final String CLASS_NAME = JavaUtils.getClassSimpleName(NettyRpcService.class);</span>
+<span class="nc" id="L62">  public static final String SEND_SERVER_REQUEST = CLASS_NAME + &quot;.sendServerRequest&quot;;</span>
+
+  public static final class Builder {
+    private RaftServer server;
+
+    private Builder() {}
+
+    public Builder setServer(RaftServer raftServer) {
+<span class="nc" id="L70">      this.server = raftServer;</span>
+<span class="nc" id="L71">      return this;</span>
+    }
+
+    public NettyRpcService build() {
+<span class="nc" id="L75">      return new NettyRpcService(server);</span>
+    }
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L80">    return new Builder();</span>
+  }
+
+  private final RaftServer server;
+
+  private final EventLoopGroup bossGroup;
+  private final EventLoopGroup workerGroup;
+  private final MemoizedSupplier&lt;ChannelFuture&gt; channel;
+  private final InetSocketAddress socketAddress;
+
+  @ChannelHandler.Sharable
+<span class="nc" id="L91">  class InboundHandler extends SimpleChannelInboundHandler&lt;RaftNettyServerRequestProto&gt; {</span>
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, RaftNettyServerRequestProto proto) {
+<span class="nc" id="L94">      final RaftNettyServerReplyProto reply = handle(proto);</span>
+<span class="nc" id="L95">      ctx.writeAndFlush(reply);</span>
+<span class="nc" id="L96">    }</span>
+  }
+
+  /** Constructs a netty server with the given port. */
+  private NettyRpcService(RaftServer server) {
+<span class="nc" id="L101">    super(server::getId, id -&gt; new NettyRpcProxy.PeerMap(id.toString(), server.getProperties()));</span>
+<span class="nc" id="L102">    this.server = server;</span>
+
+<span class="nc" id="L104">    final ChannelInitializer&lt;SocketChannel&gt; initializer</span>
+<span class="nc" id="L105">        = new ChannelInitializer&lt;SocketChannel&gt;() {</span>
+      @Override
+      protected void initChannel(SocketChannel ch) {
+<span class="nc" id="L108">        final ChannelPipeline p = ch.pipeline();</span>
+
+<span class="nc" id="L110">        p.addLast(new ProtobufVarint32FrameDecoder());</span>
+<span class="nc" id="L111">        p.addLast(new ProtobufDecoder(RaftNettyServerRequestProto.getDefaultInstance()));</span>
+<span class="nc" id="L112">        p.addLast(new ProtobufVarint32LengthFieldPrepender());</span>
+<span class="nc" id="L113">        p.addLast(new ProtobufEncoder());</span>
+
+<span class="nc" id="L115">        p.addLast(new InboundHandler());</span>
+<span class="nc" id="L116">      }</span>
+    };
+
+<span class="nc" id="L119">    final boolean useEpoll = NettyConfigKeys.Server.useEpoll(server.getProperties());</span>
+<span class="nc" id="L120">    this.bossGroup = NettyUtils.newEventLoopGroup(CLASS_NAME + &quot;-bossGroup&quot;, 0, useEpoll);</span>
+<span class="nc" id="L121">    this.workerGroup = NettyUtils.newEventLoopGroup(CLASS_NAME + &quot;-workerGroup&quot;,0, useEpoll);</span>
+
+<span class="nc" id="L123">    final String host = NettyConfigKeys.Server.host(server.getProperties());</span>
+<span class="nc" id="L124">    final int port = NettyConfigKeys.Server.port(server.getProperties());</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">    socketAddress =</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            host == null || host.isEmpty() ? new InetSocketAddress(port) : new InetSocketAddress(host, port);</span>
+<span class="nc" id="L127">    this.channel = JavaUtils.memoize(() -&gt; new ServerBootstrap()</span>
+<span class="nc" id="L128">        .group(bossGroup, workerGroup)</span>
+<span class="nc" id="L129">        .channel(NettyUtils.getServerChannelClass(bossGroup))</span>
+<span class="nc" id="L130">        .handler(new LoggingHandler(LogLevel.INFO))</span>
+<span class="nc" id="L131">        .childHandler(initializer)</span>
+<span class="nc" id="L132">        .bind(socketAddress));</span>
+<span class="nc" id="L133">  }</span>
+
+  @Override
+  public SupportedRpcType getRpcType() {
+<span class="nc" id="L137">    return SupportedRpcType.NETTY;</span>
+  }
+
+  private Channel getChannel() {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    if (!channel.isInitialized()) {</span>
+<span class="nc" id="L142">      throw new IllegalStateException(getId() + &quot;: Failed to getChannel since the service is not yet started&quot;);</span>
+    }
+<span class="nc" id="L144">    return channel.get().awaitUninterruptibly().channel();</span>
+  }
+
+  @Override
+  public void startImpl() throws IOException {
+    try {
+<span class="nc" id="L150">      channel.get().syncUninterruptibly();</span>
+<span class="nc" id="L151">    } catch(Exception t) {</span>
+<span class="nc" id="L152">      throw new IOException(getId() + &quot;: Failed to start &quot; + JavaUtils.getClassSimpleName(getClass()), t);</span>
+<span class="nc" id="L153">    }</span>
+<span class="nc" id="L154">  }</span>
+
+  @Override
+  public void closeImpl() throws IOException {
+<span class="nc" id="L158">    final ChannelFuture f = getChannel().close();</span>
+<span class="nc" id="L159">    f.syncUninterruptibly();</span>
+<span class="nc" id="L160">    bossGroup.shutdownGracefully(0, 100, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L161">    workerGroup.shutdownGracefully(0, 100, TimeUnit.MILLISECONDS);</span>
+    try {
+<span class="nc" id="L163">      bossGroup.awaitTermination(1000, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L164">      workerGroup.awaitTermination(1000, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L165">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L166">      LOG.error(&quot;Interrupt EventLoopGroup terminate&quot;, e);</span>
+<span class="nc" id="L167">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L168">    }</span>
+<span class="nc" id="L169">    super.closeImpl();</span>
+<span class="nc" id="L170">  }</span>
+
+  @Override
+  public InetSocketAddress getInetSocketAddress() {
+    try {
+<span class="nc" id="L175">      return (InetSocketAddress) getChannel().localAddress();</span>
+<span class="nc" id="L176">    } catch (IllegalStateException e) {</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">      if (socketAddress.getPort() != NettyConfigKeys.Server.PORT_DEFAULT) {</span>
+<span class="nc" id="L178">        return socketAddress;</span>
+      }
+<span class="nc" id="L180">      throw e;</span>
+    }
+  }
+
+  RaftNettyServerReplyProto handle(RaftNettyServerRequestProto proto) {
+<span class="nc" id="L185">    RaftRpcRequestProto rpcRequest = null;</span>
+    try {
+<span class="nc bnc" id="L187" title="All 14 branches missed.">      switch (proto.getRaftNettyServerRequestCase()) {</span>
+        case REQUESTVOTEREQUEST:
+<span class="nc" id="L189">          final RequestVoteRequestProto request = proto.getRequestVoteRequest();</span>
+<span class="nc" id="L190">          rpcRequest = request.getServerRequest();</span>
+<span class="nc" id="L191">          final RequestVoteReplyProto reply = server.requestVote(request);</span>
+<span class="nc" id="L192">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L193">              .setRequestVoteReply(reply)</span>
+<span class="nc" id="L194">              .build();</span>
+
+        case TRANSFERLEADERSHIPREQUEST:
+<span class="nc" id="L197">          final TransferLeadershipRequestProto transferLeadershipRequest = proto.getTransferLeadershipRequest();</span>
+<span class="nc" id="L198">          rpcRequest = transferLeadershipRequest.getRpcRequest();</span>
+<span class="nc" id="L199">          final RaftClientReply transferLeadershipReply = server.transferLeadership(</span>
+<span class="nc" id="L200">              ClientProtoUtils.toTransferLeadershipRequest(transferLeadershipRequest));</span>
+<span class="nc" id="L201">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L202">              .setRaftClientReply(ClientProtoUtils.toRaftClientReplyProto(transferLeadershipReply))</span>
+<span class="nc" id="L203">              .build();</span>
+
+        case STARTLEADERELECTIONREQUEST:
+<span class="nc" id="L206">          final StartLeaderElectionRequestProto startLeaderElectionRequest = proto.getStartLeaderElectionRequest();</span>
+<span class="nc" id="L207">          rpcRequest = startLeaderElectionRequest.getServerRequest();</span>
+<span class="nc" id="L208">          final StartLeaderElectionReplyProto startLeaderElectionReply =</span>
+<span class="nc" id="L209">              server.startLeaderElection(startLeaderElectionRequest);</span>
+<span class="nc" id="L210">          return RaftNettyServerReplyProto.newBuilder().setStartLeaderElectionReply(startLeaderElectionReply).build();</span>
+
+        case SNAPSHOTMANAGEMENTREQUEST:
+<span class="nc" id="L213">          final SnapshotManagementRequestProto snapshotManagementRequest = proto.getSnapshotManagementRequest();</span>
+<span class="nc" id="L214">          rpcRequest = snapshotManagementRequest.getRpcRequest();</span>
+<span class="nc" id="L215">          final RaftClientReply snapshotManagementReply = server.snapshotManagement(</span>
+<span class="nc" id="L216">              ClientProtoUtils.toSnapshotManagementRequest(snapshotManagementRequest));</span>
+<span class="nc" id="L217">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L218">              .setRaftClientReply(ClientProtoUtils.toRaftClientReplyProto(snapshotManagementReply))</span>
+<span class="nc" id="L219">              .build();</span>
+
+        case LEADERELECTIONMANAGEMENTREQUEST:
+<span class="nc" id="L222">          final LeaderElectionManagementRequestProto leaderElectionManagementRequest =</span>
+<span class="nc" id="L223">              proto.getLeaderElectionManagementRequest();</span>
+<span class="nc" id="L224">          rpcRequest = leaderElectionManagementRequest.getRpcRequest();</span>
+<span class="nc" id="L225">          final RaftClientReply leaderElectionManagementReply = server.leaderElectionManagement(</span>
+<span class="nc" id="L226">              ClientProtoUtils.toLeaderElectionManagementRequest(leaderElectionManagementRequest));</span>
+<span class="nc" id="L227">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L228">              .setRaftClientReply(ClientProtoUtils.toRaftClientReplyProto(leaderElectionManagementReply))</span>
+<span class="nc" id="L229">              .build();</span>
+
+        case APPENDENTRIESREQUEST:
+<span class="nc" id="L232">          final AppendEntriesRequestProto appendEntriesRequest = proto.getAppendEntriesRequest();</span>
+<span class="nc" id="L233">          rpcRequest = appendEntriesRequest.getServerRequest();</span>
+<span class="nc" id="L234">          final AppendEntriesReplyProto appendEntriesReply = server.appendEntries(appendEntriesRequest);</span>
+<span class="nc" id="L235">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L236">              .setAppendEntriesReply(appendEntriesReply)</span>
+<span class="nc" id="L237">              .build();</span>
+
+        case INSTALLSNAPSHOTREQUEST:
+<span class="nc" id="L240">          final InstallSnapshotRequestProto installSnapshotRequest = proto.getInstallSnapshotRequest();</span>
+<span class="nc" id="L241">          rpcRequest = installSnapshotRequest.getServerRequest();</span>
+<span class="nc" id="L242">          final InstallSnapshotReplyProto installSnapshotReply = server.installSnapshot(installSnapshotRequest);</span>
+<span class="nc" id="L243">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L244">              .setInstallSnapshotReply(installSnapshotReply)</span>
+<span class="nc" id="L245">              .build();</span>
+
+        case RAFTCLIENTREQUEST:
+<span class="nc" id="L248">          final RaftClientRequestProto raftClientRequest = proto.getRaftClientRequest();</span>
+<span class="nc" id="L249">          rpcRequest = raftClientRequest.getRpcRequest();</span>
+<span class="nc" id="L250">          final RaftClientReply raftClientReply = server.submitClientRequest(</span>
+<span class="nc" id="L251">              ClientProtoUtils.toRaftClientRequest(raftClientRequest));</span>
+<span class="nc" id="L252">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L253">              .setRaftClientReply(ClientProtoUtils.toRaftClientReplyProto(raftClientReply))</span>
+<span class="nc" id="L254">              .build();</span>
+
+        case SETCONFIGURATIONREQUEST:
+<span class="nc" id="L257">          final SetConfigurationRequestProto configurationRequest = proto.getSetConfigurationRequest();</span>
+<span class="nc" id="L258">          rpcRequest = configurationRequest.getRpcRequest();</span>
+<span class="nc" id="L259">          final RaftClientReply configurationReply = server.setConfiguration(</span>
+<span class="nc" id="L260">              ClientProtoUtils.toSetConfigurationRequest(configurationRequest));</span>
+<span class="nc" id="L261">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L262">              .setRaftClientReply(ClientProtoUtils.toRaftClientReplyProto(configurationReply))</span>
+<span class="nc" id="L263">              .build();</span>
+
+        case GROUPMANAGEMENTREQUEST:
+<span class="nc" id="L266">          final GroupManagementRequestProto groupManagementRequest = proto.getGroupManagementRequest();</span>
+<span class="nc" id="L267">          rpcRequest = groupManagementRequest.getRpcRequest();</span>
+<span class="nc" id="L268">          final RaftClientReply groupManagementReply = server.groupManagement(</span>
+<span class="nc" id="L269">              ClientProtoUtils.toGroupManagementRequest(groupManagementRequest));</span>
+<span class="nc" id="L270">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L271">              .setRaftClientReply(ClientProtoUtils.toRaftClientReplyProto(groupManagementReply))</span>
+<span class="nc" id="L272">              .build();</span>
+
+        case GROUPLISTREQUEST:
+<span class="nc" id="L275">          final GroupListRequestProto groupListRequest = proto.getGroupListRequest();</span>
+<span class="nc" id="L276">          rpcRequest = groupListRequest.getRpcRequest();</span>
+<span class="nc" id="L277">          final GroupListReply groupListReply = server.getGroupList(</span>
+<span class="nc" id="L278">              ClientProtoUtils.toGroupListRequest(groupListRequest));</span>
+<span class="nc" id="L279">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L280">              .setGroupListReply(ClientProtoUtils.toGroupListReplyProto(groupListReply))</span>
+<span class="nc" id="L281">              .build();</span>
+
+        case GROUPINFOREQUEST:
+<span class="nc" id="L284">          final GroupInfoRequestProto groupInfoRequest = proto.getGroupInfoRequest();</span>
+<span class="nc" id="L285">          rpcRequest = groupInfoRequest.getRpcRequest();</span>
+<span class="nc" id="L286">          final GroupInfoReply groupInfoReply = server.getGroupInfo(</span>
+<span class="nc" id="L287">              ClientProtoUtils.toGroupInfoRequest(groupInfoRequest));</span>
+<span class="nc" id="L288">          return RaftNettyServerReplyProto.newBuilder()</span>
+<span class="nc" id="L289">              .setGroupInfoReply(ClientProtoUtils.toGroupInfoReplyProto(groupInfoReply))</span>
+<span class="nc" id="L290">              .build();</span>
+
+        case RAFTNETTYSERVERREQUEST_NOT_SET:
+<span class="nc" id="L293">          throw new IllegalArgumentException(&quot;Request case not set in proto: &quot;</span>
+<span class="nc" id="L294">              + proto.getRaftNettyServerRequestCase());</span>
+        default:
+<span class="nc" id="L296">          throw new UnsupportedOperationException(&quot;Request case not supported: &quot;</span>
+<span class="nc" id="L297">              + proto.getRaftNettyServerRequestCase());</span>
+      }
+<span class="nc" id="L299">    } catch (IOException ioe) {</span>
+<span class="nc" id="L300">      return toRaftNettyServerReplyProto(</span>
+<span class="nc" id="L301">          Objects.requireNonNull(rpcRequest, &quot;rpcRequest = null&quot;), ioe);</span>
+    }
+  }
+
+  private static RaftNettyServerReplyProto toRaftNettyServerReplyProto(
+      RaftRpcRequestProto request, IOException e) {
+<span class="nc" id="L307">    final RaftRpcReplyProto.Builder rpcReply = RaftRpcReplyProto.newBuilder()</span>
+<span class="nc" id="L308">        .setRequestorId(request.getRequestorId())</span>
+<span class="nc" id="L309">        .setReplyId(request.getReplyId())</span>
+<span class="nc" id="L310">        .setCallId(request.getCallId())</span>
+<span class="nc" id="L311">        .setSuccess(false);</span>
+<span class="nc" id="L312">    final RaftNettyExceptionReplyProto.Builder ioe = RaftNettyExceptionReplyProto.newBuilder()</span>
+<span class="nc" id="L313">        .setRpcReply(rpcReply)</span>
+<span class="nc" id="L314">        .setException(ProtoUtils.writeObject2ByteString(e));</span>
+<span class="nc" id="L315">    return RaftNettyServerReplyProto.newBuilder().setExceptionReply(ioe).build();</span>
+  }
+
+  @Override
+  public RequestVoteReplyProto requestVote(RequestVoteRequestProto request) throws IOException {
+<span class="nc" id="L320">    CodeInjectionForTesting.execute(SEND_SERVER_REQUEST, getId(), null, request);</span>
+
+<span class="nc" id="L322">    final RaftNettyServerRequestProto proto = RaftNettyServerRequestProto.newBuilder()</span>
+<span class="nc" id="L323">        .setRequestVoteRequest(request)</span>
+<span class="nc" id="L324">        .build();</span>
+<span class="nc" id="L325">    final RaftRpcRequestProto serverRequest = request.getServerRequest();</span>
+<span class="nc" id="L326">    return sendRaftNettyServerRequestProto(serverRequest, proto).getRequestVoteReply();</span>
+  }
+
+
+  @Override
+  public StartLeaderElectionReplyProto startLeaderElection(StartLeaderElectionRequestProto request) throws IOException {
+<span class="nc" id="L332">    CodeInjectionForTesting.execute(SEND_SERVER_REQUEST, getId(), null, request);</span>
+
+<span class="nc" id="L334">    final RaftNettyServerRequestProto proto = RaftNettyServerRequestProto.newBuilder()</span>
+<span class="nc" id="L335">        .setStartLeaderElectionRequest(request)</span>
+<span class="nc" id="L336">        .build();</span>
+<span class="nc" id="L337">    final RaftRpcRequestProto serverRequest = request.getServerRequest();</span>
+<span class="nc" id="L338">    return sendRaftNettyServerRequestProto(serverRequest, proto).getStartLeaderElectionReply();</span>
+  }
+
+  @Override
+  public AppendEntriesReplyProto appendEntries(AppendEntriesRequestProto request) throws IOException {
+<span class="nc" id="L343">    CodeInjectionForTesting.execute(SEND_SERVER_REQUEST, getId(), null, request);</span>
+
+<span class="nc" id="L345">    final RaftNettyServerRequestProto proto = RaftNettyServerRequestProto.newBuilder()</span>
+<span class="nc" id="L346">        .setAppendEntriesRequest(request)</span>
+<span class="nc" id="L347">        .build();</span>
+<span class="nc" id="L348">    final RaftRpcRequestProto serverRequest = request.getServerRequest();</span>
+<span class="nc" id="L349">    return sendRaftNettyServerRequestProto(serverRequest, proto).getAppendEntriesReply();</span>
+  }
+
+  @Override
+  public InstallSnapshotReplyProto installSnapshot(InstallSnapshotRequestProto request) throws IOException {
+<span class="nc" id="L354">    CodeInjectionForTesting.execute(SEND_SERVER_REQUEST, getId(), null, request);</span>
+
+<span class="nc" id="L356">    final RaftNettyServerRequestProto proto = RaftNettyServerRequestProto.newBuilder()</span>
+<span class="nc" id="L357">        .setInstallSnapshotRequest(request)</span>
+<span class="nc" id="L358">        .build();</span>
+<span class="nc" id="L359">    final RaftRpcRequestProto serverRequest = request.getServerRequest();</span>
+<span class="nc" id="L360">    return sendRaftNettyServerRequestProto(serverRequest, proto).getInstallSnapshotReply();</span>
+  }
+
+  private RaftNettyServerReplyProto sendRaftNettyServerRequestProto(
+      RaftRpcRequestProto request, RaftNettyServerRequestProto proto)
+      throws IOException {
+<span class="nc" id="L366">    final RaftPeerId id = RaftPeerId.valueOf(request.getReplyId());</span>
+    try {
+<span class="nc" id="L368">      final NettyRpcProxy p = getProxies().getProxy(id);</span>
+<span class="nc" id="L369">      return p.send(request, proto);</span>
+<span class="nc" id="L370">    } catch (Exception e) {</span>
+<span class="nc" id="L371">      getProxies().handleException(id, e, false);</span>
+<span class="nc" id="L372">      throw e;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

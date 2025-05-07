@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogAppenderDefault.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">LogAppenderDefault.java</span></div><h1>LogAppenderDefault.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotReplyProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.rpc.CallId;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.Timestamp;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.util.Comparator;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * The default implementation of {@link LogAppender}
+ * using {@link org.apache.ratis.server.protocol.RaftServerProtocol}.
+ */
+class LogAppenderDefault extends LogAppenderBase {
+  LogAppenderDefault(RaftServer.Division server, LeaderState leaderState, FollowerInfo f) {
+<span class="nc" id="L46">    super(server, leaderState, f);</span>
+<span class="nc" id="L47">  }</span>
+
+  @Override
+  public long getCallId() {
+<span class="nc" id="L51">    return CallId.get();</span>
+  }
+
+  @Override
+  public Comparator&lt;Long&gt; getCallIdComparator() {
+<span class="nc" id="L56">    return CallId.getComparator();</span>
+  }
+
+  /** Send an appendEntries RPC; retry indefinitely. */
+  private AppendEntriesReplyProto sendAppendEntriesWithRetries(AtomicLong requestFirstIndex)
+      throws InterruptedException, InterruptedIOException, RaftLogIOException {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    for(int retry = 0; isRunning(); retry++) {</span>
+<span class="nc" id="L63">      final ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; request = nextAppendEntriesRequest(</span>
+<span class="nc" id="L64">          CallId.getAndIncrement(), false);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">      if (request == null) {</span>
+<span class="nc" id="L66">        LOG.trace(&quot;{} no entries to send now, wait ...&quot;, this);</span>
+<span class="nc" id="L67">        return null;</span>
+      }
+      try {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (!isRunning()) {</span>
+<span class="nc" id="L71">          LOG.info(&quot;{} is stopped. Skip appendEntries.&quot;, this);</span>
+<span class="nc" id="L72">          return null;</span>
+        }
+
+<span class="nc" id="L75">        final AppendEntriesRequestProto proto = request.get();</span>
+<span class="nc" id="L76">        final AppendEntriesReplyProto reply = sendAppendEntries(proto);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        final long first = proto.getEntriesCount() &gt; 0 ? proto.getEntries(0).getIndex() : RaftLog.INVALID_LOG_INDEX;</span>
+<span class="nc" id="L78">        requestFirstIndex.set(first);</span>
+<span class="nc" id="L79">        return reply;</span>
+<span class="nc" id="L80">      } catch (InterruptedIOException | RaftLogIOException e) {</span>
+<span class="nc" id="L81">        throw e;</span>
+<span class="nc" id="L82">      } catch (IOException ioe) {</span>
+        // TODO should have more detailed retry policy here.
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if (retry % 10 == 0) { // to reduce the number of messages</span>
+<span class="nc" id="L85">          LOG.warn(&quot;{}: Failed to appendEntries (retry={})&quot;, this, retry, ioe);</span>
+        }
+<span class="nc" id="L87">        handleException(ioe);</span>
+      } finally {
+<span class="nc" id="L89">        request.release();</span>
+      }
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      if (isRunning()) {</span>
+<span class="nc" id="L93">        getServer().properties().rpcSleepTime().sleep();</span>
+      }
+    }
+<span class="nc" id="L96">    return null;</span>
+  }
+
+  private AppendEntriesReplyProto sendAppendEntries(AppendEntriesRequestProto request) throws IOException {
+<span class="nc" id="L100">    resetHeartbeatTrigger();</span>
+<span class="nc" id="L101">    final Timestamp sendTime = Timestamp.currentTime();</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">    getFollower().updateLastRpcSendTime(request.getEntriesCount() == 0);</span>
+<span class="nc" id="L103">    final AppendEntriesReplyProto r = getServerRpc().appendEntries(request);</span>
+<span class="nc" id="L104">    getFollower().updateLastRpcResponseTime();</span>
+<span class="nc" id="L105">    getFollower().updateLastRespondedAppendEntriesSendTime(sendTime);</span>
+
+<span class="nc" id="L107">    getLeaderState().onFollowerCommitIndex(getFollower(), r.getFollowerCommit());</span>
+<span class="nc" id="L108">    return r;</span>
+  }
+
+  private InstallSnapshotReplyProto installSnapshot(SnapshotInfo snapshot) throws InterruptedIOException {
+<span class="nc" id="L112">    String requestId = UUID.randomUUID().toString();</span>
+<span class="nc" id="L113">    InstallSnapshotReplyProto reply = null;</span>
+    try {
+<span class="nc bnc" id="L115" title="All 2 branches missed.">      for (InstallSnapshotRequestProto request : newInstallSnapshotRequests(requestId, snapshot)) {</span>
+<span class="nc" id="L116">        getFollower().updateLastRpcSendTime(false);</span>
+<span class="nc" id="L117">        reply = getServerRpc().installSnapshot(request);</span>
+<span class="nc" id="L118">        getFollower().updateLastRpcResponseTime();</span>
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (!reply.getServerReply().getSuccess()) {</span>
+<span class="nc" id="L121">          return reply;</span>
+        }
+<span class="nc" id="L123">      }</span>
+<span class="nc" id="L124">    } catch (InterruptedIOException iioe) {</span>
+<span class="nc" id="L125">      throw iioe;</span>
+<span class="nc" id="L126">    } catch (Exception ioe) {</span>
+<span class="nc" id="L127">      LOG.warn(&quot;{}: Failed to installSnapshot {}&quot;, this, snapshot, ioe);</span>
+<span class="nc" id="L128">      handleException(ioe);</span>
+<span class="nc" id="L129">      return null;</span>
+<span class="nc" id="L130">    }</span>
+
+<span class="nc bnc" id="L132" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc" id="L133">      getFollower().setSnapshotIndex(snapshot.getTermIndex().getIndex());</span>
+<span class="nc" id="L134">      LOG.info(&quot;{}: installSnapshot {} successfully&quot;, this, snapshot);</span>
+<span class="nc" id="L135">      getServer().getRaftServerMetrics().onSnapshotInstalled();</span>
+    }
+<span class="nc" id="L137">    return reply;</span>
+  }
+
+  @Override
+  public void run() throws InterruptedException, IOException {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">    while (isRunning()) {</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      if (shouldSendAppendEntries()) {</span>
+<span class="nc" id="L144">        SnapshotInfo snapshot = shouldInstallSnapshot();</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (snapshot != null) {</span>
+<span class="nc" id="L146">          LOG.info(&quot;{}: followerNextIndex = {} but logStartIndex = {}, send snapshot {} to follower&quot;,</span>
+<span class="nc" id="L147">              this, getFollower().getNextIndex(), getRaftLog().getStartIndex(), snapshot);</span>
+
+<span class="nc" id="L149">          final InstallSnapshotReplyProto r = installSnapshot(snapshot);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">          if (r != null) {</span>
+<span class="nc bnc" id="L151" title="All 3 branches missed.">            switch (r.getResult()) {</span>
+              case NOT_LEADER:
+<span class="nc" id="L153">                onFollowerTerm(r.getTerm());</span>
+<span class="nc" id="L154">                break;</span>
+              case SUCCESS:
+              case SNAPSHOT_UNAVAILABLE:
+              case ALREADY_INSTALLED:
+              case SNAPSHOT_EXPIRED:
+<span class="nc" id="L159">                getFollower().setAttemptedToInstallSnapshot();</span>
+<span class="nc" id="L160">                break;</span>
+              default:
+                break;
+            }
+          }
+          // otherwise if r is null, retry the snapshot installation
+<span class="nc" id="L166">        } else {</span>
+<span class="nc" id="L167">          final AtomicLong requestFirstIndex = new AtomicLong(RaftLog.INVALID_LOG_INDEX);</span>
+<span class="nc" id="L168">          final AppendEntriesReplyProto r = sendAppendEntriesWithRetries(requestFirstIndex);</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">          if (r != null) {</span>
+<span class="nc" id="L170">            handleReply(r, requestFirstIndex.get());</span>
+          }
+        }
+      }
+<span class="nc bnc" id="L174" title="All 4 branches missed.">      if (isRunning() &amp;&amp; !hasAppendEntries()) {</span>
+<span class="nc" id="L175">        getEventAwaitForSignal().await(getHeartbeatWaitTimeMs(), TimeUnit.MILLISECONDS);</span>
+      }
+<span class="nc" id="L177">      getLeaderState().checkHealth(getFollower());</span>
+    }
+<span class="nc" id="L179">  }</span>
+
+  private void handleReply(AppendEntriesReplyProto reply, long requestFirstIndex)
+      throws IllegalArgumentException {
+<span class="nc bnc" id="L183" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc bnc" id="L184" title="All 5 branches missed.">      switch (reply.getResult()) {</span>
+        case SUCCESS:
+<span class="nc" id="L186">          final long oldNextIndex = getFollower().getNextIndex();</span>
+<span class="nc" id="L187">          final long nextIndex = reply.getNextIndex();</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">          if (nextIndex &lt; oldNextIndex) {</span>
+<span class="nc" id="L189">            throw new IllegalStateException(&quot;nextIndex=&quot; + nextIndex</span>
+                + &quot; &lt; oldNextIndex=&quot; + oldNextIndex
+<span class="nc" id="L191">                + &quot;, reply=&quot; + ServerStringUtils.toAppendEntriesReplyString(reply));</span>
+          }
+
+<span class="nc bnc" id="L194" title="All 2 branches missed.">          if (nextIndex &gt; oldNextIndex) {</span>
+<span class="nc" id="L195">            getFollower().updateMatchIndex(nextIndex - 1);</span>
+<span class="nc" id="L196">            getFollower().increaseNextIndex(nextIndex);</span>
+<span class="nc" id="L197">            getLeaderState().onFollowerSuccessAppendEntries(getFollower());</span>
+          }
+          break;
+        case NOT_LEADER:
+          // check if should step down
+<span class="nc" id="L202">          onFollowerTerm(reply.getTerm());</span>
+<span class="nc" id="L203">          break;</span>
+        case INCONSISTENCY:
+<span class="nc" id="L205">          getFollower().setNextIndex(getNextIndexForInconsistency(requestFirstIndex, reply.getNextIndex()));</span>
+<span class="nc" id="L206">          break;</span>
+        case UNRECOGNIZED:
+<span class="nc" id="L208">          LOG.warn(&quot;{}: received {}&quot;, this, reply.getResult());</span>
+<span class="nc" id="L209">          break;</span>
+<span class="nc" id="L210">        default: throw new IllegalArgumentException(&quot;Unable to process result &quot; + reply.getResult());</span>
+      }
+<span class="nc" id="L212">      getLeaderState().onAppendEntriesReply(this, reply);</span>
+    }
+<span class="nc" id="L214">  }</span>
+
+  private void handleException(Exception e) {
+<span class="nc" id="L217">    LOG.trace(&quot;TRACE&quot;, e);</span>
+<span class="nc" id="L218">    getServerRpc().handleException(getFollowerId(), e, false);</span>
+<span class="nc" id="L219">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

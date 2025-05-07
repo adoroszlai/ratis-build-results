@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetricRegistryInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.metrics</a> &gt; <span class="el_source">MetricRegistryInfo.java</span></div><h1>MetricRegistryInfo.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.metrics;
+
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+
+import java.util.Objects;
+import java.util.function.Supplier;
+
+/**
+ * This class holds the name, description and JMX related context names for such group of metrics.
+ * &lt;p&gt;
+ * This class is immutable.
+ */
+public class MetricRegistryInfo {
+  private final String prefix;
+  private final String metricsDescription;
+  private final String metricsComponentName;
+  private final String applicationName;
+
+<span class="nc" id="L38">  private final Supplier&lt;Integer&gt; hash = MemoizedSupplier.valueOf(this::computeHash);</span>
+
+  /**
+   * @param prefix   className or component name this metric registry collects metric for
+   * @param applicationName application Name needs to be in small case as it is used for hadoop2metrics
+   * @param metricsComponentName component name needs to be in small case as it is used for hadoop2metrics
+   * @param metricsDescription description of the metrics collected by this registry
+   *
+   */
+  public MetricRegistryInfo(String prefix, String applicationName, String metricsComponentName,
+<span class="nc" id="L48">      String metricsDescription) {</span>
+<span class="nc" id="L49">    this.prefix = prefix;</span>
+<span class="nc" id="L50">    this.applicationName = applicationName;</span>
+<span class="nc" id="L51">    this.metricsComponentName = metricsComponentName;</span>
+<span class="nc" id="L52">    this.metricsDescription = metricsDescription;</span>
+<span class="nc" id="L53">  }</span>
+
+  public String getApplicationName() {
+<span class="nc" id="L56">    return this.applicationName;</span>
+  }
+
+  /**
+   *
+   * @return component name for which Metric is getting collected
+   */
+  public String getMetricsComponentName() {
+<span class="nc" id="L64">    return metricsComponentName;</span>
+  }
+
+  /**
+   * Get the description of what this metric registry exposes.
+   */
+  public String getMetricsDescription() {
+<span class="nc" id="L71">    return metricsDescription;</span>
+  }
+
+  /**
+   * Get the unique prefix for metrics that are being exported by this registry.
+   */
+  public String getPrefix() {
+<span class="nc" id="L78">    return prefix;</span>
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    if (this == obj) {</span>
+<span class="nc" id="L84">      return true;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    } else if (!(obj instanceof MetricRegistryInfo)) {</span>
+<span class="nc" id="L86">      return false;</span>
+    }
+<span class="nc" id="L88">    final MetricRegistryInfo that = (MetricRegistryInfo) obj;</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    return Objects.equals(prefix, that.prefix)</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        &amp;&amp; Objects.equals(metricsDescription, that.metricsDescription)</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        &amp;&amp; Objects.equals(metricsComponentName, that.metricsComponentName)</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        &amp;&amp; Objects.equals(applicationName, that.applicationName);</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L97">    return hash.get();</span>
+  }
+
+  private Integer computeHash() {
+<span class="nc" id="L101">    return Objects.hash(prefix, metricsDescription, metricsComponentName);</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L106">    return JavaUtils.getClassSimpleName(getClass())</span>
+<span class="nc" id="L107">        + &quot;: applicationName=&quot; + getApplicationName()</span>
+<span class="nc" id="L108">        + &quot;, metricsComponentName=&quot; + getMetricsComponentName()</span>
+<span class="nc" id="L109">        + &quot;, prefix=&quot; + getPrefix()</span>
+<span class="nc" id="L110">        + &quot;, metricsDescription=&quot; + getMetricsDescription();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

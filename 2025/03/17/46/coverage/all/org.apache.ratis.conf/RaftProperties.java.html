@@ -1,0 +1,692 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftProperties.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.conf</a> &gt; <span class="el_source">RaftProperties.java</span></div><h1>RaftProperties.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.conf;
+
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.ReflectionUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.StringUtils;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
+import java.util.stream.Collectors;
+
+/**
+ * Provides access to configuration parameters. The current implementation is a
+ * simplified version of hadoop's Configuration.
+ */
+public class RaftProperties {
+<span class="nc" id="L48">  private static final Logger LOG = LoggerFactory.getLogger(RaftProperties.class);</span>
+
+<span class="nc" id="L50">  private final ConcurrentMap&lt;String, String&gt; properties = new ConcurrentHashMap&lt;&gt;();</span>
+
+  /** A new configuration. */
+<span class="nc" id="L53">  public RaftProperties() {</span>
+<span class="nc" id="L54">  }</span>
+
+  /**
+   * A new RaftProperties with the same settings cloned from another.
+   *
+   * @param other the RaftProperties from which to clone settings.
+   */
+<span class="nc" id="L61">  public RaftProperties(RaftProperties other) {</span>
+<span class="nc" id="L62">    this.properties.putAll(other.properties);</span>
+<span class="nc" id="L63">  }</span>
+
+  private static final int MAX_SUBST = 20;
+
+  private static final int SUB_START_IDX = 0;
+  private static final int SUB_END_IDX = SUB_START_IDX + 1;
+
+  /**
+   * This is a manual implementation of the following regex
+   * &quot;\\$\\{[^\\}\\$\u0020]+\\}&quot;.
+   *
+   * @param eval a string that may contain variables requiring expansion.
+   * @return a 2-element int array res such that
+   * eval.substring(res[0], res[1]) is &quot;var&quot; for the left-most occurrence of
+   * ${var} in eval. If no variable is found -1, -1 is returned.
+   */
+  private static int[] findSubVariable(String eval) {
+<span class="nc" id="L80">    int[] result = {-1, -1};</span>
+
+    int matchStart;
+    int leftBrace;
+
+    // scanning for a brace first because it's less frequent than $
+    // that can occur in nested class names
+    //
+    match_loop:
+<span class="nc" id="L89">    for (matchStart = 1, leftBrace = eval.indexOf('{', matchStart);</span>
+         // minimum left brace position (follows '$')
+         leftBrace &gt; 0
+         // right brace of a smallest valid expression &quot;${c}&quot;
+<span class="nc bnc" id="L93" title="All 4 branches missed.">         &amp;&amp; leftBrace + &quot;{c&quot;.length() &lt; eval.length();</span>
+<span class="nc" id="L94">         leftBrace = eval.indexOf('{', matchStart)) {</span>
+<span class="nc" id="L95">      int matchedLen = 0;</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">      if (eval.charAt(leftBrace - 1) == '$') {</span>
+<span class="nc" id="L97">        int subStart = leftBrace + 1; // after '{'</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        for (int i = subStart; i &lt; eval.length(); i++) {</span>
+<span class="nc bnc" id="L99" title="All 3 branches missed.">          switch (eval.charAt(i)) {</span>
+            case '}':
+<span class="nc bnc" id="L101" title="All 2 branches missed.">              if (matchedLen &gt; 0) { // match</span>
+<span class="nc" id="L102">                result[SUB_START_IDX] = subStart;</span>
+<span class="nc" id="L103">                result[SUB_END_IDX] = subStart + matchedLen;</span>
+<span class="nc" id="L104">                break match_loop;</span>
+              }
+              // fall through to skip 1 char
+            case ' ':
+            case '$':
+<span class="nc" id="L109">              matchStart = i + 1;</span>
+<span class="nc" id="L110">              continue match_loop;</span>
+            default:
+<span class="nc" id="L112">              matchedLen++;</span>
+          }
+        }
+        // scanned from &quot;${&quot;  to the end of eval, and no reset via ' ', '$':
+        //    no match!
+<span class="nc" id="L117">        break;</span>
+      } else {
+        // not a start of a variable
+        //
+<span class="nc" id="L121">        matchStart = leftBrace + 1;</span>
+      }
+    }
+<span class="nc" id="L124">    return result;</span>
+  }
+
+  /**
+   * Attempts to repeatedly expand the value {@code expr} by replacing the
+   * left-most substring of the form &quot;${var}&quot; in the following precedence order
+   * &lt;ol&gt;
+   *   &lt;li&gt;by the value of the environment variable &quot;var&quot; if defined&lt;/li&gt;
+   *   &lt;li&gt;by the value of the Java system property &quot;var&quot; if defined&lt;/li&gt;
+   *   &lt;li&gt;by the value of the configuration key &quot;var&quot; if defined&lt;/li&gt;
+   * &lt;/ol&gt;
+   *
+   * If var is unbounded the current state of expansion &quot;prefix${var}suffix&quot; is
+   * returned.
+   *
+   * If a cycle is detected: replacing var1 requires replacing var2 ... requires
+   * replacing var1, i.e., the cycle is shorter than
+   * {@link RaftProperties#MAX_SUBST} then the original expr is returned.
+   *
+   * @param expr the literal value of a config key
+   * @return null if expr is null, otherwise the value resulting from expanding
+   * expr using the algorithm above.
+   * @throws IllegalArgumentException when more than
+   * {@link RaftProperties#MAX_SUBST} replacements are required
+   */
+  private String substituteVars(String expr) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    if (expr == null) {</span>
+<span class="nc" id="L151">      return null;</span>
+    }
+<span class="nc" id="L153">    String eval = expr;</span>
+<span class="nc" id="L154">    Set&lt;String&gt; evalSet = null;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    for(int s = 0; s &lt; MAX_SUBST; s++) {</span>
+<span class="nc" id="L156">      final int[] varBounds = findSubVariable(eval);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">      if (varBounds[SUB_START_IDX] == -1) {</span>
+<span class="nc" id="L158">        return eval;</span>
+      }
+<span class="nc" id="L160">      final String var = eval.substring(varBounds[SUB_START_IDX],</span>
+          varBounds[SUB_END_IDX]);
+<span class="nc" id="L162">      String val = null;</span>
+      try {
+<span class="nc bnc" id="L164" title="All 4 branches missed.">        if (var.startsWith(&quot;env.&quot;) &amp;&amp; 4 &lt; var.length()) {</span>
+<span class="nc" id="L165">          String v = var.substring(4);</span>
+<span class="nc" id="L166">          int i = 0;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">          for (; i &lt; v.length(); i++) {</span>
+<span class="nc" id="L168">            char c = v.charAt(i);</span>
+<span class="nc bnc" id="L169" title="All 6 branches missed.">            if (c == ':' &amp;&amp; i &lt; v.length() - 1 &amp;&amp; v.charAt(i + 1) == '-') {</span>
+<span class="nc" id="L170">              val = getenv(v.substring(0, i));</span>
+<span class="nc bnc" id="L171" title="All 4 branches missed.">              if (val == null || val.length() == 0) {</span>
+<span class="nc" id="L172">                val = v.substring(i + 2);</span>
+              }
+              break;
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            } else if (c == '-') {</span>
+<span class="nc" id="L176">              val = getenv(v.substring(0, i));</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">              if (val == null) {</span>
+<span class="nc" id="L178">                val = v.substring(i + 1);</span>
+              }
+              break;
+            }
+          }
+<span class="nc bnc" id="L183" title="All 2 branches missed.">          if (i == v.length()) {</span>
+<span class="nc" id="L184">            val = getenv(v);</span>
+          }
+<span class="nc" id="L186">        } else {</span>
+<span class="nc" id="L187">          val = getProperty(var);</span>
+        }
+<span class="nc" id="L189">      } catch(SecurityException se) {</span>
+<span class="nc" id="L190">        LOG.warn(&quot;Unexpected SecurityException in Configuration&quot;, se);</span>
+<span class="nc" id="L191">      }</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">      if (val == null) {</span>
+<span class="nc" id="L193">        val = getRaw(var);</span>
+      }
+<span class="nc bnc" id="L195" title="All 2 branches missed.">      if (val == null) {</span>
+<span class="nc" id="L196">        return eval; // return literal ${var}: var is unbound</span>
+      }
+
+      // prevent recursive resolution
+      //
+<span class="nc" id="L201">      final int dollar = varBounds[SUB_START_IDX] - &quot;${&quot;.length();</span>
+<span class="nc" id="L202">      final int afterRightBrace = varBounds[SUB_END_IDX] + &quot;}&quot;.length();</span>
+<span class="nc" id="L203">      final String refVar = eval.substring(dollar, afterRightBrace);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">      if (evalSet == null) {</span>
+<span class="nc" id="L205">        evalSet = new HashSet&lt;&gt;();</span>
+      }
+<span class="nc bnc" id="L207" title="All 2 branches missed.">      if (!evalSet.add(refVar)) {</span>
+<span class="nc" id="L208">        return expr; // return original expression if there is a loop</span>
+      }
+
+      // substitute
+<span class="nc" id="L212">      eval = eval.substring(0, dollar)</span>
+             + val
+<span class="nc" id="L214">             + eval.substring(afterRightBrace);</span>
+    }
+<span class="nc" id="L216">    throw new IllegalStateException(&quot;Variable substitution depth too large: &quot;</span>
+                                    + MAX_SUBST + &quot; &quot; + expr);
+  }
+
+  String getenv(String name) {
+<span class="nc" id="L221">    return System.getenv(name);</span>
+  }
+
+  String getProperty(String key) {
+<span class="nc" id="L225">    return System.getProperty(key);</span>
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property, &lt;code&gt;null&lt;/code&gt; if
+   * no such property exists. If the key is deprecated, it returns the value of
+   * the first key which replaces the deprecated key and is not null.
+   *
+   * Values are processed for &lt;a href=&quot;#VariableExpansion&quot;&gt;variable expansion&lt;/a&gt;
+   * before being returned.
+   *
+   * @param name the property name, will be trimmed before get value.
+   * @return the value of the &lt;code&gt;name&lt;/code&gt; or its replacing property,
+   *         or null if no such property exists.
+   */
+  public String get(String name) {
+<span class="nc" id="L241">    return substituteVars(getRaw(name));</span>
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a trimmed &lt;code&gt;String&lt;/code&gt;,
+   * &lt;code&gt;null&lt;/code&gt; if no such property exists.
+   * If the key is deprecated, it returns the value of
+   * the first key which replaces the deprecated key and is not null
+   * &lt;p&gt;
+   * Values are processed for &lt;a href=&quot;#VariableExpansion&quot;&gt;variable expansion&lt;/a&gt;
+   * before being returned.
+   * &lt;p&gt;
+   * Underscores can be optionally removed.
+   *
+   * @param name the property name.
+   * @param removeUnderscores should the underscores be removed?
+   *
+   * @return the value of the &lt;code&gt;name&lt;/code&gt; or its replacing property,
+   *         or null if no such property exists.
+   */
+  public String getTrimmed(String name, boolean removeUnderscores) {
+<span class="nc" id="L262">    String value = get(name);</span>
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">    if (null == value) {</span>
+<span class="nc" id="L265">      return null;</span>
+    }
+<span class="nc" id="L267">    value = value.trim();</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">    if (removeUnderscores) {</span>
+<span class="nc" id="L269">      value = value.replace(&quot;_&quot;, &quot;&quot;);</span>
+    }
+<span class="nc" id="L271">    return value;</span>
+  }
+
+  /** The same as getTrimmed(name, false). */
+  public String getTrimmed(String name) {
+<span class="nc" id="L276">    return getTrimmed(name, false);</span>
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property, without doing
+   * &lt;a href=&quot;#VariableExpansion&quot;&gt;variable expansion&lt;/a&gt;.If the key is
+   * deprecated, it returns the value of the first key which replaces
+   * the deprecated key and is not null.
+   *
+   * @param name the property name.
+   * @return the value of the &lt;code&gt;name&lt;/code&gt; property or
+   *         its replacing property and null if no such property exists.
+   */
+  public String getRaw(String name) {
+<span class="nc" id="L290">    return properties.get(Objects.requireNonNull(name, &quot;name == null&quot;).trim());</span>
+  }
+
+  /**
+   * Set the &lt;code&gt;value&lt;/code&gt; of the &lt;code&gt;name&lt;/code&gt; property. If
+   * &lt;code&gt;name&lt;/code&gt; is deprecated, it also sets the &lt;code&gt;value&lt;/code&gt; to
+   * the keys that replace the deprecated key. Name will be trimmed before put
+   * into configuration.
+   *
+   * @param name property name.
+   * @param value property value.
+   * @throws IllegalArgumentException when the value or name is null.
+   */
+  public void set(String name, String value) {
+<span class="nc" id="L304">    final String trimmed = Objects.requireNonNull(name, &quot;name == null&quot;).trim();</span>
+<span class="nc" id="L305">    Objects.requireNonNull(value, () -&gt; &quot;value == null for &quot; + trimmed);</span>
+<span class="nc" id="L306">    properties.put(trimmed, value);</span>
+<span class="nc" id="L307">  }</span>
+
+  /**
+   * Unset a previously set property.
+   */
+  public void unset(String name) {
+<span class="nc" id="L313">    properties.remove(name);</span>
+<span class="nc" id="L314">  }</span>
+
+  /**
+   * Sets a property if it is currently unset.
+   * @param name the property name
+   * @param value the new value
+   */
+  public synchronized void setIfUnset(String name, String value) {
+<span class="nc bnc" id="L322" title="All 2 branches missed.">    if (get(name) == null) {</span>
+<span class="nc" id="L323">      set(name, value);</span>
+    }
+<span class="nc" id="L325">  }</span>
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt;. If the key is deprecated,
+   * it returns the value of the first key which replaces the deprecated key
+   * and is not null.
+   * If no such property exists,
+   * then &lt;code&gt;defaultValue&lt;/code&gt; is returned.
+   *
+   * @param name property name, will be trimmed before get value.
+   * @param defaultValue default value.
+   * @return property value, or &lt;code&gt;defaultValue&lt;/code&gt; if the property
+   *         doesn't exist.
+   */
+  public String get(String name, String defaultValue) {
+<span class="nc" id="L340">    return substituteVars(properties.getOrDefault(name, defaultValue));</span>
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as an &lt;code&gt;int&lt;/code&gt;.
+   *
+   * If no such property exists, the provided default value is returned,
+   * or if the specified value is not a valid &lt;code&gt;int&lt;/code&gt;,
+   * then an error is thrown.
+   *
+   * @param name property name.
+   * @param defaultValue default value.
+   * @throws NumberFormatException when the value is invalid
+   * @return property value as an &lt;code&gt;int&lt;/code&gt;,
+   *         or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public Integer getInt(String name, Integer defaultValue) {
+<span class="nc" id="L357">    final String valueString = getTrimmed(name, true);</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">    if (valueString == null) {</span>
+<span class="nc" id="L359">      return defaultValue;</span>
+    }
+<span class="nc" id="L361">    String hexString = getHexDigits(valueString);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">    if (hexString != null) {</span>
+<span class="nc" id="L363">      return Integer.parseInt(hexString, 16);</span>
+    }
+<span class="nc" id="L365">    return Integer.parseInt(valueString);</span>
+  }
+
+  /**
+   * Set the value of the &lt;code&gt;name&lt;/code&gt; property to an &lt;code&gt;int&lt;/code&gt;.
+   *
+   * @param name property name.
+   * @param value &lt;code&gt;int&lt;/code&gt; value of the property.
+   */
+  public void setInt(String name, int value) {
+<span class="nc" id="L375">    set(name, Integer.toString(value));</span>
+<span class="nc" id="L376">  }</span>
+
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a &lt;code&gt;long&lt;/code&gt;.
+   * If no such property exists, the provided default value is returned,
+   * or if the specified value is not a valid &lt;code&gt;long&lt;/code&gt;,
+   * then an error is thrown.
+   *
+   * @param name property name.
+   * @param defaultValue default value.
+   * @throws NumberFormatException when the value is invalid
+   * @return property value as a &lt;code&gt;long&lt;/code&gt;,
+   *         or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public Long getLong(String name, Long defaultValue) {
+<span class="nc" id="L392">    final String valueString = getTrimmed(name, true);</span>
+<span class="nc bnc" id="L393" title="All 2 branches missed.">    if (valueString == null) {</span>
+<span class="nc" id="L394">      return defaultValue;</span>
+    }
+<span class="nc" id="L396">    String hexString = getHexDigits(valueString);</span>
+<span class="nc bnc" id="L397" title="All 2 branches missed.">    if (hexString != null) {</span>
+<span class="nc" id="L398">      return Long.parseLong(hexString, 16);</span>
+    }
+<span class="nc" id="L400">    return Long.parseLong(valueString);</span>
+  }
+
+  /** @return property value; if it is not set, return the default value. */
+  public File getFile(String name, File defaultValue) {
+<span class="nc" id="L405">    final String valueString = getTrimmed(name);</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">    return valueString == null? defaultValue: new File(valueString);</span>
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a list
+   * of &lt;code&gt;File&lt;/code&gt;.
+   * The value of the property specifies a list of comma separated path names.
+   * If no such property is specified, then &lt;code&gt;defaultValue&lt;/code&gt; is
+   * returned.
+   *
+   * @param name the property name.
+   * @param defaultValue default value.
+   * @return property value as a List of File, or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public List&lt;File&gt; getFiles(String name, List&lt;File&gt; defaultValue) {
+<span class="nc" id="L421">    String valueString = getRaw(name);</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">    if (null == valueString) {</span>
+<span class="nc" id="L423">      return defaultValue;</span>
+    }
+<span class="nc" id="L425">    final String[] paths = StringUtils.getTrimmedStrings(get(name));</span>
+<span class="nc" id="L426">    return Arrays.stream(paths).map(File::new).collect(Collectors.toList());</span>
+  }
+
+  public void setFile(String name, File value) {
+    try {
+<span class="nc" id="L431">      set(name, value.getCanonicalPath());</span>
+<span class="nc" id="L432">    } catch (IOException e) {</span>
+<span class="nc" id="L433">      throw new IllegalArgumentException(</span>
+          &quot;Failed to get canonical path from file &quot; + value + &quot; for &quot; + name, e);
+<span class="nc" id="L435">    }</span>
+<span class="nc" id="L436">  }</span>
+
+  public void setFiles(String name, List&lt;File&gt; value) {
+<span class="nc" id="L439">    String paths = value.stream().map(File::getAbsolutePath)</span>
+<span class="nc" id="L440">        .collect(Collectors.joining(&quot;,&quot;));</span>
+<span class="nc" id="L441">    set(name, paths);</span>
+<span class="nc" id="L442">  }</span>
+
+  /** @return property value; if it is not set, return the default value. */
+  public SizeInBytes getSizeInBytes(String name, SizeInBytes defaultValue) {
+<span class="nc" id="L446">    final String valueString = getTrimmed(name);</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">    return valueString == null? defaultValue: SizeInBytes.valueOf(valueString);</span>
+  }
+
+  private String getHexDigits(String value) {
+<span class="nc" id="L451">    boolean negative = false;</span>
+<span class="nc" id="L452">    String str = value;</span>
+    String hexString;
+<span class="nc bnc" id="L454" title="All 2 branches missed.">    if (value.startsWith(&quot;-&quot;)) {</span>
+<span class="nc" id="L455">      negative = true;</span>
+<span class="nc" id="L456">      str = value.substring(1);</span>
+    }
+<span class="nc bnc" id="L458" title="All 4 branches missed.">    if (str.startsWith(&quot;0x&quot;) || str.startsWith(&quot;0X&quot;)) {</span>
+<span class="nc" id="L459">      hexString = str.substring(2);</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">      if (negative) {</span>
+<span class="nc" id="L461">        hexString = &quot;-&quot; + hexString;</span>
+      }
+<span class="nc" id="L463">      return hexString;</span>
+    }
+<span class="nc" id="L465">    return null;</span>
+  }
+
+  /**
+   * Set the value of the &lt;code&gt;name&lt;/code&gt; property to a &lt;code&gt;long&lt;/code&gt;.
+   *
+   * @param name property name.
+   * @param value &lt;code&gt;long&lt;/code&gt; value of the property.
+   */
+  public void setLong(String name, long value) {
+<span class="nc" id="L475">    set(name, Long.toString(value));</span>
+<span class="nc" id="L476">  }</span>
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a &lt;code&gt;double&lt;/code&gt;.
+   * If no such property exists, the provided default value is returned,
+   * or if the specified value is not a valid &lt;code&gt;double&lt;/code&gt;,
+   * then an error is thrown.
+   *
+   * @param name property name.
+   * @param defaultValue default value.
+   * @throws NumberFormatException when the value is invalid
+   * @return property value as a &lt;code&gt;double&lt;/code&gt;,
+   *         or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public double getDouble(String name, double defaultValue) {
+<span class="nc" id="L491">    final String valueString = getTrimmed(name, true);</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">    if (valueString == null) {</span>
+<span class="nc" id="L493">      return defaultValue;</span>
+    }
+<span class="nc" id="L495">    return Double.parseDouble(valueString);</span>
+  }
+
+  /**
+   * Set the value of the &lt;code&gt;name&lt;/code&gt; property to a &lt;code&gt;double&lt;/code&gt;.
+   *
+   * @param name property name.
+   * @param value property value.
+   */
+  public void setDouble(String name, double value) {
+<span class="nc" id="L505">    set(name,Double.toString(value));</span>
+<span class="nc" id="L506">  }</span>
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a &lt;code&gt;boolean&lt;/code&gt;.
+   * If no such property is specified, or if the specified value is not a valid
+   * &lt;code&gt;boolean&lt;/code&gt;, then &lt;code&gt;defaultValue&lt;/code&gt; is returned.
+   *
+   * @param name property name.
+   * @param defaultValue default value.
+   * @return property value as a &lt;code&gt;boolean&lt;/code&gt;,
+   *         or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public Boolean getBoolean(String name, Boolean defaultValue) {
+<span class="nc" id="L519">    String valueString = getTrimmed(name);</span>
+<span class="nc" id="L520">    return StringUtils.string2boolean(valueString, defaultValue);</span>
+  }
+
+  /**
+   * Set the value of the &lt;code&gt;name&lt;/code&gt; property to a &lt;code&gt;boolean&lt;/code&gt;.
+   *
+   * @param name property name.
+   * @param value &lt;code&gt;boolean&lt;/code&gt; value of the property.
+   */
+  public void setBoolean(String name, boolean value) {
+<span class="nc" id="L530">    set(name, Boolean.toString(value));</span>
+<span class="nc" id="L531">  }</span>
+
+  /**
+   * Set the value of the &lt;code&gt;name&lt;/code&gt; property to the given type. This
+   * is equivalent to &lt;code&gt;set(&amp;lt;name&amp;gt;, value.toString())&lt;/code&gt;.
+   * @param name property name
+   * @param value new value
+   */
+  public &lt;T extends Enum&lt;T&gt;&gt; void setEnum(String name, T value) {
+<span class="nc" id="L540">    set(name, value.toString());</span>
+<span class="nc" id="L541">  }</span>
+
+  /**
+   * Get the enum value mapped the given property name.
+   *
+   * @param name Property name
+   * @param enumClass the {@link Class} of the enum
+   * @param defaultValue Value returned if no mapping exists
+   */
+  public &lt;T extends Enum&lt;T&gt;&gt; T getEnum(String name, Class&lt;T&gt; enumClass, T defaultValue) {
+<span class="nc" id="L551">    final String val = getTrimmed(name);</span>
+<span class="nc bnc" id="L552" title="All 2 branches missed.">    return null == val? defaultValue : Enum.valueOf(enumClass, val);</span>
+  }
+
+  /** The same as getEnum(name, defaultValue.getDeclaringClass(), defaultValue). */
+  public &lt;T extends Enum&lt;T&gt;&gt; T getEnum(String name, T defaultValue) {
+<span class="nc" id="L557">    Objects.requireNonNull(defaultValue, &quot;defaultValue == null&quot;);</span>
+<span class="nc" id="L558">    return getEnum(name, defaultValue.getDeclaringClass(), defaultValue);</span>
+  }
+
+  /**
+   * Set the value of &lt;code&gt;name&lt;/code&gt; to the given time duration. This
+   * is equivalent to &lt;code&gt;set(&amp;lt;name&amp;gt;, value + &amp;lt;time suffix&amp;gt;)&lt;/code&gt;.
+   * @param name Property name
+   * @param value Time duration
+   */
+  public void setTimeDuration(String name, TimeDuration value) {
+<span class="nc" id="L568">    set(name, value.toString());</span>
+<span class="nc" id="L569">  }</span>
+
+  /**
+   * Return time duration in the given time unit. Valid units are encoded in
+   * properties as suffixes: nanoseconds (ns), microseconds (us), milliseconds
+   * (ms), seconds (s), minutes (m), hours (h), and days (d).
+   * @param name Property name
+   * @param defaultValue Value returned if no mapping exists.
+   * @throws NumberFormatException If the property stripped of its unit is not
+   *         a number
+   */
+  public TimeDuration getTimeDuration(
+      String name, TimeDuration defaultValue, TimeUnit defaultUnit) {
+<span class="nc" id="L582">    final String value = getTrimmed(name);</span>
+<span class="nc bnc" id="L583" title="All 2 branches missed.">    if (null == value) {</span>
+<span class="nc" id="L584">      return defaultValue;</span>
+    }
+    try {
+<span class="nc" id="L587">      return TimeDuration.valueOf(value, defaultUnit);</span>
+<span class="nc" id="L588">    } catch(NumberFormatException e) {</span>
+<span class="nc" id="L589">      throw new IllegalArgumentException(&quot;Failed to parse &quot;</span>
+          + name + &quot; = &quot; + value, e);
+    }
+  }
+  public BiFunction&lt;String, TimeDuration, TimeDuration&gt; getTimeDuration(TimeUnit defaultUnit) {
+<span class="nc" id="L594">    return (key, defaultValue) -&gt; getTimeDuration(key, defaultValue, defaultUnit);</span>
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a &lt;code&gt;Class&lt;/code&gt;.
+   * If no such property is specified, then &lt;code&gt;defaultValue&lt;/code&gt; is
+   * returned.
+   *
+   * @param name the class name.
+   * @param defaultValue default value.
+   * @return property value as a &lt;code&gt;Class&lt;/code&gt;,
+   *         or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public Class&lt;?&gt; getClass(String name, Class&lt;?&gt; defaultValue) {
+<span class="nc" id="L608">    String valueString = getTrimmed(name);</span>
+<span class="nc bnc" id="L609" title="All 2 branches missed.">    if (valueString == null) {</span>
+<span class="nc" id="L610">      return defaultValue;</span>
+    }
+    try {
+<span class="nc" id="L613">      return ReflectionUtils.getClassByName(valueString);</span>
+<span class="nc" id="L614">    } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L615">      throw new RuntimeException(e);</span>
+    }
+  }
+
+  /**
+   * Get the value of the &lt;code&gt;name&lt;/code&gt; property as a &lt;code&gt;Class&lt;/code&gt;
+   * implementing the interface specified by &lt;code&gt;xface&lt;/code&gt;.
+   *
+   * If no such property is specified, then &lt;code&gt;defaultValue&lt;/code&gt; is
+   * returned.
+   *
+   * An exception is thrown if the returned class does not implement the named
+   * interface.
+   *
+   * @param name the class name.
+   * @param defaultValue default value.
+   * @param xface the interface implemented by the named class.
+   * @return property value as a &lt;code&gt;Class&lt;/code&gt;,
+   *         or &lt;code&gt;defaultValue&lt;/code&gt;.
+   */
+  public &lt;BASE&gt; Class&lt;? extends BASE&gt; getClass(
+      String name, Class&lt;? extends BASE&gt; defaultValue, Class&lt;BASE&gt; xface) {
+    try {
+<span class="nc" id="L638">      Class&lt;?&gt; theClass = getClass(name, defaultValue);</span>
+<span class="nc bnc" id="L639" title="All 4 branches missed.">      if (theClass != null &amp;&amp; !xface.isAssignableFrom(theClass)) {</span>
+<span class="nc" id="L640">        throw new RuntimeException(theClass+&quot; not &quot;+xface.getName());</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">      } else if (theClass != null) {</span>
+<span class="nc" id="L642">        return theClass.asSubclass(xface);</span>
+      } else {
+<span class="nc" id="L644">        return null;</span>
+      }
+
+<span class="nc" id="L647">    } catch (Exception e) {</span>
+<span class="nc" id="L648">      throw new RuntimeException(e);</span>
+    }
+  }
+
+  /**
+   * Set the value of the &lt;code&gt;name&lt;/code&gt; property to the name of a
+   * &lt;code&gt;theClass&lt;/code&gt; implementing the given interface &lt;code&gt;xface&lt;/code&gt;.
+   *
+   * An exception is thrown if &lt;code&gt;theClass&lt;/code&gt; does not implement the
+   * interface &lt;code&gt;xface&lt;/code&gt;.
+   *
+   * @param name property name.
+   * @param theClass property value.
+   * @param xface the interface implemented by the named class.
+   */
+  public void setClass(String name, Class&lt;?&gt; theClass, Class&lt;?&gt; xface) {
+<span class="nc bnc" id="L664" title="All 2 branches missed.">    if (!xface.isAssignableFrom(theClass)) {</span>
+<span class="nc" id="L665">      throw new RuntimeException(theClass+&quot; not &quot;+xface.getName());</span>
+    }
+<span class="nc" id="L667">    set(name, theClass.getName());</span>
+<span class="nc" id="L668">  }</span>
+
+  /** @return number of keys in the properties. */
+  public int size() {
+<span class="nc" id="L672">    return properties.size();</span>
+  }
+
+  /**
+   * Clears all keys from the configuration.
+   */
+  public void clear() {
+<span class="nc" id="L679">    properties.clear();</span>
+<span class="nc" id="L680">  }</span>
+
+  /** @return the property entry set. */
+  Set&lt;Map.Entry&lt;String, String&gt;&gt; entrySet() {
+<span class="nc" id="L684">    return properties.entrySet();</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L689">    return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + size();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerJmxAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">RaftServerJmxAdapter.java</span></div><h1>RaftServerJmxAdapter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServerMXBean;
+import org.apache.ratis.util.JmxRegister;
+
+import javax.management.ObjectName;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/** JMX for {@link RaftServerImpl}. */
+class RaftServerJmxAdapter extends JmxRegister implements RaftServerMXBean {
+  static boolean registerMBean(String id, String groupId, RaftServerMXBean mBean, JmxRegister jmx) {
+<span class="nc" id="L35">    final String prefix = &quot;Ratis:service=RaftServer,group=&quot; + groupId + &quot;,id=&quot;;</span>
+<span class="nc" id="L36">    final String registered = jmx.register(mBean, Arrays.asList(</span>
+<span class="nc" id="L37">        () -&gt; prefix + id,</span>
+<span class="nc" id="L38">        () -&gt; prefix + ObjectName.quote(id)));</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">    return registered != null;</span>
+  }
+
+  private final RaftServerImpl server;
+
+<span class="nc" id="L44">  RaftServerJmxAdapter(RaftServerImpl server) {</span>
+<span class="nc" id="L45">    this.server = server;</span>
+<span class="nc" id="L46">  }</span>
+
+  boolean registerMBean() {
+<span class="nc" id="L49">    return registerMBean(getId(), getGroupId(), this, this);</span>
+  }
+
+  @Override
+  public String getId() {
+<span class="nc" id="L54">    return server.getId().toString();</span>
+  }
+
+  @Override
+  public String getLeaderId() {
+<span class="nc" id="L59">    RaftPeerId leaderId = server.getState().getLeaderId();</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">    if (leaderId != null) {</span>
+<span class="nc" id="L61">      return leaderId.toString();</span>
+    } else {
+<span class="nc" id="L63">      return null;</span>
+    }
+  }
+
+  @Override
+  public long getCurrentTerm() {
+<span class="nc" id="L69">    return server.getState().getCurrentTerm();</span>
+  }
+
+  @Override
+  public String getGroupId() {
+<span class="nc" id="L74">    return server.getMemberId().getGroupId().toString();</span>
+  }
+
+  @Override
+  public String getRole() {
+<span class="nc" id="L79">    return server.getRole().toString();</span>
+  }
+
+  @Override
+  public List&lt;String&gt; getFollowers() {
+<span class="nc" id="L84">    return server.getRole().getLeaderState()</span>
+<span class="nc" id="L85">        .map(LeaderStateImpl::getFollowers)</span>
+<span class="nc" id="L86">        .orElseGet(Stream::empty)</span>
+<span class="nc" id="L87">        .map(RaftPeer::toString)</span>
+<span class="nc" id="L88">        .collect(Collectors.toList());</span>
+  }
+
+  @Override
+  public List&lt;String&gt; getGroups() {
+<span class="nc" id="L93">    return server.getRaftServer().getGroupIds().stream()</span>
+<span class="nc" id="L94">        .map(RaftGroupId::toString)</span>
+<span class="nc" id="L95">        .collect(Collectors.toList());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

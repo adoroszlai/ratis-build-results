@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLogMetrics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.metrics</a> &gt; <span class="el_source">SegmentedRaftLogMetrics.java</span></div><h1>SegmentedRaftLogMetrics.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.server.metrics;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.UncheckedAutoCloseable;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+
+public class SegmentedRaftLogMetrics extends RaftLogMetricsBase {
+  //////////////////////////////
+  // Raft Log Write Path Metrics
+  /////////////////////////////
+  /** Time taken to flush log. */
+  public static final String RAFT_LOG_FLUSH_TIME = &quot;flushTime&quot;;
+  /** Number of times of log flushed. */
+  public static final String RAFT_LOG_FLUSH_COUNT = &quot;flushCount&quot;;
+  /** Time taken to log sync. */
+  public static final String RAFT_LOG_SYNC_TIME = &quot;syncTime&quot;;
+  /** Raft log data queue size which at any time gives the number of log related operations in the queue. */
+  public static final String RAFT_LOG_DATA_QUEUE_SIZE = &quot;dataQueueSize&quot;;
+  /** Raft log worker queue size which at any time gives number of committed entries that are to be synced. */
+  public static final String RAFT_LOG_WORKER_QUEUE_SIZE = &quot;workerQueueSize&quot;;
+  /** Number of raft log entries synced in each flush call. */
+  public static final String RAFT_LOG_SYNC_BATCH_SIZE = &quot;syncBatchSize&quot;;
+  /** Count of RaftLogCache Misses */
+  public static final String RAFT_LOG_CACHE_MISS_COUNT = &quot;cacheMissCount&quot;;
+  /** Count of RaftLogCache Hits */
+  public static final String RAFT_LOG_CACHE_HIT_COUNT = &quot;cacheHitCount&quot;;
+  /** Number of SegmentedRaftLogCache::closedSegments */
+  public static final String RAFT_LOG_CACHE_CLOSED_SEGMENTS_NUM = &quot;closedSegmentsNum&quot;;
+  /** Size of SegmentedRaftLogCache::closedSegments in bytes */
+  public static final String RAFT_LOG_CACHE_CLOSED_SEGMENTS_SIZE_IN_BYTES = &quot;closedSegmentsSizeInBytes&quot;;
+  /** Size of SegmentedRaftLogCache::openSegment in bytes */
+  public static final String RAFT_LOG_CACHE_OPEN_SEGMENT_SIZE_IN_BYTES = &quot;openSegmentSizeInBytes&quot;;
+  /** Total time taken to append a raft log entry */
+  public static final String RAFT_LOG_APPEND_ENTRY_LATENCY = &quot;appendEntryLatency&quot;;
+  /** Time spent by a Raft log operation in the queue. */
+  public static final String RAFT_LOG_TASK_QUEUE_TIME = &quot;enqueuedTime&quot;;
+  /**
+   * Time taken for a Raft log operation to get into the queue after being requested.
+   * This is the time that it has to wait for the queue to be non-full.
+   */
+  public static final String RAFT_LOG_TASK_ENQUEUE_DELAY = &quot;queueingDelay&quot;;
+  /** Time taken for a Raft log operation to complete execution. */
+  public static final String RAFT_LOG_TASK_EXECUTION_TIME = &quot;%sExecutionTime&quot;;
+  /** Number of entries appended to the raft log */
+  public static final String RAFT_LOG_APPEND_ENTRY_COUNT = &quot;appendEntryCount&quot;;
+  public static final String RAFT_LOG_PURGE_METRIC = &quot;purgeLog&quot;;
+  /** Number of statemachine dataApi write timeouts */
+  public static final String RAFT_LOG_STATEMACHINE_DATA_WRITE_TIMEOUT_COUNT = &quot;numStateMachineDataWriteTimeout&quot;;
+  /** Number of statemachine dataApi read timeouts */
+  public static final String RAFT_LOG_STATEMACHINE_DATA_READ_TIMEOUT_COUNT = &quot;numStateMachineDataReadTimeout&quot;;
+
+  //////////////////////////////
+  // Raft Log Read Path Metrics
+  /////////////////////////////
+  /** Time required to read a raft log entry from actual raft log file and create a raft log entry */
+  public static final String RAFT_LOG_READ_ENTRY_LATENCY = &quot;readEntryLatency&quot;;
+  /** Time required to load and process raft log segments during restart */
+  public static final String RAFT_LOG_LOAD_SEGMENT_LATENCY = &quot;segmentLoadLatency&quot;;
+
+<span class="nc" id="L84">  private final Timekeeper flushTimer = getRegistry().timer(RAFT_LOG_FLUSH_TIME);</span>
+<span class="nc" id="L85">  private final Timekeeper syncTimer = getRegistry().timer(RAFT_LOG_SYNC_TIME);</span>
+<span class="nc" id="L86">  private final Timekeeper enqueuedTimer = getRegistry().timer(RAFT_LOG_TASK_QUEUE_TIME);</span>
+<span class="nc" id="L87">  private final Timekeeper queuingDelayTimer = getRegistry().timer(RAFT_LOG_TASK_ENQUEUE_DELAY);</span>
+
+<span class="nc" id="L89">  private final Timekeeper appendEntryTimer = getRegistry().timer(RAFT_LOG_APPEND_ENTRY_LATENCY);</span>
+<span class="nc" id="L90">  private final Timekeeper readEntryTimer = getRegistry().timer(RAFT_LOG_READ_ENTRY_LATENCY);</span>
+<span class="nc" id="L91">  private final Timekeeper loadSegmentTimer = getRegistry().timer(RAFT_LOG_LOAD_SEGMENT_LATENCY);</span>
+<span class="nc" id="L92">  private final Timekeeper purgeTimer = getRegistry().timer(RAFT_LOG_PURGE_METRIC);</span>
+
+<span class="nc" id="L94">  private final LongCounter cacheHitCount = getRegistry().counter(RAFT_LOG_CACHE_HIT_COUNT);</span>
+<span class="nc" id="L95">  private final LongCounter cacheMissCount= getRegistry().counter(RAFT_LOG_CACHE_MISS_COUNT);</span>
+<span class="nc" id="L96">  private final LongCounter appendEntryCount = getRegistry().counter(RAFT_LOG_APPEND_ENTRY_COUNT);</span>
+<span class="nc" id="L97">  private final LongCounter flushCount = getRegistry().counter(RAFT_LOG_FLUSH_COUNT);</span>
+
+<span class="nc" id="L99">  private final LongCounter numStateMachineDataWriteTimeout = getRegistry().counter(</span>
+      RAFT_LOG_STATEMACHINE_DATA_WRITE_TIMEOUT_COUNT);
+<span class="nc" id="L101">  private final LongCounter numStateMachineDataReadTimeout = getRegistry().counter(</span>
+      RAFT_LOG_STATEMACHINE_DATA_READ_TIMEOUT_COUNT);
+
+<span class="nc" id="L104">  private final Map&lt;Class&lt;?&gt;, Timekeeper&gt; taskClassTimers = new ConcurrentHashMap&lt;&gt;();</span>
+
+  public SegmentedRaftLogMetrics(RaftGroupMemberId serverId) {
+<span class="nc" id="L107">    super(serverId);</span>
+<span class="nc" id="L108">  }</span>
+
+  public void addDataQueueSizeGauge(Supplier&lt;Integer&gt; numElements) {
+<span class="nc" id="L111">    getRegistry().gauge(RAFT_LOG_DATA_QUEUE_SIZE, () -&gt; numElements);</span>
+<span class="nc" id="L112">  }</span>
+
+  public void addClosedSegmentsNum(Supplier&lt;Long&gt; cachedSegmentNum) {
+<span class="nc" id="L115">    getRegistry().gauge(RAFT_LOG_CACHE_CLOSED_SEGMENTS_NUM, () -&gt; cachedSegmentNum);</span>
+<span class="nc" id="L116">  }</span>
+
+  public void addClosedSegmentsSizeInBytes(Supplier&lt;Long&gt; closedSegmentsSizeInBytes) {
+<span class="nc" id="L119">    getRegistry().gauge(RAFT_LOG_CACHE_CLOSED_SEGMENTS_SIZE_IN_BYTES, () -&gt; closedSegmentsSizeInBytes);</span>
+<span class="nc" id="L120">  }</span>
+
+  public void addOpenSegmentSizeInBytes(Supplier&lt;Long&gt; openSegmentSizeInBytes) {
+<span class="nc" id="L123">    getRegistry().gauge(RAFT_LOG_CACHE_OPEN_SEGMENT_SIZE_IN_BYTES, () -&gt; openSegmentSizeInBytes);</span>
+<span class="nc" id="L124">  }</span>
+
+  public void addLogWorkerQueueSizeGauge(Supplier&lt;Integer&gt; queueSize) {
+<span class="nc" id="L127">    getRegistry().gauge(RAFT_LOG_WORKER_QUEUE_SIZE, () -&gt; queueSize);</span>
+<span class="nc" id="L128">  }</span>
+
+  public void addFlushBatchSizeGauge(Supplier&lt;Integer&gt; flushBatchSize) {
+<span class="nc" id="L131">    getRegistry().gauge(RAFT_LOG_SYNC_BATCH_SIZE, () -&gt; flushBatchSize);</span>
+<span class="nc" id="L132">  }</span>
+
+  public UncheckedAutoCloseable startFlushTimer() {
+<span class="nc" id="L135">    return Timekeeper.start(flushTimer);</span>
+  }
+
+  public Timekeeper getSyncTimer() {
+<span class="nc" id="L139">    return syncTimer;</span>
+  }
+
+  public void onRaftLogCacheHit() {
+<span class="nc" id="L143">    cacheHitCount.inc();</span>
+<span class="nc" id="L144">  }</span>
+
+  public void onRaftLogCacheMiss() {
+<span class="nc" id="L147">    cacheMissCount.inc();</span>
+<span class="nc" id="L148">  }</span>
+
+  public void onRaftLogFlush() {
+<span class="nc" id="L151">    flushCount.inc();</span>
+<span class="nc" id="L152">  }</span>
+
+  public void onRaftLogAppendEntry() {
+<span class="nc" id="L155">    appendEntryCount.inc();</span>
+<span class="nc" id="L156">  }</span>
+
+  public Timekeeper.Context startAppendEntryTimer() {
+<span class="nc" id="L159">    return appendEntryTimer.time();</span>
+  }
+
+  public Timekeeper getEnqueuedTimer() {
+<span class="nc" id="L163">    return enqueuedTimer;</span>
+  }
+
+  public UncheckedAutoCloseable startQueuingDelayTimer() {
+<span class="nc" id="L167">    return Timekeeper.start(queuingDelayTimer);</span>
+  }
+
+  private Timekeeper newTaskExecutionTimer(Class&lt;?&gt; taskClass) {
+<span class="nc" id="L171">    return getRegistry().timer(String.format(RAFT_LOG_TASK_EXECUTION_TIME,</span>
+<span class="nc" id="L172">        JavaUtils.getClassSimpleName(taskClass).toLowerCase()));</span>
+  }
+  public UncheckedAutoCloseable startTaskExecutionTimer(Class&lt;?&gt; taskClass) {
+<span class="nc" id="L175">    return Timekeeper.start(taskClassTimers.computeIfAbsent(taskClass, this::newTaskExecutionTimer));</span>
+  }
+
+  public Timekeeper getReadEntryTimer() {
+<span class="nc" id="L179">    return readEntryTimer;</span>
+  }
+
+  public UncheckedAutoCloseable startLoadSegmentTimer() {
+<span class="nc" id="L183">    return Timekeeper.start(loadSegmentTimer);</span>
+  }
+
+  public UncheckedAutoCloseable startPurgeTimer() {
+<span class="nc" id="L187">    return Timekeeper.start(purgeTimer);</span>
+  }
+
+  @Override
+  public void onStateMachineDataWriteTimeout() {
+<span class="nc" id="L192">    numStateMachineDataWriteTimeout.inc();</span>
+<span class="nc" id="L193">  }</span>
+
+  @Override
+  public void onStateMachineDataReadTimeout() {
+<span class="nc" id="L197">    numStateMachineDataReadTimeout.inc();</span>
+<span class="nc" id="L198">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

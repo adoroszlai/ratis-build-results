@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaskQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">TaskQueue.java</span></div><h1>TaskQueue.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
+
+/**
+ * A queue with execution order guarantee such that
+ * each task is submitted for execution only if it becomes the head of the queue.
+ * Tasks are executed sequentially without any overlap.
+ *
+ * By the definition of a queue, a task can become the head iff
+ * (1) the queue is empty when offering it, or
+ * (2) it is the next to the head and the head is polled out from the queue.
+ *
+ * A typically use case is to submit concurrent tasks
+ * with in-order guarantee for some of the tasks.
+ *
+ * One example use case is to submit tasks to write multiple files:
+ * - A file may requires multiple write tasks.
+ * - Multiple files are written at the same time.
+ * A solution is to create a {@link TaskQueue} for each file
+ * and then submit the write tasks to the corresponding queue.
+ * The files will be written concurrently and the writes to each file are in-order.
+ */
+public class TaskQueue {
+<span class="nc" id="L50">  public static final Logger LOG = LoggerFactory.getLogger(TaskQueue.class);</span>
+
+  private final String name;
+<span class="nc" id="L53">  private final Queue&lt;Runnable&gt; q = new LinkedList&lt;&gt;();</span>
+
+<span class="nc" id="L55">  public TaskQueue(String name) {</span>
+<span class="nc" id="L56">    this.name = name;</span>
+<span class="nc" id="L57">  }</span>
+
+  /**
+   * Is this queue empty?
+   */
+  public boolean isEmpty() {
+<span class="nc" id="L63">    return q.isEmpty();</span>
+  }
+
+  /**
+   * Poll the current head from this queue
+   * and then submit the next head, if there is any.
+   */
+  private synchronized Runnable pollAndSubmit(ExecutorService executor) {
+<span class="nc" id="L71">    final Runnable head = q.poll();</span>
+<span class="nc" id="L72">    final Runnable next = q.peek();</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    if (next != null) {</span>
+<span class="nc" id="L74">      executor.submit(next);</span>
+    }
+<span class="nc" id="L76">    return head;</span>
+  }
+
+  /**
+   * Offer the given task to this queue.
+   * If it is the first task, submit it.
+   */
+  private synchronized void offerAndSubmit(Runnable task, ExecutorService executor) {
+<span class="nc" id="L84">    q.offer(task);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    if (q.size() == 1) {</span>
+<span class="nc" id="L86">      executor.submit(task);</span>
+    }
+<span class="nc" id="L88">  }</span>
+
+  /**
+   * The same as submit(task, executor, Function.identity());
+   */
+  public &lt;OUTPUT, THROWABLE extends Throwable&gt; CompletableFuture&lt;OUTPUT&gt; submit(
+      CheckedSupplier&lt;OUTPUT, THROWABLE&gt; task, ExecutorService executor) {
+<span class="nc" id="L95">    return submit(task, executor, Function.identity());</span>
+  }
+
+  /**
+   * Offer the given task to this queue
+   * and then submit the tasks one by one in the queue order for execution.
+   *
+   * @param task the task to be submitted.
+   * @param executor to execute tasks.
+   * @param newThrowable When the task throws a throwable, create a new Throwable
+   *                     in order to include more error message.
+   * @param &lt;OUTPUT&gt; the output type of the task.
+   * @param &lt;THROWABLE&gt; the throwable type of the task.
+   * @return a future of the output.
+   */
+  public &lt;OUTPUT, THROWABLE extends Throwable&gt; CompletableFuture&lt;OUTPUT&gt; submit(
+      CheckedSupplier&lt;OUTPUT, THROWABLE&gt; task, ExecutorService executor,
+      Function&lt;Throwable, Throwable&gt; newThrowable) {
+<span class="nc" id="L113">    final CompletableFuture&lt;OUTPUT&gt; f = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L114">    final Runnable runnable = LogUtils.newRunnable(LOG, () -&gt; {</span>
+<span class="nc" id="L115">      LOG.trace(&quot;{}: running {}&quot;, this, task);</span>
+
+      // run the task and wait for it to complete
+<span class="nc" id="L118">      OUTPUT output = null;</span>
+<span class="nc" id="L119">      Throwable throwable = null;</span>
+      try {
+<span class="nc" id="L121">        output = task.get();</span>
+<span class="nc" id="L122">      } catch (Throwable t) {</span>
+<span class="nc" id="L123">        throwable = t;</span>
+<span class="nc" id="L124">      }</span>
+
+      // poll the task and then submit the next task
+<span class="nc" id="L127">      pollAndSubmit(executor);</span>
+
+      // complete the future after poll
+<span class="nc bnc" id="L130" title="All 2 branches missed.">      if (throwable != null) {</span>
+<span class="nc" id="L131">        f.completeExceptionally(newThrowable.apply(throwable));</span>
+      } else {
+<span class="nc" id="L133">        f.complete(output);</span>
+      }
+<span class="nc" id="L135">    }, task::toString);</span>
+
+<span class="nc" id="L137">    offerAndSubmit(runnable, executor);</span>
+<span class="nc" id="L138">    return f;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L143">    return name + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

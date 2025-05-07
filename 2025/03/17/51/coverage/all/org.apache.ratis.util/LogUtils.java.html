@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">LogUtils.java</span></div><h1>LogUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedRunnable;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.Callable;
+import java.util.function.Supplier;
+
+/**
+ * Logging (as in log4j) related utility methods.
+ */
+public interface LogUtils {
+<span class="nc" id="L32">  Logger LOG = LoggerFactory.getLogger(LogUtils.class);</span>
+
+  static &lt;THROWABLE extends Throwable&gt; void runAndLog(
+      Logger log, CheckedRunnable&lt;THROWABLE&gt; op, Supplier&lt;String&gt; opName)
+      throws THROWABLE {
+    try {
+<span class="nc" id="L38">      op.run();</span>
+<span class="nc" id="L39">    } catch (Throwable t) {</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">      if (log.isTraceEnabled()) {</span>
+<span class="nc" id="L41">        log.trace(&quot;Failed to &quot; + opName.get(), t);</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">      } else if (log.isWarnEnabled()){</span>
+<span class="nc" id="L43">        log.warn(&quot;Failed to &quot; + opName.get() + &quot;: &quot; + t);</span>
+      }
+<span class="nc" id="L45">      throw t;</span>
+<span class="nc" id="L46">    }</span>
+
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    if (log.isTraceEnabled()) {</span>
+<span class="nc" id="L49">      log.trace(&quot;Successfully ran &quot; + opName.get());</span>
+    }
+<span class="nc" id="L51">  }</span>
+
+  static &lt;OUTPUT, THROWABLE extends Throwable&gt; OUTPUT supplyAndLog(
+      Logger log, CheckedSupplier&lt;OUTPUT, THROWABLE&gt; supplier, Supplier&lt;String&gt; name)
+      throws THROWABLE {
+    final OUTPUT output;
+    try {
+<span class="nc" id="L58">      output = supplier.get();</span>
+<span class="nc" id="L59">    } catch (Exception e) {</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">      if (log.isTraceEnabled()) {</span>
+<span class="nc" id="L61">        log.trace(&quot;Failed to &quot; + name.get(), e);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      } else if (log.isWarnEnabled()){</span>
+<span class="nc" id="L63">        log.warn(&quot;Failed to &quot; + name.get() + &quot;: &quot; + e);</span>
+      }
+<span class="nc" id="L65">      throw e;</span>
+<span class="nc" id="L66">    }</span>
+
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (log.isTraceEnabled()) {</span>
+<span class="nc" id="L69">      log.trace(&quot;Successfully supplied &quot; + name.get() + &quot;: &quot; + output);</span>
+    }
+<span class="nc" id="L71">    return output;</span>
+  }
+
+  static Runnable newRunnable(Logger log, Runnable runnable, Supplier&lt;String&gt; name) {
+<span class="nc" id="L75">    return new Runnable() {</span>
+      @Override
+      public void run() {
+<span class="nc" id="L78">        runAndLog(log, runnable::run, name);</span>
+<span class="nc" id="L79">      }</span>
+
+      @Override
+      public String toString() {
+<span class="nc" id="L83">        return name.get();</span>
+      }
+    };
+  }
+
+  static &lt;T&gt; Callable&lt;T&gt; newCallable(Logger log, Callable&lt;T&gt; callable, Supplier&lt;String&gt; name) {
+<span class="nc" id="L89">    return new Callable&lt;T&gt;() {</span>
+      @Override
+      public T call() throws Exception {
+<span class="nc" id="L92">        return supplyAndLog(log, callable::call, name);</span>
+      }
+
+      @Override
+      public String toString() {
+<span class="nc" id="L97">        return name.get();</span>
+      }
+    };
+  }
+
+  static &lt;OUTPUT, THROWABLE extends Throwable&gt; CheckedSupplier&lt;OUTPUT, THROWABLE&gt; newCheckedSupplier(
+      Logger log, CheckedSupplier&lt;OUTPUT, THROWABLE&gt; supplier, Supplier&lt;String&gt; name) {
+<span class="nc" id="L104">    return new CheckedSupplier&lt;OUTPUT, THROWABLE&gt;() {</span>
+      @Override
+      public OUTPUT get() throws THROWABLE {
+<span class="nc" id="L107">        return supplyAndLog(log, supplier, name);</span>
+      }
+
+      @Override
+      public String toString() {
+<span class="nc" id="L112">        return name.get();</span>
+      }
+    };
+  }
+
+  static void warn(Logger log, Supplier&lt;String&gt; message, Throwable t, Class&lt;?&gt;... exceptionClasses) {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    if (log.isWarnEnabled()) {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      if (ReflectionUtils.isInstance(t, exceptionClasses)) {</span>
+        // do not print stack trace for known exceptions.
+<span class="nc" id="L121">        final StringBuilder b = new StringBuilder()</span>
+<span class="nc" id="L122">            .append(message.get())</span>
+<span class="nc" id="L123">            .append(&quot;: &quot;).append(t);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        for(Throwable cause = t.getCause(); cause != null; cause = cause.getCause()) {</span>
+<span class="nc" id="L125">          b.append(&quot;\n  Caused by: &quot;).append(cause);</span>
+        }
+<span class="nc" id="L127">        log.warn(b.toString());</span>
+<span class="nc" id="L128">      } else {</span>
+<span class="nc" id="L129">        log.warn(message.get(), t);</span>
+      }
+    }
+<span class="nc" id="L132">  }</span>
+
+  static void infoOrTrace(Logger log, String message, Throwable t) {
+<span class="nc" id="L135">    infoOrTrace(log, () -&gt; message, t);</span>
+<span class="nc" id="L136">  }</span>
+
+  static void infoOrTrace(Logger log, Supplier&lt;String&gt; message, Throwable t) {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">    if (log.isTraceEnabled()) {</span>
+<span class="nc" id="L140">      log.trace(message.get(), t);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    } else if (log.isInfoEnabled()) {</span>
+<span class="nc" id="L142">      log.info(&quot;{}: {}&quot;, message.get(), String.valueOf(t));</span>
+    }
+<span class="nc" id="L144">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

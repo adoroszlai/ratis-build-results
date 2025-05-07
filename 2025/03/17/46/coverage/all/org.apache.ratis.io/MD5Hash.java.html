@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MD5Hash.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.io</a> &gt; <span class="el_source">MD5Hash.java</span></div><h1>MD5Hash.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.io;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+
+public class MD5Hash {
+  public static final int MD5_LEN = 16;
+
+<span class="nc" id="L32">  private static final ThreadLocal&lt;MessageDigest&gt; DIGESTER_FACTORY =</span>
+<span class="nc" id="L33">      ThreadLocal.withInitial(MD5Hash::newDigester);</span>
+
+  public static MessageDigest newDigester() {
+    try {
+<span class="nc" id="L37">      return MessageDigest.getInstance(&quot;MD5&quot;);</span>
+<span class="nc" id="L38">    } catch (NoSuchAlgorithmException e) {</span>
+<span class="nc" id="L39">      throw new IllegalStateException(&quot;Failed to create MessageDigest for MD5&quot;, e);</span>
+    }
+  }
+
+  private byte[] digest;
+
+  /** Constructs an MD5Hash. */
+<span class="nc" id="L46">  public MD5Hash() {</span>
+<span class="nc" id="L47">    this.digest = new byte[MD5_LEN];</span>
+<span class="nc" id="L48">  }</span>
+
+  /** Constructs an MD5Hash from a hex string. */
+<span class="nc" id="L51">  public MD5Hash(String hex) {</span>
+<span class="nc" id="L52">    setDigest(hex);</span>
+<span class="nc" id="L53">  }</span>
+
+  /** Constructs an MD5Hash with a specified value. */
+<span class="nc" id="L56">  public MD5Hash(byte[] digest) {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    if (digest.length != MD5_LEN) {</span>
+<span class="nc" id="L58">      throw new IllegalArgumentException(&quot;Wrong length: &quot; + digest.length);</span>
+    }
+<span class="nc" id="L60">    this.digest = digest.clone();</span>
+<span class="nc" id="L61">  }</span>
+
+  public void readFields(DataInput in) throws IOException {
+<span class="nc" id="L64">    in.readFully(digest);</span>
+<span class="nc" id="L65">  }</span>
+
+  /** Constructs, reads and returns an instance. */
+  public static MD5Hash read(DataInput in) throws IOException {
+<span class="nc" id="L69">    MD5Hash result = new MD5Hash();</span>
+<span class="nc" id="L70">    result.readFields(in);</span>
+<span class="nc" id="L71">    return result;</span>
+  }
+
+  public void write(DataOutput out) throws IOException {
+<span class="nc" id="L75">    out.write(digest);</span>
+<span class="nc" id="L76">  }</span>
+
+  /** Copy the contents of another instance into this instance. */
+  public void set(MD5Hash that) {
+<span class="nc" id="L80">    System.arraycopy(that.digest, 0, this.digest, 0, MD5_LEN);</span>
+<span class="nc" id="L81">  }</span>
+
+  /** Returns the digest bytes. */
+  public byte[] getDigest() {
+<span class="nc" id="L85">    return digest.clone();</span>
+  }
+
+  /** Construct a hash value for a byte array. */
+  public static MD5Hash digest(byte[] data) {
+<span class="nc" id="L90">    return digest(data, 0, data.length);</span>
+  }
+
+  /**
+   * Create a thread local MD5 digester
+   */
+  public static MessageDigest getDigester() {
+<span class="nc" id="L97">    MessageDigest digester = DIGESTER_FACTORY.get();</span>
+<span class="nc" id="L98">    digester.reset();</span>
+<span class="nc" id="L99">    return digester;</span>
+  }
+
+  /** Construct a hash value for the content from the InputStream. */
+  public static MD5Hash digest(InputStream in) throws IOException {
+<span class="nc" id="L104">    final byte[] buffer = new byte[4*1024];</span>
+
+<span class="nc" id="L106">    final MessageDigest digester = getDigester();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">    for(int n; (n = in.read(buffer)) != -1; ) {</span>
+<span class="nc" id="L108">      digester.update(buffer, 0, n);</span>
+    }
+
+<span class="nc" id="L111">    return new MD5Hash(digester.digest());</span>
+  }
+
+  /** Construct a hash value for a byte array. */
+  public static MD5Hash digest(byte[] data, int start, int len) {
+    byte[] digest;
+<span class="nc" id="L117">    MessageDigest digester = getDigester();</span>
+<span class="nc" id="L118">    digester.update(data, start, len);</span>
+<span class="nc" id="L119">    digest = digester.digest();</span>
+<span class="nc" id="L120">    return new MD5Hash(digest);</span>
+  }
+
+  /** Construct a hash value for an array of byte array. */
+  public static MD5Hash digest(byte[][] dataArr, int start, int len) {
+    byte[] digest;
+<span class="nc" id="L126">    MessageDigest digester = getDigester();</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    for (byte[] data : dataArr) {</span>
+<span class="nc" id="L128">      digester.update(data, start, len);</span>
+    }
+<span class="nc" id="L130">    digest = digester.digest();</span>
+<span class="nc" id="L131">    return new MD5Hash(digest);</span>
+  }
+
+  /** Construct a half-sized version of this MD5.  Fits in a long **/
+  public long halfDigest() {
+<span class="nc" id="L136">    long value = 0;</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    for (int i = 0; i &lt; 8; i++) {</span>
+<span class="nc" id="L138">      value |= ((digest[i] &amp; 0xffL) &lt;&lt; (8*(7-i)));</span>
+    }
+<span class="nc" id="L140">    return value;</span>
+  }
+
+  /**
+   * Return a 32-bit digest of the MD5.
+   * @return the first 4 bytes of the md5
+   */
+  public int quarterDigest() {
+<span class="nc" id="L148">    int value = 0;</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">    for (int i = 0; i &lt; 4; i++) {</span>
+<span class="nc" id="L150">      value |= ((digest[i] &amp; 0xff) &lt;&lt; (8*(3-i)));</span>
+    }
+<span class="nc" id="L152">    return value;</span>
+  }
+
+  /** Returns true iff &lt;code&gt;o&lt;/code&gt; is an MD5Hash whose digest contains the
+   * same values.  */
+  @Override
+  public boolean equals(Object o) {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (!(o instanceof MD5Hash)) {</span>
+<span class="nc" id="L160">      return false;</span>
+    }
+<span class="nc" id="L162">    MD5Hash other = (MD5Hash)o;</span>
+<span class="nc" id="L163">    return Arrays.equals(this.digest, other.digest);</span>
+  }
+
+  /** Returns a hash code value for this object.
+   * Only uses the first 4 bytes, since md5s are evenly distributed.
+   */
+  @Override
+  public int hashCode() {
+<span class="nc" id="L171">    return quarterDigest();</span>
+  }
+
+<span class="nc" id="L174">  private static final char[] HEX_DIGITS =</span>
+      {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+
+  /** Returns a string representation of this object. */
+  @Override
+  public String toString() {
+<span class="nc" id="L180">    StringBuilder buf = new StringBuilder(MD5_LEN*2);</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">    for (int i = 0; i &lt; MD5_LEN; i++) {</span>
+<span class="nc" id="L182">      int b = digest[i];</span>
+<span class="nc" id="L183">      buf.append(HEX_DIGITS[(b &gt;&gt; 4) &amp; 0xf]);</span>
+<span class="nc" id="L184">      buf.append(HEX_DIGITS[b &amp; 0xf]);</span>
+    }
+<span class="nc" id="L186">    return buf.toString();</span>
+  }
+
+  /** Sets the digest value from a hex string. */
+  public void setDigest(String hex) {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">    if (hex.length() != MD5_LEN*2) {</span>
+<span class="nc" id="L192">      throw new IllegalArgumentException(&quot;Wrong length: &quot; + hex.length());</span>
+    }
+<span class="nc" id="L194">    this.digest = new byte[MD5_LEN];</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">    for (int i = 0; i &lt; MD5_LEN; i++) {</span>
+<span class="nc" id="L196">      int j = i &lt;&lt; 1;</span>
+<span class="nc" id="L197">      this.digest[i] = (byte)(charToNibble(hex.charAt(j)) &lt;&lt; 4 |</span>
+<span class="nc" id="L198">          charToNibble(hex.charAt(j+1)));</span>
+    }
+<span class="nc" id="L200">  }</span>
+
+  private static int charToNibble(char c) {
+<span class="nc bnc" id="L203" title="All 4 branches missed.">    if (c &gt;= '0' &amp;&amp; c &lt;= '9') {</span>
+<span class="nc" id="L204">      return c - '0';</span>
+<span class="nc bnc" id="L205" title="All 4 branches missed.">    } else if (c &gt;= 'a' &amp;&amp; c &lt;= 'f') {</span>
+<span class="nc" id="L206">      return 0xa + (c - 'a');</span>
+<span class="nc bnc" id="L207" title="All 4 branches missed.">    } else if (c &gt;= 'A' &amp;&amp; c &lt;= 'F') {</span>
+<span class="nc" id="L208">      return 0xA + (c - 'A');</span>
+    } else {
+<span class="nc" id="L210">      throw new RuntimeException(&quot;Not a hex character: &quot; + c);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

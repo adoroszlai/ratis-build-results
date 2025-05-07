@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AutoCloseableReadWriteLock.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">AutoCloseableReadWriteLock.java</span></div><h1>AutoCloseableReadWriteLock.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
+
+public class AutoCloseableReadWriteLock {
+  private final Object name;
+<span class="nc" id="L26">  private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);</span>
+<span class="nc" id="L27">  private final AtomicInteger depth = new AtomicInteger();</span>
+
+<span class="nc" id="L29">  public AutoCloseableReadWriteLock(Object name) {</span>
+<span class="nc" id="L30">    this.name = name;</span>
+<span class="nc" id="L31">  }</span>
+
+  public AutoCloseableLock readLock(StackTraceElement caller, Consumer&lt;String&gt; log) {
+<span class="nc" id="L34">    final AutoCloseableLock readLock = AutoCloseableLock.acquire(lock.readLock(),</span>
+<span class="nc" id="L35">        () -&gt; logLocking(caller, true, false, log));</span>
+
+<span class="nc" id="L37">    logLocking(caller, true, true, log);</span>
+<span class="nc" id="L38">    return readLock;</span>
+  }
+
+  public AutoCloseableLock writeLock(StackTraceElement caller, Consumer&lt;String&gt; log) {
+<span class="nc" id="L42">    final AutoCloseableLock writeLock = AutoCloseableLock.acquire(lock.writeLock(),</span>
+<span class="nc" id="L43">        () -&gt; logLocking(caller, false, false, log));</span>
+
+<span class="nc" id="L45">    logLocking(caller, false, true, log);</span>
+<span class="nc" id="L46">    return writeLock;</span>
+  }
+
+  private void logLocking(StackTraceElement caller, boolean read, boolean acquire, Consumer&lt;String&gt; log) {
+<span class="nc bnc" id="L50" title="All 4 branches missed.">    if (caller != null &amp;&amp; log != null) {</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">      final int d = acquire? depth.getAndIncrement(): depth.decrementAndGet();</span>
+<span class="nc" id="L52">      final StringBuilder b = new StringBuilder();</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">      for(int i = 0; i &lt; d; i++) {</span>
+<span class="nc" id="L54">        b.append(&quot;  &quot;);</span>
+      }
+<span class="nc bnc" id="L56" title="All 2 branches missed.">      if (name != null) {</span>
+<span class="nc" id="L57">        b.append(name).append(&quot;: &quot;);</span>
+      }
+<span class="nc bnc" id="L59" title="All 4 branches missed.">      b.append(read? &quot;readLock &quot;: &quot;writeLock &quot;)</span>
+<span class="nc" id="L60">          .append(acquire ? &quot;ACQUIRED &quot;: &quot;RELEASED &quot;)</span>
+<span class="nc" id="L61">          .append(depth).append(&quot; by &quot;);</span>
+<span class="nc" id="L62">      final String className = caller.getClassName();</span>
+<span class="nc" id="L63">      final int i = className.lastIndexOf('.');</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">      b.append(i &gt;= 0? className.substring(i + 1): className).append(&quot;.&quot;).append(caller.getMethodName());</span>
+<span class="nc" id="L65">      log.accept(b.toString());</span>
+    }
+<span class="nc" id="L67">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

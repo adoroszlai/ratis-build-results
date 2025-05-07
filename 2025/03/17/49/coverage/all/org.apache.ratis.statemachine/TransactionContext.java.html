@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransactionContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.statemachine</a> &gt; <span class="el_source">TransactionContext.java</span></div><h1>TransactionContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.statemachine;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.StateMachineLogEntryProto;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.ReflectionUtils;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Context for a transaction.
+ * The transaction might have originated from a client request, or it
+ * maybe coming from another replica of the state machine through the RAFT log.
+ * {@link TransactionContext} can be created from
+ * either the {@link StateMachine} or the state machine updater.
+ *
+ * In the first case, the {@link StateMachine} is a leader. When it receives
+ * a {@link StateMachine#startTransaction(RaftClientRequest)} request, it returns
+ * a {@link TransactionContext} with the changes from the {@link StateMachine}.
+ * The same context will be passed back to the {@link StateMachine}
+ * via the {@link StateMachine#applyTransaction(TransactionContext)} call.
+ *
+ * In the second case, the {@link StateMachine} is a follower.
+ * The {@link TransactionContext} will be a committed entry coming from
+ * the RAFT log from the leader.
+ */
+public interface TransactionContext {
+  /** @return the role of the server when this context is created. */
+  RaftPeerRole getServerRole();
+
+  /**
+   * Returns the original request from the {@link RaftClientRequest}
+   * @return the original request from the {@link RaftClientRequest}
+   */
+  RaftClientRequest getClientRequest();
+
+  /**
+   * Returns the data from the {@link StateMachine}
+   * @return the data from the {@link StateMachine}
+   * @deprecated access StateMachineLogEntry via {@link TransactionContext#getLogEntryRef()} or
+   * {@link TransactionContext#getLogEntryUnsafe()}
+   */
+  @Deprecated
+  StateMachineLogEntryProto getStateMachineLogEntry();
+
+  /** Set exception in case of failure. */
+  TransactionContext setException(Exception exception);
+
+  /**
+   * Returns the exception from the {@link StateMachine} or the log
+   * @return the exception from the {@link StateMachine} or the log
+   */
+  Exception getException();
+
+  /**
+   * Sets the {@link StateMachine} the {@link TransactionContext} is specific to, the method would
+   * not create a new transaction context, it updates the {@link StateMachine} it associates with
+   * @param stateMachineContext state machine context
+   * @return transaction context specific to the given {@link StateMachine}
+   */
+  TransactionContext setStateMachineContext(Object stateMachineContext);
+
+  /**
+   * Returns the {@link StateMachine} the current {@link TransactionContext} specific to
+   * @return the {@link StateMachine} the current {@link TransactionContext} specific to
+   */
+  Object getStateMachineContext();
+
+  /**
+   * Initialize {@link LogEntryProto} using the internal {@link StateMachineLogEntryProto}.
+   * @param term The current term.
+   * @param index The index of the log entry.
+   * @return the result {@link LogEntryProto}
+   */
+  LogEntryProto initLogEntry(long term, long index);
+
+  /**
+   * @return a copy of the committed log entry if it exists; otherwise, returns null
+   *
+   * @deprecated Use {@link #getLogEntryRef()} or {@link #getLogEntryUnsafe()} to avoid copying.
+   */
+  @Deprecated
+  LogEntryProto getLogEntry();
+
+  /**
+   * @return the committed log entry if it exists; otherwise, returns null.
+   *         The returned value is safe to use only before {@link StateMachine#applyTransaction} returns.
+   *         Once {@link StateMachine#applyTransaction} has returned, it is unsafe to use the log entry
+   *         since the underlying buffers can possiby be released.
+   */
+  default LogEntryProto getLogEntryUnsafe() {
+<span class="nc" id="L115">    return getLogEntryRef().get();</span>
+  }
+
+  /**
+   * Get a {@link ReferenceCountedObject} to the committed log entry.
+   *
+   * It is safe to access the log entry by calling {@link ReferenceCountedObject#get()}
+   * (without {@link ReferenceCountedObject#retain()})
+   * inside the scope of {@link StateMachine#applyTransaction}.
+   *
+   * If the log entry is needed after {@link StateMachine#applyTransaction} returns,
+   * e.g. for asynchronous computation or caching,
+   * the caller must invoke {@link ReferenceCountedObject#retain()} and {@link ReferenceCountedObject#release()}.
+   *
+   * @return a reference to the committed log entry if it exists; otherwise, returns null.
+   */
+  default ReferenceCountedObject&lt;LogEntryProto&gt; getLogEntryRef() {
+<span class="nc" id="L132">    return Optional.ofNullable(getLogEntryUnsafe()).map(this::wrap).orElse(null);</span>
+  }
+
+  /** Wrap the given log entry as a {@link ReferenceCountedObject} for retaining it for later use. */
+  default ReferenceCountedObject&lt;LogEntryProto&gt; wrap(LogEntryProto entry) {
+<span class="nc" id="L137">    Preconditions.assertSame(getLogEntry().getTerm(), entry.getTerm(), &quot;entry.term&quot;);</span>
+<span class="nc" id="L138">    Preconditions.assertSame(getLogEntry().getIndex(), entry.getIndex(), &quot;entry.index&quot;);</span>
+<span class="nc" id="L139">    return ReferenceCountedObject.wrap(entry);</span>
+  }
+
+  /**
+   * Sets whether to commit the transaction to the RAFT log or not
+   * @param shouldCommit true if the transaction is supposed to be committed to the RAFT log
+   * @return the current {@link TransactionContext} itself
+   */
+  TransactionContext setShouldCommit(boolean shouldCommit);
+
+  /**
+   * It indicates if the transaction should be committed to the RAFT log
+   * @return true if it commits the transaction to the RAFT log, otherwise, false
+   */
+  boolean shouldCommit();
+
+  // proxy StateMachine methods. We do not want to expose the SM to the RaftLog
+
+  /**
+   * This is called before the transaction passed from the StateMachine is appended to the raft log.
+   * This method will be called from log append and having the same strict serial order that the
+   * Transactions will have in the RAFT log. Since this is called serially in the critical path of
+   * log append, it is important to do only required operations here.
+   * @return The Transaction context.
+   */
+  TransactionContext preAppendTransaction() throws IOException;
+
+  /**
+   * Called to notify the state machine that the Transaction passed cannot be appended (or synced).
+   * The exception field will indicate whether there was an exception or not.
+   * @return cancelled transaction
+   */
+  TransactionContext cancelTransaction() throws IOException;
+
+  static Builder newBuilder() {
+<span class="nc" id="L174">    return new Builder();</span>
+  }
+
+<span class="nc" id="L177">  class Builder {</span>
+<span class="nc" id="L178">    private RaftPeerRole serverRole = RaftPeerRole.LEADER;</span>
+    private StateMachine stateMachine;
+    private Object stateMachineContext;
+
+    private RaftClientRequest clientRequest;
+    private LogEntryProto logEntry;
+    private StateMachineLogEntryProto stateMachineLogEntry;
+    private ByteString logData;
+    private ByteString stateMachineData;
+
+    public Builder setServerRole(RaftPeerRole serverRole) {
+<span class="nc" id="L189">      this.serverRole = serverRole;</span>
+<span class="nc" id="L190">      return this;</span>
+    }
+
+    public Builder setStateMachine(StateMachine stateMachine) {
+<span class="nc" id="L194">      this.stateMachine = stateMachine;</span>
+<span class="nc" id="L195">      return this;</span>
+    }
+
+    public Builder setStateMachineContext(Object stateMachineContext) {
+<span class="nc" id="L199">      this.stateMachineContext = stateMachineContext;</span>
+<span class="nc" id="L200">      return this;</span>
+    }
+
+    public Builder setClientRequest(RaftClientRequest clientRequest) {
+<span class="nc" id="L204">      this.clientRequest = clientRequest;</span>
+<span class="nc" id="L205">      return this;</span>
+    }
+
+    public Builder setLogEntry(LogEntryProto logEntry) {
+<span class="nc" id="L209">      this.logEntry = logEntry;</span>
+<span class="nc" id="L210">      return this;</span>
+    }
+
+    public Builder setStateMachineLogEntry(StateMachineLogEntryProto stateMachineLogEntry) {
+<span class="nc" id="L214">      this.stateMachineLogEntry = stateMachineLogEntry;</span>
+<span class="nc" id="L215">      return this;</span>
+    }
+
+    public Builder setLogData(ByteString logData) {
+<span class="nc" id="L219">      this.logData = logData;</span>
+<span class="nc" id="L220">      return this;</span>
+    }
+
+    public Builder setStateMachineData(ByteString stateMachineData) {
+<span class="nc" id="L224">      this.stateMachineData = stateMachineData;</span>
+<span class="nc" id="L225">      return this;</span>
+    }
+
+    public TransactionContext build() {
+<span class="nc" id="L229">      Objects.requireNonNull(serverRole, &quot;serverRole == null&quot;);</span>
+<span class="nc" id="L230">      Objects.requireNonNull(stateMachine, &quot;stateMachine == null&quot;);</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">      if (clientRequest != null) {</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        Preconditions.assertTrue(serverRole == RaftPeerRole.LEADER,</span>
+<span class="nc" id="L233">            () -&gt; &quot;serverRole MUST be LEADER since clientRequest != null, serverRole is &quot; + serverRole);</span>
+<span class="nc" id="L234">        Preconditions.assertNull(logEntry, () -&gt; &quot;logEntry MUST be null since clientRequest != null&quot;);</span>
+<span class="nc" id="L235">        return newTransactionContext(stateMachine, clientRequest,</span>
+            stateMachineLogEntry, logData, stateMachineData, stateMachineContext);
+      } else {
+<span class="nc" id="L238">        Objects.requireNonNull(logEntry, &quot;logEntry must not be null since clientRequest == null&quot;);</span>
+<span class="nc" id="L239">        Preconditions.assertTrue(logEntry.hasStateMachineLogEntry(),</span>
+<span class="nc" id="L240">            () -&gt; &quot;Unexpected logEntry: stateMachineLogEntry not found, logEntry=&quot; + logEntry);</span>
+<span class="nc" id="L241">        return newTransactionContext(serverRole, stateMachine, logEntry);</span>
+      }
+    }
+
+    /** Get the impl class using reflection. */
+<span class="nc" id="L246">    private static final Class&lt;? extends TransactionContext&gt; IMPL_CLASS</span>
+<span class="nc" id="L247">        = ReflectionUtils.getImplClass(TransactionContext.class);</span>
+
+    /** @return a new {@link TransactionContext} using reflection. */
+    private static TransactionContext newTransactionContext(
+        StateMachine stateMachine, RaftClientRequest clientRequest,
+        StateMachineLogEntryProto stateMachineLogEntry, ByteString logData, ByteString stateMachineData,
+        Object stateMachineContext) {
+<span class="nc" id="L254">      final Class&lt;?&gt;[] argClasses = {RaftClientRequest.class, StateMachine.class,</span>
+          StateMachineLogEntryProto.class, ByteString.class, ByteString.class, Object.class};
+<span class="nc" id="L256">      return ReflectionUtils.newInstance(IMPL_CLASS, argClasses,</span>
+          clientRequest, stateMachine, stateMachineLogEntry, logData, stateMachineData, stateMachineContext);
+    }
+
+    /** @return a new {@link TransactionContext} using reflection. */
+    private static TransactionContext newTransactionContext(
+        RaftPeerRole serverRole, StateMachine stateMachine, LogEntryProto logEntry) {
+<span class="nc" id="L263">      final Class&lt;?&gt;[] argClasses = {RaftPeerRole.class, StateMachine.class, LogEntryProto.class};</span>
+<span class="nc" id="L264">      return ReflectionUtils.newInstance(IMPL_CLASS, argClasses, serverRole, stateMachine, logEntry);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

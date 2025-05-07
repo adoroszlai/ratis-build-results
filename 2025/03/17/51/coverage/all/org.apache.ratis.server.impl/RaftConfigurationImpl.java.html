@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftConfigurationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">RaftConfigurationImpl.java</span></div><h1>RaftConfigurationImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.util.Preconditions;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
+/**
+ * The configuration of the raft cluster.
+ * &lt;p&gt;
+ * The configuration is stable if there is no on-going peer change. Otherwise,
+ * the configuration is transitional, i.e. in the middle of a peer change.
+ * &lt;p&gt;
+ * The objects of this class are immutable.
+ */
+final class RaftConfigurationImpl implements RaftConfiguration {
+  /** Create a {@link Builder}. */
+  static Builder newBuilder() {
+<span class="nc" id="L47">    return new Builder();</span>
+  }
+
+  static final class Builder {
+    private PeerConfiguration oldConf;
+    private PeerConfiguration conf;
+<span class="nc" id="L53">    private long logEntryIndex = RaftLog.INVALID_LOG_INDEX;</span>
+
+<span class="nc" id="L55">    private boolean forceStable = false;</span>
+<span class="nc" id="L56">    private boolean forceTransitional = false;</span>
+
+<span class="nc" id="L58">    private Builder() {}</span>
+
+    Builder setConf(PeerConfiguration conf) {
+<span class="nc" id="L61">      Objects.requireNonNull(conf, &quot;PeerConfiguration == null&quot;);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      Preconditions.assertTrue(this.conf == null, &quot;conf is already set.&quot;);</span>
+<span class="nc" id="L63">      this.conf = conf;</span>
+<span class="nc" id="L64">      return this;</span>
+    }
+
+    Builder setConf(Iterable&lt;RaftPeer&gt; peers) {
+<span class="nc" id="L68">      return setConf(new PeerConfiguration(peers));</span>
+    }
+
+    Builder setConf(Iterable&lt;RaftPeer&gt; peers, Iterable&lt;RaftPeer&gt; listeners) {
+<span class="nc" id="L72">      return setConf(new PeerConfiguration(peers, listeners));</span>
+    }
+
+    Builder setConf(RaftConfigurationImpl transitionalConf) {
+<span class="nc" id="L76">      Objects.requireNonNull(transitionalConf, &quot;transitionalConf == null&quot;);</span>
+<span class="nc" id="L77">      Preconditions.assertTrue(transitionalConf.isTransitional());</span>
+
+<span class="nc bnc" id="L79" title="All 2 branches missed.">      Preconditions.assertTrue(!forceTransitional);</span>
+<span class="nc" id="L80">      forceStable = true;</span>
+<span class="nc" id="L81">      return setConf(transitionalConf.conf);</span>
+    }
+
+
+    Builder setOldConf(PeerConfiguration oldConf) {
+<span class="nc" id="L86">      Objects.requireNonNull(oldConf, &quot;oldConf == null&quot;);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">      Preconditions.assertTrue(this.oldConf == null, &quot;oldConf is already set.&quot;);</span>
+<span class="nc" id="L88">      this.oldConf = oldConf;</span>
+<span class="nc" id="L89">      return this;</span>
+    }
+
+    Builder setOldConf(Iterable&lt;RaftPeer&gt; oldPeers, Iterable&lt;RaftPeer&gt; oldListeners) {
+<span class="nc" id="L93">      return setOldConf(new PeerConfiguration(oldPeers, oldListeners));</span>
+    }
+
+    Builder setOldConf(RaftConfigurationImpl stableConf) {
+<span class="nc" id="L97">      Objects.requireNonNull(stableConf, &quot;stableConf == null&quot;);</span>
+<span class="nc" id="L98">      Preconditions.assertTrue(stableConf.isStable());</span>
+
+<span class="nc bnc" id="L100" title="All 2 branches missed.">      Preconditions.assertTrue(!forceStable);</span>
+<span class="nc" id="L101">      forceTransitional = true;</span>
+<span class="nc" id="L102">      return setOldConf(stableConf.conf);</span>
+    }
+
+    Builder setLogEntryIndex(long logEntryIndex) {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      Preconditions.assertTrue(logEntryIndex != RaftLog.INVALID_LOG_INDEX);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">      Preconditions.assertTrue(this.logEntryIndex == RaftLog.INVALID_LOG_INDEX, &quot;logEntryIndex is already set.&quot;);</span>
+<span class="nc" id="L108">      this.logEntryIndex = logEntryIndex;</span>
+<span class="nc" id="L109">      return this;</span>
+    }
+
+    RaftConfigurationImpl build() {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      if (forceTransitional) {</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        Preconditions.assertTrue(oldConf != null);</span>
+      }
+<span class="nc bnc" id="L116" title="All 2 branches missed.">      if (forceStable) {</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        Preconditions.assertTrue(oldConf == null);</span>
+      }
+<span class="nc" id="L119">      return new RaftConfigurationImpl(conf, oldConf, logEntryIndex);</span>
+    }
+  }
+
+  /** Non-null only if this configuration is transitional. */
+  private final PeerConfiguration oldConf;
+  /**
+   * The current peer configuration while this configuration is stable;
+   * or the new peer configuration while this configuration is transitional.
+   */
+  private final PeerConfiguration conf;
+
+  /** The index of the corresponding log entry for this configuration. */
+  private final long logEntryIndex;
+
+  private RaftConfigurationImpl(PeerConfiguration conf, PeerConfiguration oldConf,
+<span class="nc" id="L135">      long logEntryIndex) {</span>
+<span class="nc" id="L136">    this.conf = Objects.requireNonNull(conf, &quot;PeerConfiguration == null&quot;);</span>
+<span class="nc" id="L137">    this.oldConf = oldConf;</span>
+<span class="nc" id="L138">    this.logEntryIndex = logEntryIndex;</span>
+<span class="nc" id="L139">  }</span>
+
+  /** Is this configuration transitional, i.e. in the middle of a peer change? */
+  boolean isTransitional() {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">    return oldConf != null;</span>
+  }
+
+  /** Is this configuration stable, i.e. no on-going peer change? */
+  boolean isStable() {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">    return oldConf == null;</span>
+  }
+
+  @SuppressWarnings({&quot;squid:S6466&quot;}) // Suppress  ArrayIndexOutOfBoundsException warning
+  boolean containsInConf(RaftPeerId peerId, RaftPeerRole... roles) {
+<span class="nc bnc" id="L153" title="All 4 branches missed.">    if (roles == null || roles.length == 0) {</span>
+<span class="nc" id="L154">      return conf.contains(peerId);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    } else if (roles.length == 1) {</span>
+<span class="nc" id="L156">      return conf.contains(peerId, roles[0]);</span>
+    } else {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">      return conf.contains(peerId, EnumSet.of(roles[0], roles)) != null;</span>
+    }
+  }
+
+  PeerConfiguration getConf() {
+<span class="nc" id="L163">    return conf;</span>
+  }
+
+  PeerConfiguration getOldConf() {
+<span class="nc" id="L167">    return oldConf;</span>
+  }
+
+  boolean isHighestPriority(RaftPeerId peerId) {
+<span class="nc" id="L171">    RaftPeer target = getPeer(peerId);</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">    if (target == null) {</span>
+<span class="nc" id="L173">      return false;</span>
+    }
+<span class="nc" id="L175">    Collection&lt;RaftPeer&gt; peers = getCurrentPeers();</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    for (RaftPeer peer : peers) {</span>
+<span class="nc bnc" id="L177" title="All 4 branches missed.">      if (peer.getPriority() &gt; target.getPriority() &amp;&amp; !peer.equals(target)) {</span>
+<span class="nc" id="L178">        return false;</span>
+      }
+<span class="nc" id="L180">    }</span>
+<span class="nc" id="L181">    return true;</span>
+  }
+
+  boolean containsInOldConf(RaftPeerId peerId) {
+<span class="nc bnc" id="L185" title="All 4 branches missed.">    return oldConf != null &amp;&amp; oldConf.contains(peerId);</span>
+  }
+
+  /**
+   * @return true iff the given peer is contained in conf and,
+   *         if old conf exists, is contained in old conf.
+   */
+  boolean containsInBothConfs(RaftPeerId peerId) {
+<span class="nc bnc" id="L193" title="All 4 branches missed.">    return containsInConf(peerId) &amp;&amp;</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        (oldConf == null || containsInOldConf(peerId));</span>
+  }
+
+  @Override
+  public RaftPeer getPeer(RaftPeerId id, RaftPeerRole... roles) {
+<span class="nc bnc" id="L199" title="All 2 branches missed.">    if (id == null) {</span>
+<span class="nc" id="L200">      return null;</span>
+    }
+<span class="nc" id="L202">    final RaftPeer peer = conf.getPeer(id, roles);</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">    if (peer != null) {</span>
+<span class="nc" id="L204">      return peer;</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">    } else if (oldConf != null) {</span>
+<span class="nc" id="L206">      return oldConf.getPeer(id, roles);</span>
+    }
+<span class="nc" id="L208">    return null;</span>
+  }
+
+  @Override
+  public List&lt;RaftPeer&gt; getAllPeers(RaftPeerRole role) {
+<span class="nc" id="L213">    final List&lt;RaftPeer&gt; peers = new ArrayList&lt;&gt;(conf.getPeers(role));</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    if (oldConf != null) {</span>
+<span class="nc" id="L215">      oldConf.getPeers(role).stream()</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">          .filter(p -&gt; !peers.contains(p))</span>
+<span class="nc" id="L217">          .forEach(peers::add);</span>
+    }
+<span class="nc" id="L219">    return peers;</span>
+  }
+
+  /**
+   * @return all the peers other than the given self id from the conf,
+   *         and the old conf if it exists.
+   */
+  Collection&lt;RaftPeer&gt; getOtherPeers(RaftPeerId selfId) {
+<span class="nc" id="L227">    Collection&lt;RaftPeer&gt; others = conf.getOtherPeers(selfId);</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    if (oldConf != null) {</span>
+<span class="nc" id="L229">      oldConf.getOtherPeers(selfId).stream()</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">          .filter(p -&gt; !others.contains(p))</span>
+<span class="nc" id="L231">          .forEach(others::add);</span>
+    }
+<span class="nc" id="L233">    return others;</span>
+  }
+
+  /**
+   * @return true if the new peers number reaches half of new conf peers number or the group is
+   * changing from single mode to HA mode.
+   */
+  boolean changeMajority(Collection&lt;RaftPeer&gt; newMembers) {
+<span class="nc" id="L241">    Preconditions.assertNull(oldConf, &quot;oldConf&quot;);</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    final long newPeersCount = newMembers.stream().map(RaftPeer::getId).filter(id -&gt; conf.getPeer(id) == null).count();</span>
+
+<span class="nc bnc" id="L244" title="All 6 branches missed.">    if (conf.size() == 1 &amp;&amp; newMembers.size() == 2 &amp;&amp; newPeersCount == 1) {</span>
+      // Change from single peer to HA mode. This is a special case, skip majority verification.
+<span class="nc" id="L246">      return false;</span>
+    }
+
+    // If newPeersCount reaches majority number of new conf size, the cluster may end with infinity
+    // election. See https://issues.apache.org/jira/browse/RATIS-1912 for more details.
+<span class="nc" id="L251">    final long oldPeersCount = newMembers.size() - newPeersCount;</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">    return newPeersCount &gt;= oldPeersCount;</span>
+  }
+
+  /** @return True if the selfId is in single mode. */
+  boolean isSingleMode(RaftPeerId selfId) {
+<span class="nc bnc" id="L257" title="All 2 branches missed.">    if (isStable()) {</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">      return conf.size() == 1;</span>
+    } else {
+<span class="nc bnc" id="L260" title="All 8 branches missed.">      return oldConf.size() == 1 &amp;&amp; oldConf.contains(selfId) &amp;&amp; conf.size() == 2 &amp;&amp; conf.contains(selfId);</span>
+    }
+  }
+
+  /** @return true if the self id together with the others are in the majority. */
+  boolean hasMajority(Collection&lt;RaftPeerId&gt; others, RaftPeerId selfId) {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">    Preconditions.assertTrue(!others.contains(selfId));</span>
+<span class="nc bnc" id="L267" title="All 4 branches missed.">    return conf.hasMajority(others, selfId) &amp;&amp;</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        (oldConf == null || oldConf.hasMajority(others, selfId));</span>
+  }
+
+  /** @return true if the self id together with the acknowledged followers reach majority. */
+  boolean hasMajority(Predicate&lt;RaftPeerId&gt; followers, RaftPeerId selfId) {
+<span class="nc" id="L273">    final boolean includeInCurrent = containsInConf(selfId);</span>
+<span class="nc" id="L274">    final boolean hasMajorityInNewConf = conf.hasMajority(followers, includeInCurrent);</span>
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">    if (!isTransitional()) {</span>
+<span class="nc" id="L277">      return hasMajorityInNewConf;</span>
+    } else {
+<span class="nc" id="L279">      final boolean includeInOldConf = containsInOldConf(selfId);</span>
+<span class="nc" id="L280">      final boolean hasMajorityInOldConf = oldConf.hasMajority(followers, includeInOldConf);</span>
+<span class="nc bnc" id="L281" title="All 4 branches missed.">      return hasMajorityInOldConf &amp;&amp; hasMajorityInNewConf;</span>
+    }
+  }
+
+  int getMajorityCount() {
+<span class="nc" id="L286">    return conf.getMajorityCount();</span>
+  }
+
+  /** @return true if the rejects are in the majority(maybe half is enough in some cases). */
+  boolean majorityRejectVotes(Collection&lt;RaftPeerId&gt; rejects) {
+<span class="nc bnc" id="L291" title="All 4 branches missed.">    return conf.majorityRejectVotes(rejects) ||</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">            (oldConf != null &amp;&amp; oldConf.majorityRejectVotes(rejects));</span>
+  }
+
+  /** @return true if only one voting member (the leader) in the cluster */
+  boolean isSingleton() {
+<span class="nc bnc" id="L297" title="All 4 branches missed.">    return getCurrentPeers().size() == 1 &amp;&amp; getPreviousPeers().size() &lt;= 1;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L302">    return &quot;conf: {index: &quot; + logEntryIndex + &quot;, cur=&quot; + conf + &quot;, old=&quot; + oldConf + &quot;}&quot;;</span>
+  }
+
+  boolean hasNoChange(Collection&lt;RaftPeer&gt; newMembers, Collection&lt;RaftPeer&gt; newListeners) {
+<span class="nc bnc" id="L306" title="All 4 branches missed.">    if (!isStable() || conf.size() != newMembers.size()</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        || conf.getPeers(RaftPeerRole.LISTENER).size() != newListeners.size()) {</span>
+<span class="nc" id="L308">      return false;</span>
+    }
+<span class="nc bnc" id="L310" title="All 2 branches missed.">    for (RaftPeer peer : newMembers) {</span>
+<span class="nc" id="L311">      final RaftPeer inConf = conf.getPeer(peer.getId());</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">      if (inConf == null) {</span>
+<span class="nc" id="L313">        return false;</span>
+      }
+<span class="nc bnc" id="L315" title="All 2 branches missed.">      if (inConf.getPriority() != peer.getPriority()) {</span>
+<span class="nc" id="L316">        return false;</span>
+      }
+<span class="nc" id="L318">    }</span>
+<span class="nc bnc" id="L319" title="All 2 branches missed.">    for (RaftPeer peer : newListeners) {</span>
+<span class="nc" id="L320">      final RaftPeer inConf = conf.getPeer(peer.getId(), RaftPeerRole.LISTENER);</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">      if (inConf == null) {</span>
+<span class="nc" id="L322">        return false;</span>
+      }
+<span class="nc bnc" id="L324" title="All 2 branches missed.">      if (inConf.getPriority() != peer.getPriority()) {</span>
+<span class="nc" id="L325">        return false;</span>
+      }
+<span class="nc" id="L327">    }</span>
+<span class="nc" id="L328">    return true;</span>
+  }
+
+  @Override
+  public long getLogEntryIndex() {
+<span class="nc" id="L333">    return logEntryIndex;</span>
+  }
+
+  /** @return the peers which are not contained in conf. */
+  Collection&lt;RaftPeer&gt; filterNotContainedInConf(List&lt;RaftPeer&gt; peers) {
+<span class="nc" id="L338">    return peers.stream()</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        .filter(p -&gt; !containsInConf(p.getId(), RaftPeerRole.FOLLOWER, RaftPeerRole.LISTENER))</span>
+<span class="nc" id="L340">        .collect(Collectors.toList());</span>
+  }
+
+  @Override
+  public Collection&lt;RaftPeer&gt; getPreviousPeers(RaftPeerRole role) {
+<span class="nc bnc" id="L345" title="All 2 branches missed.">    return oldConf != null ? oldConf.getPeers(role) : Collections.emptyList();</span>
+  }
+
+  @Override
+  public Collection&lt;RaftPeer&gt; getCurrentPeers(RaftPeerRole role) {
+<span class="nc" id="L350">    return conf.getPeers(role);</span>
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">    if (this == obj) {</span>
+<span class="nc" id="L356">      return true;</span>
+<span class="nc bnc" id="L357" title="All 4 branches missed.">    } else if (obj == null || obj.getClass() != this.getClass()) {</span>
+<span class="nc" id="L358">      return false;</span>
+    }
+<span class="nc" id="L360">    final RaftConfigurationImpl that = (RaftConfigurationImpl)obj;</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">    return this.logEntryIndex == that.logEntryIndex</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">        &amp;&amp; Objects.equals(this.conf,  that.conf)</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">        &amp;&amp; Objects.equals(this.oldConf,  that.oldConf);</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L368">    return Long.hashCode(logEntryIndex);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

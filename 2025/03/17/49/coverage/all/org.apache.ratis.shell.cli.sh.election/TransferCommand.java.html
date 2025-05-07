@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferCommand.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli.sh.election</a> &gt; <span class="el_source">TransferCommand.java</span></div><h1>TransferCommand.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli.sh.election;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.ratis.client.RaftClient;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.exceptions.TransferLeadershipException;
+import org.apache.ratis.shell.cli.sh.command.AbstractRatisCommand;
+import org.apache.ratis.shell.cli.sh.command.Context;
+import org.apache.ratis.util.TimeDuration;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+/**
+ * Command for transferring the ratis leader to specific server.
+ */
+public class TransferCommand extends AbstractRatisCommand {
+  public static final String ADDRESS_OPTION_NAME = &quot;address&quot;;
+  public static final String TIMEOUT_OPTION_NAME = &quot;timeout&quot;;
+  /**
+   * @param context command context
+   */
+  public TransferCommand(Context context) {
+<span class="nc" id="L48">    super(context);</span>
+<span class="nc" id="L49">  }</span>
+
+  @Override
+  public String getCommandName() {
+<span class="nc" id="L53">    return &quot;transfer&quot;;</span>
+  }
+
+  @Override
+  public int run(CommandLine cl) throws IOException {
+<span class="nc" id="L58">    super.run(cl);</span>
+
+<span class="nc" id="L60">    String strAddr = cl.getOptionValue(ADDRESS_OPTION_NAME);</span>
+    // Default timeout is 0, which means let server decide (will use default request timeout).
+<span class="nc" id="L62">    final TimeDuration timeoutDefault = TimeDuration.ZERO;</span>
+    // Default timeout for legacy mode matches with the legacy command (version 2.4.x and older).
+<span class="nc" id="L64">    final TimeDuration timeoutLegacy = TimeDuration.valueOf(60, TimeUnit.SECONDS);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">    final Optional&lt;TimeDuration&gt; timeout = !cl.hasOption(TIMEOUT_OPTION_NAME) ? Optional.empty() :</span>
+<span class="nc" id="L66">        Optional.of(TimeDuration.valueOf(cl.getOptionValue(TIMEOUT_OPTION_NAME), TimeUnit.SECONDS));</span>
+
+<span class="nc" id="L68">    final int highestPriority = getRaftGroup().getPeers().stream()</span>
+<span class="nc" id="L69">        .mapToInt(RaftPeer::getPriority).max().orElse(0);</span>
+<span class="nc" id="L70">    RaftPeer newLeader = getRaftGroup().getPeers().stream()</span>
+<span class="nc" id="L71">        .filter(peer -&gt; peer.getAddress().equals(strAddr)).findAny().orElse(null);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">    if (newLeader == null) {</span>
+<span class="nc" id="L73">      printf(&quot;Peer with address %s not found.&quot;, strAddr);</span>
+<span class="nc" id="L74">      return -2;</span>
+    }
+<span class="nc" id="L76">    try (RaftClient client = newRaftClient()) {</span>
+      // transfer leadership
+<span class="nc bnc" id="L78" title="All 2 branches missed.">      if (!tryTransfer(client, newLeader, highestPriority, timeout.orElse(timeoutDefault))) {</span>
+        // legacy mode, transfer leadership by setting priority.
+<span class="nc" id="L80">        tryTransfer(client, newLeader, highestPriority + 1, timeout.orElse(timeoutLegacy));</span>
+      }
+<span class="nc" id="L82">    } catch (Throwable t) {</span>
+<span class="nc" id="L83">      printf(&quot;Failed to transfer to peer %s with address %s: &quot;, newLeader.getId(), newLeader.getAddress());</span>
+<span class="nc" id="L84">      t.printStackTrace(getPrintStream());</span>
+<span class="nc" id="L85">      return -1;</span>
+<span class="nc" id="L86">    }</span>
+<span class="nc" id="L87">    return 0;</span>
+  }
+
+  private boolean tryTransfer(RaftClient client, RaftPeer newLeader, int highestPriority, TimeDuration timeout)
+      throws IOException {
+<span class="nc" id="L92">    printf(&quot;Transferring leadership to peer %s with address %s%n&quot;, newLeader.getId(), newLeader.getAddress());</span>
+    try {
+      // lift the new leader to the highest priority,
+<span class="nc bnc" id="L95" title="All 2 branches missed.">      if (newLeader.getPriority() &lt; highestPriority) {</span>
+<span class="nc" id="L96">        setPriority(client, newLeader, highestPriority);</span>
+      }
+<span class="nc" id="L98">      RaftClientReply transferLeadershipReply =</span>
+<span class="nc" id="L99">          client.admin().transferLeadership(newLeader.getId(), timeout.toLong(TimeUnit.MILLISECONDS));</span>
+<span class="nc" id="L100">      processReply(transferLeadershipReply, () -&gt; &quot;election failed&quot;);</span>
+<span class="nc" id="L101">    } catch (TransferLeadershipException tle) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">      if (tle.getMessage().contains(&quot;it does not has highest priority&quot;)) {</span>
+<span class="nc" id="L103">        return false;</span>
+      }
+<span class="nc" id="L105">      throw tle;</span>
+<span class="nc" id="L106">    }</span>
+<span class="nc" id="L107">    println(&quot;Transferring leadership initiated&quot;);</span>
+<span class="nc" id="L108">    return true;</span>
+  }
+
+  private void setPriority(RaftClient client, RaftPeer target, int priority) throws IOException {
+<span class="nc" id="L112">    printf(&quot;Changing priority of peer %s with address %s to %d%n&quot;, target.getId(), target.getAddress(), priority);</span>
+<span class="nc" id="L113">    final List&lt;RaftPeer&gt; peers = getPeerStream(RaftPeerRole.FOLLOWER)</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        .map(peer -&gt; peer == target ? RaftPeer.newBuilder(peer).setPriority(priority).build() : peer)</span>
+<span class="nc" id="L115">        .collect(Collectors.toList());</span>
+<span class="nc" id="L116">    final List&lt;RaftPeer&gt; listeners = getPeerStream(RaftPeerRole.LISTENER).collect(Collectors.toList());</span>
+<span class="nc" id="L117">    RaftClientReply reply = client.admin().setConfiguration(peers, listeners);</span>
+<span class="nc" id="L118">    processReply(reply, () -&gt; &quot;Failed to set master priorities&quot;);</span>
+<span class="nc" id="L119">  }</span>
+
+  @Override
+  public String getUsage() {
+<span class="nc" id="L123">    return String.format(&quot;%s -%s &lt;HOSTNAME:PORT&gt;&quot;</span>
+            + &quot; -%s &lt;PEER0_HOST:PEER0_PORT,PEER1_HOST:PEER1_PORT,PEER2_HOST:PEER2_PORT&gt;&quot;
+            + &quot; [-%s &lt;RAFT_GROUP_ID&gt;] [-%s &lt;TIMEOUT_IN_SECONDS&gt;]&quot;,
+<span class="nc" id="L126">        getCommandName(), ADDRESS_OPTION_NAME, PEER_OPTION_NAME,</span>
+        GROUPID_OPTION_NAME, TIMEOUT_OPTION_NAME);
+  }
+
+  @Override
+  public String getDescription() {
+<span class="nc" id="L132">    return description();</span>
+  }
+
+  @Override
+  public Options getOptions() {
+<span class="nc" id="L137">    return super.getOptions().addOption(</span>
+<span class="nc" id="L138">        Option.builder()</span>
+<span class="nc" id="L139">            .option(ADDRESS_OPTION_NAME)</span>
+<span class="nc" id="L140">            .hasArg()</span>
+<span class="nc" id="L141">            .required()</span>
+<span class="nc" id="L142">            .desc(&quot;Server address that will take over as leader&quot;)</span>
+<span class="nc" id="L143">            .build()</span>
+<span class="nc" id="L144">    ).addOption(</span>
+<span class="nc" id="L145">        Option.builder()</span>
+<span class="nc" id="L146">            .option(TIMEOUT_OPTION_NAME)</span>
+<span class="nc" id="L147">            .hasArg()</span>
+<span class="nc" id="L148">            .desc(&quot;Timeout for transfer leadership to complete (in seconds)&quot;)</span>
+<span class="nc" id="L149">            .build()</span>
+    );
+  }
+
+  /**
+   * @return command's description
+   */
+  public static String description() {
+<span class="nc" id="L157">    return &quot;Transfers leadership to the &lt;hostname&gt;:&lt;port&gt;&quot;;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

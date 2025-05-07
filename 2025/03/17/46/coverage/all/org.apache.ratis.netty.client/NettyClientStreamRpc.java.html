@@ -1,0 +1,497 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyClientStreamRpc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.client</a> &gt; <span class="el_source">NettyClientStreamRpc.java</span></div><h1>NettyClientStreamRpc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.netty.client;
+
+import org.apache.ratis.client.DataStreamClientRpc;
+import org.apache.ratis.client.RaftClientConfigKeys;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.datastream.impl.DataStreamRequestByteBuf;
+import org.apache.ratis.datastream.impl.DataStreamRequestByteBuffer;
+import org.apache.ratis.datastream.impl.DataStreamRequestFilePositionCount;
+import org.apache.ratis.io.StandardWriteOption;
+import org.apache.ratis.io.WriteOption;
+import org.apache.ratis.netty.NettyConfigKeys;
+import org.apache.ratis.netty.NettyDataStreamUtils;
+import org.apache.ratis.netty.NettyUtils;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.DataStreamReply;
+import org.apache.ratis.protocol.DataStreamRequest;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.security.TlsConf;
+import org.apache.ratis.thirdparty.io.netty.bootstrap.Bootstrap;
+import org.apache.ratis.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.ratis.thirdparty.io.netty.channel.Channel;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelFuture;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelFutureListener;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelHandler;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelHandlerContext;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInboundHandler;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInboundHandlerAdapter;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInitializer;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelOption;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelPipeline;
+import org.apache.ratis.thirdparty.io.netty.channel.EventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.ByteToMessageDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.MessageToMessageEncoder;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.NetUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import static org.apache.ratis.datastream.impl.DataStreamPacketByteBuffer.EMPTY_BYTE_BUFFER;
+
+public class NettyClientStreamRpc implements DataStreamClientRpc {
+<span class="nc" id="L81">  public static final Logger LOG = LoggerFactory.getLogger(NettyClientStreamRpc.class);</span>
+
+  private static class WorkerGroupGetter implements Supplier&lt;EventLoopGroup&gt; {
+
+<span class="nc" id="L85">    private static final AtomicReference&lt;CompletableFuture&lt;ReferenceCountedObject&lt;EventLoopGroup&gt;&gt;&gt; SHARED_WORKER_GROUP</span>
+        = new AtomicReference&lt;&gt;();
+
+    static WorkerGroupGetter newInstance(RaftProperties properties) {
+<span class="nc" id="L89">      final boolean shared = NettyConfigKeys.DataStream.Client.workerGroupShare(properties);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">      if (shared) {</span>
+<span class="nc" id="L91">        final CompletableFuture&lt;ReferenceCountedObject&lt;EventLoopGroup&gt;&gt; created = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L92">        final CompletableFuture&lt;ReferenceCountedObject&lt;EventLoopGroup&gt;&gt; current</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            = SHARED_WORKER_GROUP.updateAndGet(g -&gt; g != null ? g : created);</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (current == created) {</span>
+<span class="nc" id="L95">          created.complete(ReferenceCountedObject.wrap(newWorkerGroup(properties)));</span>
+        }
+<span class="nc" id="L97">        return new WorkerGroupGetter(current.join().retain()) {</span>
+          @Override
+          void shutdownGracefully() {
+            final CompletableFuture&lt;ReferenceCountedObject&lt;EventLoopGroup&gt;&gt; returned
+<span class="nc" id="L101">                = SHARED_WORKER_GROUP.updateAndGet(previous -&gt; {</span>
+<span class="nc" id="L102">              Preconditions.assertSame(current, previous, &quot;SHARED_WORKER_GROUP&quot;);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">              return previous.join().release() ? null : previous;</span>
+            });
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (returned == null) {</span>
+<span class="nc" id="L106">              get().shutdownGracefully();</span>
+            }
+<span class="nc" id="L108">          }</span>
+        };
+      } else {
+<span class="nc" id="L111">        return new WorkerGroupGetter(newWorkerGroup(properties));</span>
+      }
+    }
+
+    static EventLoopGroup newWorkerGroup(RaftProperties properties) {
+<span class="nc" id="L116">      return NettyUtils.newEventLoopGroup(</span>
+<span class="nc" id="L117">          JavaUtils.getClassSimpleName(NettyClientStreamRpc.class) + &quot;-workerGroup&quot;,</span>
+<span class="nc" id="L118">          NettyConfigKeys.DataStream.Client.workerGroupSize(properties),</span>
+<span class="nc" id="L119">          NettyConfigKeys.DataStream.Client.useEpoll(properties));</span>
+    }
+
+    private final EventLoopGroup workerGroup;
+
+<span class="nc" id="L124">    private WorkerGroupGetter(EventLoopGroup workerGroup) {</span>
+<span class="nc" id="L125">      this.workerGroup = workerGroup;</span>
+<span class="nc" id="L126">    }</span>
+
+    @Override
+    public final EventLoopGroup get() {
+<span class="nc" id="L130">      return workerGroup;</span>
+    }
+
+    void shutdownGracefully() {
+<span class="nc" id="L134">      workerGroup.shutdownGracefully();</span>
+<span class="nc" id="L135">    }</span>
+  }
+
+  static class Connection {
+<span class="nc" id="L139">    static final TimeDuration RECONNECT = TimeDuration.valueOf(100, TimeUnit.MILLISECONDS);</span>
+
+    private final InetSocketAddress address;
+    private final WorkerGroupGetter workerGroup;
+    private final Supplier&lt;ChannelInitializer&lt;SocketChannel&gt;&gt; channelInitializerSupplier;
+
+    /** The {@link ChannelFuture} is null when this connection is closed. */
+    private final AtomicReference&lt;MemoizedSupplier&lt;ChannelFuture&gt;&gt; ref;
+
+    Connection(InetSocketAddress address, WorkerGroupGetter workerGroup,
+<span class="nc" id="L149">        Supplier&lt;ChannelInitializer&lt;SocketChannel&gt;&gt; channelInitializerSupplier) {</span>
+<span class="nc" id="L150">      this.address = address;</span>
+<span class="nc" id="L151">      this.workerGroup = workerGroup;</span>
+<span class="nc" id="L152">      this.channelInitializerSupplier = channelInitializerSupplier;</span>
+<span class="nc" id="L153">      this.ref = new AtomicReference&lt;&gt;(MemoizedSupplier.valueOf(this::connect));</span>
+<span class="nc" id="L154">    }</span>
+
+    ChannelFuture getChannelFuture() {
+<span class="nc" id="L157">      final Supplier&lt;ChannelFuture&gt; referenced = ref.get();</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">      return referenced != null? referenced.get(): null;</span>
+    }
+
+    Channel getChannelUninterruptibly() {
+<span class="nc" id="L162">      final ChannelFuture future = getChannelFuture();</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">      if (future == null) {</span>
+<span class="nc" id="L164">        return null; //closed</span>
+      }
+<span class="nc" id="L166">      final Channel channel = future.syncUninterruptibly().channel();</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">      if (channel.isActive()) {</span>
+<span class="nc" id="L168">        return channel;</span>
+      }
+<span class="nc" id="L170">      ChannelFuture f = reconnect();</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">      return f == null ? null : f.syncUninterruptibly().channel();</span>
+    }
+
+    private EventLoopGroup getWorkerGroup() {
+<span class="nc" id="L175">      return workerGroup.get();</span>
+    }
+
+    private ChannelFuture connect() {
+<span class="nc bnc" id="L179" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L180">        return null;</span>
+      }
+<span class="nc" id="L182">      return new Bootstrap()</span>
+<span class="nc" id="L183">          .group(getWorkerGroup())</span>
+<span class="nc" id="L184">          .channel(NettyUtils.getSocketChannelClass(getWorkerGroup()))</span>
+<span class="nc" id="L185">          .handler(channelInitializerSupplier.get())</span>
+<span class="nc" id="L186">          .option(ChannelOption.SO_KEEPALIVE, true)</span>
+<span class="nc" id="L187">          .connect(address)</span>
+<span class="nc" id="L188">          .addListener(new ChannelFutureListener() {</span>
+            @Override
+            public void operationComplete(ChannelFuture future) {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">              if (!future.isSuccess()) {</span>
+<span class="nc" id="L192">                scheduleReconnect(Connection.this + &quot; failed&quot;, future.cause());</span>
+              } else {
+<span class="nc" id="L194">                LOG.trace(&quot;{} succeed.&quot;, Connection.this);</span>
+              }
+<span class="nc" id="L196">            }</span>
+          });
+    }
+
+    void scheduleReconnect(String message, Throwable cause) {
+<span class="nc bnc" id="L201" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L202">        return;</span>
+      }
+<span class="nc" id="L204">      LOG.warn(&quot;{}: {}; schedule reconnecting to {} in {}&quot;, this, message, address, RECONNECT);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">      if (cause != null) {</span>
+<span class="nc" id="L206">        LOG.warn(&quot;&quot;, cause);</span>
+      }
+<span class="nc" id="L208">      getWorkerGroup().schedule(this::reconnect, RECONNECT.getDuration(), RECONNECT.getUnit());</span>
+<span class="nc" id="L209">    }</span>
+
+    private synchronized ChannelFuture reconnect() {
+      // concurrent reconnect double check
+<span class="nc" id="L213">      final ChannelFuture channelFuture = getChannelFuture();</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">      if (channelFuture != null) {</span>
+<span class="nc" id="L215">        Channel channel = channelFuture.syncUninterruptibly().channel();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (channel.isActive()) {</span>
+<span class="nc" id="L217">          return channelFuture;</span>
+        }
+      }
+
+      // Two levels of MemoizedSupplier as a side-effect-free function:
+      // AtomicReference.getAndUpdate may call the update function multiple times and discard the old objects.
+      // The outer supplier creates only an inner supplier, which can be discarded without any leakage.
+      // The inner supplier will be invoked (i.e. connect) ONLY IF it is successfully set to the reference.
+<span class="nc" id="L225">      final MemoizedSupplier&lt;MemoizedSupplier&lt;ChannelFuture&gt;&gt; supplier = MemoizedSupplier.valueOf(</span>
+<span class="nc" id="L226">          () -&gt; MemoizedSupplier.valueOf(this::connect));</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">      final MemoizedSupplier&lt;ChannelFuture&gt; previous = ref.getAndUpdate(prev -&gt; prev == null? null: supplier.get());</span>
+<span class="nc bnc" id="L228" title="All 4 branches missed.">      if (previous != null &amp;&amp; previous.isInitialized()) {</span>
+<span class="nc" id="L229">        previous.get().channel().close();</span>
+      }
+<span class="nc" id="L231">      return getChannelFuture();</span>
+    }
+
+    void close() {
+<span class="nc" id="L235">      final MemoizedSupplier&lt;ChannelFuture&gt; previous = ref.getAndSet(null);</span>
+<span class="nc bnc" id="L236" title="All 4 branches missed.">      if (previous != null &amp;&amp; previous.isInitialized()) {</span>
+        // wait channel closed, do shutdown workerGroup
+<span class="nc" id="L238">        previous.get().channel().close().addListener(future -&gt; workerGroup.shutdownGracefully());</span>
+      } else {
+<span class="nc" id="L240">        workerGroup.shutdownGracefully();</span>
+      }
+<span class="nc" id="L242">    }</span>
+
+    boolean isClosed() {
+<span class="nc bnc" id="L245" title="All 2 branches missed.">      return ref.get() == null;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L250">      return JavaUtils.getClassSimpleName(getClass()) + &quot;-&quot; + address;</span>
+    }
+  }
+
+<span class="nc" id="L254">  static class OutstandingRequests {</span>
+    private int count;
+    private long bytes;
+
+    private boolean shouldFlush(List&lt;WriteOption&gt; options, int countMin, SizeInBytes bytesMin) {
+<span class="nc bnc" id="L259" title="All 2 branches missed.">      if (options.contains(StandardWriteOption.CLOSE)) {</span>
+        // flush in order to send the CLOSE option.
+<span class="nc" id="L261">        return true;</span>
+<span class="nc bnc" id="L262" title="All 4 branches missed.">      } else if (bytes == 0 &amp;&amp; count == 0) {</span>
+        // nothing to flush (when bytes == 0 &amp;&amp; count &gt; 0, client may have written empty packets for including options)
+<span class="nc" id="L264">        return false;</span>
+      } else {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        return count &gt;= countMin</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            || bytes &gt;= bytesMin.getSize()</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            || options.contains(StandardWriteOption.FLUSH);</span>
+      }
+    }
+
+    synchronized boolean shouldFlush(int countMin, SizeInBytes bytesMin, DataStreamRequest request) {
+      final List&lt;WriteOption&gt; options;
+<span class="nc bnc" id="L274" title="All 2 branches missed.">      if (request == null) {</span>
+<span class="nc" id="L275">        options = Collections.emptyList();</span>
+      } else {
+<span class="nc" id="L277">        options = request.getWriteOptionList();</span>
+<span class="nc" id="L278">        count++;</span>
+<span class="nc" id="L279">        final long length = request.getDataLength();</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">        Preconditions.assertTrue(length &gt;= 0, () -&gt; &quot;length = &quot; + length + &quot; &lt; 0, request: &quot; + request);</span>
+<span class="nc" id="L281">        bytes += length;</span>
+      }
+
+<span class="nc" id="L284">      final boolean flush = shouldFlush(options, countMin, bytesMin);</span>
+<span class="nc" id="L285">      LOG.debug(&quot;flush? {}, (count, bytes)=({}, {}), min=({}, {}), request={}, options={}&quot;,</span>
+<span class="nc" id="L286">          flush, count, bytes, countMin, bytesMin, request, options);</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">      if (flush) {</span>
+<span class="nc" id="L288">        count = 0;</span>
+<span class="nc" id="L289">        bytes = 0;</span>
+      }
+<span class="nc" id="L291">      return flush;</span>
+    }
+  }
+
+  private final String name;
+  private final Connection connection;
+
+<span class="nc" id="L298">  private final NettyClientReplies replies = new NettyClientReplies();</span>
+  private final TimeDuration requestTimeout;
+  private final TimeDuration closeTimeout;
+
+  private final int flushRequestCountMin;
+  private final SizeInBytes flushRequestBytesMin;
+<span class="nc" id="L304">  private final OutstandingRequests outstandingRequests = new OutstandingRequests();</span>
+
+<span class="nc" id="L306">  public NettyClientStreamRpc(RaftPeer server, TlsConf tlsConf, RaftProperties properties) {</span>
+<span class="nc" id="L307">    this.name = JavaUtils.getClassSimpleName(getClass()) + &quot;-&gt;&quot; + server.getId();</span>
+<span class="nc" id="L308">    this.requestTimeout = RaftClientConfigKeys.DataStream.requestTimeout(properties);</span>
+<span class="nc" id="L309">    this.closeTimeout = requestTimeout.multiply(2);</span>
+
+<span class="nc" id="L311">    this.flushRequestCountMin = RaftClientConfigKeys.DataStream.flushRequestCountMin(properties);</span>
+<span class="nc" id="L312">    this.flushRequestBytesMin = RaftClientConfigKeys.DataStream.flushRequestBytesMin(properties);</span>
+
+<span class="nc" id="L314">    final InetSocketAddress address = NetUtils.createSocketAddr(server.getDataStreamAddress());</span>
+<span class="nc" id="L315">    final SslContext sslContext = NettyUtils.buildSslContextForClient(tlsConf);</span>
+<span class="nc" id="L316">    this.connection = new Connection(address, WorkerGroupGetter.newInstance(properties),</span>
+<span class="nc" id="L317">        () -&gt; newChannelInitializer(address, sslContext, getClientHandler()));</span>
+<span class="nc" id="L318">  }</span>
+
+  private ChannelInboundHandler getClientHandler(){
+<span class="nc" id="L321">    return new ChannelInboundHandlerAdapter(){</span>
+
+      @Override
+      public void channelRead(ChannelHandlerContext ctx, Object msg) {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (!(msg instanceof DataStreamReply)) {</span>
+<span class="nc" id="L326">          LOG.error(&quot;{}: unexpected message {}&quot;, name, msg.getClass());</span>
+<span class="nc" id="L327">          return;</span>
+        }
+<span class="nc" id="L329">        final DataStreamReply reply = (DataStreamReply) msg;</span>
+<span class="nc" id="L330">        LOG.debug(&quot;{}: read {}&quot;, name, reply);</span>
+<span class="nc" id="L331">        final ClientInvocationId clientInvocationId = ClientInvocationId.valueOf(</span>
+<span class="nc" id="L332">            reply.getClientId(), reply.getStreamId());</span>
+<span class="nc" id="L333">        final NettyClientReplies.ReplyMap replyMap = replies.getReplyMap(clientInvocationId);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        if (replyMap == null) {</span>
+<span class="nc" id="L335">          LOG.error(&quot;{}: {} replyMap not found for reply: {}&quot;, name, clientInvocationId, reply);</span>
+<span class="nc" id="L336">          return;</span>
+        }
+
+        try {
+<span class="nc" id="L340">          replyMap.receiveReply(reply);</span>
+<span class="nc" id="L341">        } catch (Throwable cause) {</span>
+<span class="nc" id="L342">          LOG.warn(name + &quot;: channelRead error:&quot;, cause);</span>
+<span class="nc" id="L343">          replyMap.completeExceptionally(cause);</span>
+<span class="nc" id="L344">        }</span>
+<span class="nc" id="L345">      }</span>
+
+      @Override
+      public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+<span class="nc" id="L349">        LOG.warn(name + &quot;: exceptionCaught&quot;, cause);</span>
+
+<span class="nc" id="L351">        ctx.close();</span>
+<span class="nc" id="L352">      }</span>
+
+      @Override
+      public void channelInactive(ChannelHandlerContext ctx) {
+<span class="nc" id="L356">        connection.scheduleReconnect(&quot;channel is inactive&quot;, null);</span>
+<span class="nc" id="L357">      }</span>
+    };
+  }
+
+  static ChannelInitializer&lt;SocketChannel&gt; newChannelInitializer(
+      InetSocketAddress address, SslContext sslContext, ChannelInboundHandler handler) {
+<span class="nc" id="L363">    return new ChannelInitializer&lt;SocketChannel&gt;(){</span>
+      @Override
+      public void initChannel(SocketChannel ch) {
+<span class="nc" id="L366">        ChannelPipeline p = ch.pipeline();</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">        if (sslContext != null) {</span>
+<span class="nc" id="L368">          p.addLast(&quot;ssl&quot;, sslContext.newHandler(ch.alloc(), address.getHostName(), address.getPort()));</span>
+        }
+<span class="nc" id="L370">        p.addLast(ENCODER);</span>
+<span class="nc" id="L371">        p.addLast(ENCODER_FILE_POSITION_COUNT);</span>
+<span class="nc" id="L372">        p.addLast(ENCODER_BYTE_BUFFER);</span>
+<span class="nc" id="L373">        p.addLast(ENCODER_BYTE_BUF);</span>
+<span class="nc" id="L374">        p.addLast(newDecoder());</span>
+<span class="nc" id="L375">        p.addLast(handler);</span>
+<span class="nc" id="L376">      }</span>
+    };
+  }
+
+<span class="nc" id="L380">  static final MessageToMessageEncoder&lt;DataStreamRequestByteBuffer&gt; ENCODER = new Encoder();</span>
+
+  @ChannelHandler.Sharable
+<span class="nc" id="L383">  static class Encoder extends MessageToMessageEncoder&lt;DataStreamRequestByteBuffer&gt; {</span>
+    @Override
+    protected void encode(ChannelHandlerContext context, DataStreamRequestByteBuffer request, List&lt;Object&gt; out) {
+<span class="nc" id="L386">      NettyDataStreamUtils.encodeDataStreamRequestByteBuffer(request, out::add, context.alloc());</span>
+<span class="nc" id="L387">    }</span>
+  }
+
+<span class="nc" id="L390">  static final MessageToMessageEncoder&lt;DataStreamRequestByteBuf&gt; ENCODER_BYTE_BUF = new EncoderByteBuf();</span>
+
+  @ChannelHandler.Sharable
+<span class="nc" id="L393">  static class EncoderByteBuf extends MessageToMessageEncoder&lt;DataStreamRequestByteBuf&gt; {</span>
+    @Override
+    protected void encode(ChannelHandlerContext context, DataStreamRequestByteBuf request, List&lt;Object&gt; out) {
+<span class="nc" id="L396">      NettyDataStreamUtils.encodeDataStreamRequestByteBuf(request, out::add, context.alloc());</span>
+<span class="nc" id="L397">    }</span>
+  }
+
+<span class="nc" id="L400">  static final MessageToMessageEncoder&lt;DataStreamRequestFilePositionCount&gt; ENCODER_FILE_POSITION_COUNT</span>
+      = new EncoderFilePositionCount();
+
+  @ChannelHandler.Sharable
+<span class="nc" id="L404">  static class EncoderFilePositionCount extends MessageToMessageEncoder&lt;DataStreamRequestFilePositionCount&gt; {</span>
+    @Override
+    protected void encode(ChannelHandlerContext ctx, DataStreamRequestFilePositionCount request, List&lt;Object&gt; out) {
+<span class="nc" id="L407">      NettyDataStreamUtils.encodeDataStreamRequestFilePositionCount(request, out::add, ctx.alloc());</span>
+<span class="nc" id="L408">    }</span>
+  }
+
+<span class="nc" id="L411">  static final MessageToMessageEncoder&lt;ByteBuffer&gt; ENCODER_BYTE_BUFFER = new EncoderByteBuffer();</span>
+
+  @ChannelHandler.Sharable
+<span class="nc" id="L414">  static class EncoderByteBuffer extends MessageToMessageEncoder&lt;ByteBuffer&gt; {</span>
+    @Override
+    protected void encode(ChannelHandlerContext ctx, ByteBuffer request, List&lt;Object&gt; out) {
+<span class="nc" id="L417">      NettyDataStreamUtils.encodeByteBuffer(request, out::add);</span>
+<span class="nc" id="L418">    }</span>
+  }
+
+  static ByteToMessageDecoder newDecoder() {
+<span class="nc" id="L422">    return new ByteToMessageDecoder() {</span>
+      {
+<span class="nc" id="L424">        this.setCumulator(ByteToMessageDecoder.COMPOSITE_CUMULATOR);</span>
+<span class="nc" id="L425">      }</span>
+
+      @Override
+      protected void decode(ChannelHandlerContext context, ByteBuf buf, List&lt;Object&gt; out) {
+<span class="nc" id="L429">        Optional.ofNullable(NettyDataStreamUtils.decodeDataStreamReplyByteBuffer(buf)).ifPresent(out::add);</span>
+<span class="nc" id="L430">      }</span>
+    };
+  }
+
+  @Override
+  public CompletableFuture&lt;DataStreamReply&gt; streamAsync(DataStreamRequest request) {
+<span class="nc" id="L436">    final CompletableFuture&lt;DataStreamReply&gt; f = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L437">    ClientInvocationId clientInvocationId = ClientInvocationId.valueOf(request.getClientId(), request.getStreamId());</span>
+<span class="nc" id="L438">    final boolean isClose = request.getWriteOptionList().contains(StandardWriteOption.CLOSE);</span>
+
+<span class="nc" id="L440">    final NettyClientReplies.ReplyMap replyMap = replies.getReplyMap(clientInvocationId);</span>
+    final ChannelFuture channelFuture;
+    final Channel channel;
+<span class="nc" id="L443">    final NettyClientReplies.RequestEntry requestEntry = new NettyClientReplies.RequestEntry(request);</span>
+    final NettyClientReplies.ReplyEntry replyEntry;
+<span class="nc" id="L445">    LOG.debug(&quot;{}: write begin {}&quot;, this, request);</span>
+<span class="nc" id="L446">    synchronized (replyMap) {</span>
+<span class="nc" id="L447">      channel = connection.getChannelUninterruptibly();</span>
+<span class="nc bnc" id="L448" title="All 2 branches missed.">      if (channel == null) {</span>
+<span class="nc" id="L449">        f.completeExceptionally(new AlreadyClosedException(this + &quot;: Failed to send &quot; + request));</span>
+<span class="nc" id="L450">        return f;</span>
+      }
+<span class="nc" id="L452">      replyEntry = replyMap.submitRequest(requestEntry, isClose, f);</span>
+<span class="nc bnc" id="L453" title="All 2 branches missed.">      final Function&lt;DataStreamRequest, ChannelFuture&gt; writeMethod = outstandingRequests.shouldFlush(</span>
+          flushRequestCountMin, flushRequestBytesMin, request)? channel::writeAndFlush: channel::write;
+<span class="nc" id="L455">      channelFuture = writeMethod.apply(request);</span>
+<span class="nc" id="L456">    }</span>
+<span class="nc" id="L457">    channelFuture.addListener(future -&gt; {</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">      if (!future.isSuccess()) {</span>
+<span class="nc" id="L459">        final IOException e = new IOException(this + &quot;: Failed to send &quot; + request + &quot; to &quot; + channel.remoteAddress(),</span>
+<span class="nc" id="L460">            future.cause());</span>
+<span class="nc" id="L461">        f.completeExceptionally(e);</span>
+<span class="nc" id="L462">        replyMap.fail(requestEntry);</span>
+<span class="nc" id="L463">        LOG.error(&quot;Channel write failed&quot;, e);</span>
+<span class="nc" id="L464">      } else {</span>
+<span class="nc" id="L465">        LOG.debug(&quot;{}: write after {}&quot;, this, request);</span>
+
+<span class="nc bnc" id="L467" title="All 2 branches missed.">        final TimeDuration timeout = isClose ? closeTimeout : requestTimeout;</span>
+<span class="nc" id="L468">        replyEntry.scheduleTimeout(() -&gt; channel.eventLoop().schedule(() -&gt; {</span>
+<span class="nc bnc" id="L469" title="All 2 branches missed.">          if (!f.isDone()) {</span>
+<span class="nc" id="L470">            f.completeExceptionally(new TimeoutIOException(</span>
+                &quot;Timeout &quot; + timeout + &quot;: Failed to send &quot; + request + &quot; via channel &quot; + channel));
+<span class="nc" id="L472">            replyMap.fail(requestEntry);</span>
+          }
+<span class="nc" id="L474">        }, timeout.getDuration(), timeout.getUnit()));</span>
+      }
+<span class="nc" id="L476">    });</span>
+<span class="nc" id="L477">    return f;</span>
+  }
+
+  @Override
+  public void close() {
+<span class="nc" id="L482">    final boolean flush = outstandingRequests.shouldFlush(0, SizeInBytes.ZERO, null);</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">    if (flush) {</span>
+<span class="nc" id="L484">      Optional.ofNullable(connection.getChannelUninterruptibly())</span>
+<span class="nc" id="L485">          .map(c -&gt; c.writeAndFlush(EMPTY_BYTE_BUFFER))</span>
+<span class="nc" id="L486">          .ifPresent(f -&gt; f.addListener(dummy -&gt; connection.close()));</span>
+    } else {
+<span class="nc" id="L488">      connection.close();</span>
+    }
+<span class="nc" id="L490">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L494">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

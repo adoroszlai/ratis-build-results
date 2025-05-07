@@ -1,0 +1,526 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftLogBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog</a> &gt; <span class="el_source">RaftLogBase.java</span></div><h1>RaftLogBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog;
+
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.AutoCloseableLock;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.OpenCloseState;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.function.UncheckedAutoCloseableSupplier;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
+
+/**
+ * Base class of RaftLog. Currently we provide two types of RaftLog
+ * implementation:
+ * 1. MemoryRaftLog: all the log entries are stored in memory. This is only used
+ *    for testing.
+ * 2. Segmented RaftLog: the log entries are persisted on disk, and are stored
+ *    in segments.
+ */
+public abstract class RaftLogBase implements RaftLog {
+<span class="nc" id="L57">  private final Consumer&lt;Object&gt; infoIndexChange = s -&gt; LOG.info(&quot;{}: {}&quot;, getName(), s);</span>
+<span class="nc" id="L58">  private final Consumer&lt;Object&gt; traceIndexChange = s -&gt; LOG.trace(&quot;{}: {}&quot;, getName(), s);</span>
+
+  /** The least valid log index, i.e. the index used when writing to an empty log. */
+  public static final long LEAST_VALID_LOG_INDEX = 0L;
+  public static final long INVALID_LOG_INDEX = LEAST_VALID_LOG_INDEX - 1;
+
+  private final String name;
+  /**
+   * The largest committed index. Note the last committed log may be included
+   * in the latest snapshot file.
+   */
+  private final RaftLogIndex commitIndex;
+  /** The last log index in snapshot */
+  private final RaftLogIndex snapshotIndex;
+  private final RaftLogIndex purgeIndex;
+  private final int purgeGap;
+
+  private final RaftGroupMemberId memberId;
+  private final int maxBufferSize;
+
+<span class="nc" id="L78">  private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);</span>
+<span class="nc" id="L79">  private final Runner runner = new Runner(this::getName);</span>
+  private final OpenCloseState state;
+  private final LongSupplier getSnapshotIndexFromStateMachine;
+  private final TimeDuration stateMachineDataReadTimeout;
+  private final long purgePreservation;
+
+<span class="nc" id="L85">  private final AtomicReference&lt;LogEntryProto&gt; lastMetadataEntry = new AtomicReference&lt;&gt;();</span>
+
+  protected RaftLogBase(RaftGroupMemberId memberId,
+                    LongSupplier getSnapshotIndexFromStateMachine,
+<span class="nc" id="L89">                    RaftProperties properties) {</span>
+<span class="nc" id="L90">    this.name = memberId + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L91">    this.memberId = memberId;</span>
+<span class="nc" id="L92">    long index = getSnapshotIndexFromStateMachine.getAsLong();</span>
+<span class="nc" id="L93">    this.commitIndex = new RaftLogIndex(&quot;commitIndex&quot;, index);</span>
+<span class="nc" id="L94">    this.snapshotIndex = new RaftLogIndex(&quot;snapshotIndex&quot;, index);</span>
+<span class="nc" id="L95">    this.purgeIndex = new RaftLogIndex(&quot;purgeIndex&quot;, LEAST_VALID_LOG_INDEX - 1);</span>
+<span class="nc" id="L96">    this.purgeGap = RaftServerConfigKeys.Log.purgeGap(properties);</span>
+<span class="nc" id="L97">    this.maxBufferSize = RaftServerConfigKeys.Log.Appender.bufferByteLimit(properties).getSizeInt();</span>
+<span class="nc" id="L98">    this.state = new OpenCloseState(getName());</span>
+<span class="nc" id="L99">    this.getSnapshotIndexFromStateMachine = getSnapshotIndexFromStateMachine;</span>
+<span class="nc" id="L100">    this.stateMachineDataReadTimeout = RaftServerConfigKeys.Log.StateMachineData.readTimeout(properties);</span>
+<span class="nc" id="L101">    this.purgePreservation = RaftServerConfigKeys.Log.purgePreservationLogNum(properties);</span>
+<span class="nc" id="L102">  }</span>
+
+  @Override
+  public long getLastCommittedIndex() {
+<span class="nc" id="L106">    return commitIndex.get();</span>
+  }
+
+  @Override
+  public long getSnapshotIndex() {
+<span class="nc" id="L111">    return snapshotIndex.get();</span>
+  }
+
+  public void checkLogState() {
+<span class="nc" id="L115">    state.assertOpen();</span>
+<span class="nc" id="L116">  }</span>
+
+  /** Is this log already opened? */
+  public boolean isOpened() {
+<span class="nc" id="L120">    return state.isOpened();</span>
+  }
+
+  @Override
+  public boolean updateCommitIndex(long majorityIndex, long currentTerm, boolean isLeader) {
+<span class="nc" id="L125">    try(AutoCloseableLock writeLock = tryWriteLock(TimeDuration.ONE_SECOND)) {</span>
+<span class="nc" id="L126">      final long oldCommittedIndex = getLastCommittedIndex();</span>
+<span class="nc" id="L127">      final long newCommitIndex = Math.min(majorityIndex, getFlushIndex());</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      if (oldCommittedIndex &lt; newCommitIndex) {</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (!isLeader) {</span>
+<span class="nc" id="L130">          return commitIndex.updateIncreasingly(newCommitIndex, traceIndexChange);</span>
+        }
+
+        // Only update last committed index for current term. See §5.4.2 in paper for details.
+<span class="nc" id="L134">        final TermIndex entry = getTermIndex(newCommitIndex);</span>
+<span class="nc bnc" id="L135" title="All 4 branches missed.">        if (entry != null &amp;&amp; entry.getTerm() == currentTerm) {</span>
+<span class="nc" id="L136">          return commitIndex.updateIncreasingly(newCommitIndex, traceIndexChange);</span>
+        }
+      }
+<span class="nc" id="L139">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L140">      LOG.warn(&quot;{}: Interrupted to updateCommitIndex: majorityIndex={}, currentTerm={}, isLeader={}&quot;,</span>
+<span class="nc" id="L141">          getName(), majorityIndex, currentTerm, isLeader, e);</span>
+<span class="nc" id="L142">    }</span>
+<span class="nc" id="L143">    return false;</span>
+  }
+
+  protected void updatePurgeIndex(Long purged) {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    if (purged != null) {</span>
+<span class="nc" id="L148">      purgeIndex.updateToMax(purged, infoIndexChange);</span>
+    }
+<span class="nc" id="L150">  }</span>
+
+  protected void updateSnapshotIndexFromStateMachine() {
+<span class="nc" id="L153">      updateSnapshotIndex(getSnapshotIndexFromStateMachine.getAsLong());</span>
+<span class="nc" id="L154">  }</span>
+
+  @Override
+  public void updateSnapshotIndex(long newSnapshotIndex) {
+<span class="nc" id="L158">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L159">      final long oldSnapshotIndex = getSnapshotIndex();</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">      if (oldSnapshotIndex &lt; newSnapshotIndex) {</span>
+<span class="nc" id="L161">        snapshotIndex.updateIncreasingly(newSnapshotIndex, infoIndexChange);</span>
+      }
+<span class="nc" id="L163">      final long oldCommitIndex = getLastCommittedIndex();</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">      if (oldCommitIndex &lt; newSnapshotIndex) {</span>
+<span class="nc" id="L165">        commitIndex.updateIncreasingly(newSnapshotIndex, traceIndexChange);</span>
+      }
+    }
+<span class="nc" id="L168">  }</span>
+
+  @Override
+  public final long append(long term, TransactionContext transaction) throws StateMachineException {
+<span class="nc" id="L172">    return runner.runSequentially(() -&gt; appendImpl(term, transaction));</span>
+  }
+
+  private long appendImpl(long term, TransactionContext operation) throws StateMachineException {
+<span class="nc" id="L176">    checkLogState();</span>
+<span class="nc" id="L177">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L178">      final long nextIndex = getNextIndex();</span>
+
+      // This is called here to guarantee strict serialization of callback executions in case
+      // the SM wants to attach a logic depending on ordered execution in the log commit order.
+      try {
+<span class="nc" id="L183">        operation = operation.preAppendTransaction();</span>
+<span class="nc" id="L184">      } catch (StateMachineException e) {</span>
+<span class="nc" id="L185">        throw e;</span>
+<span class="nc" id="L186">      } catch (IOException e) {</span>
+<span class="nc" id="L187">        throw new StateMachineException(memberId, e);</span>
+<span class="nc" id="L188">      }</span>
+
+      // build the log entry after calling the StateMachine
+<span class="nc" id="L191">      final LogEntryProto e = operation.initLogEntry(term, nextIndex);</span>
+
+<span class="nc" id="L193">      int entrySize = e.getSerializedSize();</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">      if (entrySize &gt; maxBufferSize) {</span>
+<span class="nc" id="L195">        throw new StateMachineException(memberId, new RaftLogIOException(</span>
+            &quot;Log entry size &quot; + entrySize + &quot; exceeds the max buffer limit of &quot; + maxBufferSize));
+      }
+
+<span class="nc" id="L199">      appendEntry(operation.wrap(e), operation).whenComplete((returned, t) -&gt; {</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (t != null) {</span>
+<span class="nc" id="L201">          LOG.error(name + &quot;: Failed to write log entry &quot; + toLogEntryString(e), t);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        } else if (returned != nextIndex) {</span>
+<span class="nc" id="L203">          LOG.error(&quot;{}: Indices mismatched: returned index={} but nextIndex={} for log entry {}&quot;,</span>
+<span class="nc" id="L204">              name, returned, nextIndex, toLogEntryString(e));</span>
+        } else {
+<span class="nc" id="L206">          return; // no error</span>
+        }
+
+        try {
+<span class="nc" id="L210">          close(); // close due to error</span>
+<span class="nc" id="L211">        } catch (IOException ioe) {</span>
+<span class="nc" id="L212">          LOG.error(&quot;Failed to close &quot; + name, ioe);</span>
+<span class="nc" id="L213">        }</span>
+<span class="nc" id="L214">      });</span>
+<span class="nc" id="L215">      return nextIndex;</span>
+    }
+  }
+
+  @Override
+  public final long appendMetadata(long term, long newCommitIndex) {
+<span class="nc" id="L221">    return runner.runSequentially(() -&gt; appendMetadataImpl(term, newCommitIndex));</span>
+  }
+
+  private long appendMetadataImpl(long term, long newCommitIndex) {
+<span class="nc" id="L225">    checkLogState();</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">    if (!shouldAppendMetadata(newCommitIndex)) {</span>
+<span class="nc" id="L227">      return INVALID_LOG_INDEX;</span>
+    }
+
+    final LogEntryProto entry;
+    final long nextIndex;
+<span class="nc" id="L232">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L233">      nextIndex = getNextIndex();</span>
+<span class="nc" id="L234">      entry = LogProtoUtils.toLogEntryProto(newCommitIndex, term, nextIndex);</span>
+<span class="nc" id="L235">      appendEntry(entry);</span>
+    }
+<span class="nc" id="L237">    lastMetadataEntry.set(entry);</span>
+<span class="nc" id="L238">    return nextIndex;</span>
+  }
+
+  private boolean shouldAppendMetadata(long newCommitIndex) {
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    if (newCommitIndex &lt;= 0) {</span>
+      // do not log the first conf entry
+<span class="nc" id="L244">      return false;</span>
+    }
+<span class="nc" id="L246">    final LogEntryProto last = lastMetadataEntry.get();</span>
+    // do not log entries with a smaller commit index.
+<span class="nc bnc" id="L248" title="All 4 branches missed.">    return last == null || newCommitIndex &gt; last.getMetadataEntry().getCommitIndex();</span>
+  }
+
+  @Override
+  public final long append(long term, RaftConfiguration configuration) {
+<span class="nc" id="L253">    return runner.runSequentially(() -&gt; appendImpl(term, configuration));</span>
+  }
+
+  private long appendImpl(long term, RaftConfiguration newConf) {
+<span class="nc" id="L257">    checkLogState();</span>
+<span class="nc" id="L258">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L259">      final long nextIndex = getNextIndex();</span>
+<span class="nc" id="L260">      appendEntry(LogProtoUtils.toLogEntryProto(newConf, term, nextIndex));</span>
+<span class="nc" id="L261">      return nextIndex;</span>
+    }
+  }
+
+  @Override
+  public final void open(long lastIndexInSnapshot, Consumer&lt;LogEntryProto&gt; consumer) throws IOException {
+<span class="nc" id="L267">    openImpl(lastIndexInSnapshot, e -&gt; {</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">      if (e.hasMetadataEntry()) {</span>
+<span class="nc" id="L269">        lastMetadataEntry.set(e);</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">      } else if (consumer != null) {</span>
+<span class="nc" id="L271">        consumer.accept(e);</span>
+      }
+<span class="nc" id="L273">    });</span>
+<span class="nc" id="L274">    Optional.ofNullable(lastMetadataEntry.get()).ifPresent(</span>
+<span class="nc" id="L275">        e -&gt; commitIndex.updateToMax(e.getMetadataEntry().getCommitIndex(), infoIndexChange));</span>
+<span class="nc" id="L276">    state.open();</span>
+
+<span class="nc" id="L278">    final long startIndex = getStartIndex();</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">    if (startIndex &gt; LEAST_VALID_LOG_INDEX) {</span>
+<span class="nc" id="L280">      purgeIndex.updateToMax(startIndex - 1, infoIndexChange);</span>
+    }
+<span class="nc" id="L282">  }</span>
+
+  protected void openImpl(long lastIndexInSnapshot, Consumer&lt;LogEntryProto&gt; consumer) throws IOException {
+<span class="nc" id="L285">  }</span>
+
+  /**
+   * Validate the term and index of entry w.r.t RaftLog
+   */
+  protected void validateLogEntry(LogEntryProto entry) {
+<span class="nc bnc" id="L291" title="All 2 branches missed.">    if (entry.hasMetadataEntry()) {</span>
+<span class="nc" id="L292">      return;</span>
+    }
+<span class="nc" id="L294">    long latestSnapshotIndex = getSnapshotIndex();</span>
+<span class="nc" id="L295">    TermIndex lastTermIndex = getLastEntryTermIndex();</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">    if (lastTermIndex != null) {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">      long lastIndex = lastTermIndex.getIndex() &gt; latestSnapshotIndex ?</span>
+<span class="nc" id="L298">          lastTermIndex.getIndex() : latestSnapshotIndex;</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">      Preconditions.assertTrue(entry.getTerm() &gt;= lastTermIndex.getTerm(),</span>
+<span class="nc" id="L300">          &quot;Entry term less than RaftLog's last term: %d, entry: %s&quot;, lastTermIndex.getTerm(), entry);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">      Preconditions.assertTrue(entry.getIndex() == lastIndex + 1,</span>
+          &quot;Difference between entry index and RaftLog's last index %d (or snapshot index %d) &quot; +
+              &quot;is greater than 1, entry: %s&quot;,
+<span class="nc" id="L304">          lastTermIndex.getIndex(), latestSnapshotIndex, entry);</span>
+<span class="nc" id="L305">    } else {</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">      Preconditions.assertTrue(entry.getIndex() == latestSnapshotIndex + 1,</span>
+          &quot;Difference between entry index and RaftLog's latest snapshot index %d is greater than 1 &quot; +
+              &quot;and in between log entries are not present, entry: %s&quot;,
+<span class="nc" id="L309">          latestSnapshotIndex, entry);</span>
+    }
+<span class="nc" id="L311">  }</span>
+
+  @Override
+  public final CompletableFuture&lt;Long&gt; truncate(long index) {
+<span class="nc" id="L315">    return runner.runSequentially(() -&gt; truncateImpl(index));</span>
+  }
+
+  protected abstract CompletableFuture&lt;Long&gt; truncateImpl(long index);
+
+  @Override
+  public final CompletableFuture&lt;Long&gt; purge(long suggestedIndex) {
+    final long adjustedIndex;
+<span class="nc bnc" id="L323" title="All 2 branches missed.">    if (purgePreservation &gt; 0) {</span>
+<span class="nc" id="L324">      final long currentIndex = getNextIndex() - 1;</span>
+<span class="nc" id="L325">      adjustedIndex = Math.min(suggestedIndex, currentIndex - purgePreservation);</span>
+<span class="nc" id="L326">    } else {</span>
+<span class="nc" id="L327">      adjustedIndex = suggestedIndex;</span>
+    }
+<span class="nc" id="L329">    final long lastPurge = purgeIndex.get();</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">    if (adjustedIndex - lastPurge &lt; purgeGap) {</span>
+<span class="nc" id="L331">      return CompletableFuture.completedFuture(lastPurge);</span>
+    }
+<span class="nc" id="L333">    final long startIndex = getStartIndex();</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">    if (adjustedIndex &lt; startIndex) {</span>
+<span class="nc" id="L335">      LOG.info(&quot;{}: purge({}) is skipped: adjustedIndex = {} &lt; startIndex = {}, purgePreservation = {}&quot;,</span>
+<span class="nc" id="L336">          getName(), suggestedIndex, adjustedIndex, startIndex, purgePreservation);</span>
+<span class="nc" id="L337">      return CompletableFuture.completedFuture(lastPurge);</span>
+    }
+<span class="nc" id="L339">    LOG.info(&quot;{}: purge {}&quot;, getName(), adjustedIndex );</span>
+<span class="nc" id="L340">    return purgeImpl(adjustedIndex).whenComplete((purged, e) -&gt; {</span>
+<span class="nc" id="L341">      updatePurgeIndex(purged);</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">      if (e != null) {</span>
+<span class="nc" id="L343">        LOG.warn(getName() + &quot;: Failed to purge &quot; + adjustedIndex, e);</span>
+      }
+<span class="nc" id="L345">    });</span>
+  }
+
+  protected abstract CompletableFuture&lt;Long&gt; purgeImpl(long index);
+
+  @Override
+  public final CompletableFuture&lt;Long&gt; appendEntry(LogEntryProto entry) {
+<span class="nc" id="L352">    return appendEntry(ReferenceCountedObject.wrap(entry), null);</span>
+  }
+
+  @Override
+  public final CompletableFuture&lt;Long&gt; appendEntry(ReferenceCountedObject&lt;LogEntryProto&gt; entry,
+      TransactionContext context) {
+<span class="nc" id="L358">    return runner.runSequentially(() -&gt; appendEntryImpl(entry, context));</span>
+  }
+
+  protected abstract CompletableFuture&lt;Long&gt; appendEntryImpl(ReferenceCountedObject&lt;LogEntryProto&gt; entry,
+      TransactionContext context);
+
+  @Override
+  public final List&lt;CompletableFuture&lt;Long&gt;&gt; append(ReferenceCountedObject&lt;List&lt;LogEntryProto&gt;&gt; entries) {
+<span class="nc" id="L366">    return runner.runSequentially(() -&gt; appendImpl(entries));</span>
+  }
+
+  protected List&lt;CompletableFuture&lt;Long&gt;&gt; appendImpl(List&lt;LogEntryProto&gt; entries) {
+<span class="nc" id="L370">    throw new UnsupportedOperationException();</span>
+  }
+
+  protected List&lt;CompletableFuture&lt;Long&gt;&gt; appendImpl(ReferenceCountedObject&lt;List&lt;LogEntryProto&gt;&gt; entriesRef) {
+<span class="nc" id="L374">    try(UncheckedAutoCloseableSupplier&lt;List&lt;LogEntryProto&gt;&gt; entries = entriesRef.retainAndReleaseOnClose()) {</span>
+<span class="nc" id="L375">      return appendImpl(entries.get());</span>
+    }
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L381">    return getName() + &quot;:&quot; + state + &quot;:c&quot; + getLastCommittedIndex()</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">        + (isOpened()? &quot;:last&quot; + getLastEntryTermIndex(): &quot;&quot;);</span>
+  }
+
+  public AutoCloseableLock readLock() {
+<span class="nc" id="L386">    return AutoCloseableLock.acquire(lock.readLock());</span>
+  }
+
+  public AutoCloseableLock writeLock() {
+<span class="nc" id="L390">    return AutoCloseableLock.acquire(lock.writeLock());</span>
+  }
+
+  public AutoCloseableLock tryWriteLock(TimeDuration timeout) throws InterruptedException {
+<span class="nc" id="L394">    return AutoCloseableLock.tryAcquire(lock.writeLock(), null, timeout);</span>
+  }
+
+  public boolean hasWriteLock() {
+<span class="nc" id="L398">    return this.lock.isWriteLockedByCurrentThread();</span>
+  }
+
+  public boolean hasReadLock() {
+<span class="nc bnc" id="L402" title="All 4 branches missed.">    return this.lock.getReadHoldCount() &gt; 0 || hasWriteLock();</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc" id="L407">    state.close();</span>
+<span class="nc" id="L408">  }</span>
+
+  public String getName() {
+<span class="nc" id="L411">    return name;</span>
+  }
+
+  protected ReferenceCountedObject&lt;EntryWithData&gt; newEntryWithData(ReferenceCountedObject&lt;LogEntryProto&gt; retained) {
+<span class="nc" id="L415">    return retained.delegate(new EntryWithDataImpl(retained.get(), null));</span>
+  }
+
+  protected ReferenceCountedObject&lt;EntryWithData&gt; newEntryWithData(ReferenceCountedObject&lt;LogEntryProto&gt; retained,
+      CompletableFuture&lt;ReferenceCountedObject&lt;ByteString&gt;&gt; stateMachineDataFuture) {
+<span class="nc" id="L420">    final EntryWithDataImpl impl = new EntryWithDataImpl(retained.get(), stateMachineDataFuture);</span>
+<span class="nc" id="L421">    return new ReferenceCountedObject&lt;EntryWithData&gt;() {</span>
+<span class="nc" id="L422">      private CompletableFuture&lt;ReferenceCountedObject&lt;ByteString&gt;&gt; future</span>
+<span class="nc" id="L423">          = Objects.requireNonNull(stateMachineDataFuture, &quot;stateMachineDataFuture == null&quot;);</span>
+
+      @Override
+      public EntryWithData get() {
+<span class="nc" id="L427">        return impl;</span>
+      }
+
+      synchronized void updateFuture(Consumer&lt;ReferenceCountedObject&lt;?&gt;&gt; action) {
+<span class="nc" id="L431">        future = future.whenComplete((ref, e) -&gt; {</span>
+<span class="nc bnc" id="L432" title="All 2 branches missed.">          if (ref != null) {</span>
+<span class="nc" id="L433">            action.accept(ref);</span>
+          }
+<span class="nc" id="L435">        });</span>
+<span class="nc" id="L436">      }</span>
+
+      @Override
+      public EntryWithData retain() {
+<span class="nc" id="L440">        retained.retain();</span>
+<span class="nc" id="L441">        updateFuture(ReferenceCountedObject::retain);</span>
+<span class="nc" id="L442">        return impl;</span>
+      }
+
+      @Override
+      public boolean release() {
+<span class="nc" id="L447">        updateFuture(ReferenceCountedObject::release);</span>
+<span class="nc" id="L448">        return retained.release();</span>
+      }
+    };
+  }
+
+  /**
+   * Holds proto entry along with future which contains read state machine data
+   */
+  class EntryWithDataImpl implements EntryWithData {
+    private final LogEntryProto logEntry;
+    private final CompletableFuture&lt;ReferenceCountedObject&lt;ByteString&gt;&gt; future;
+
+<span class="nc" id="L460">    EntryWithDataImpl(LogEntryProto logEntry, CompletableFuture&lt;ReferenceCountedObject&lt;ByteString&gt;&gt; future) {</span>
+<span class="nc" id="L461">      this.logEntry = logEntry;</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">      this.future = future == null? null: future.thenApply(this::checkStateMachineData);</span>
+<span class="nc" id="L463">    }</span>
+
+    private ReferenceCountedObject&lt;ByteString&gt; checkStateMachineData(ReferenceCountedObject&lt;ByteString&gt; data) {
+<span class="nc bnc" id="L466" title="All 2 branches missed.">      if (data == null) {</span>
+<span class="nc" id="L467">        throw new IllegalStateException(&quot;State machine data is null for log entry &quot; + this);</span>
+      }
+<span class="nc" id="L469">      return data;</span>
+    }
+
+    @Override
+    public long getIndex() {
+<span class="nc" id="L474">      return logEntry.getIndex();</span>
+    }
+
+    @Override
+    public int getSerializedSize() {
+<span class="nc" id="L479">      return LogProtoUtils.getSerializedSize(logEntry);</span>
+    }
+
+    @Override
+    public LogEntryProto getEntry(TimeDuration timeout) throws RaftLogIOException, TimeoutException {
+<span class="nc bnc" id="L484" title="All 2 branches missed.">      if (future == null) {</span>
+<span class="nc" id="L485">        return logEntry;</span>
+      }
+
+      final LogEntryProto entryProto;
+      ReferenceCountedObject&lt;ByteString&gt; data;
+      try {
+<span class="nc" id="L491">        data = future.get(timeout.getDuration(), timeout.getUnit());</span>
+<span class="nc" id="L492">        entryProto = LogProtoUtils.addStateMachineData(data.get(), logEntry);</span>
+<span class="nc" id="L493">      } catch (TimeoutException t) {</span>
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (timeout.compareTo(stateMachineDataReadTimeout) &gt; 0) {</span>
+<span class="nc" id="L495">          getRaftLogMetrics().onStateMachineDataReadTimeout();</span>
+        }
+<span class="nc" id="L497">        throw t;</span>
+<span class="nc" id="L498">      } catch (Exception e) {</span>
+<span class="nc bnc" id="L499" title="All 2 branches missed.">        if (e instanceof InterruptedException) {</span>
+<span class="nc" id="L500">          Thread.currentThread().interrupt();</span>
+        }
+<span class="nc" id="L502">        final String err = getName() + &quot;: Failed readStateMachineData for &quot; + this;</span>
+<span class="nc" id="L503">        LOG.error(err, e);</span>
+<span class="nc" id="L504">        throw new RaftLogIOException(err, JavaUtils.unwrapCompletionException(e));</span>
+<span class="nc" id="L505">      }</span>
+      // by this time we have already read the state machine data,
+      // so the log entry data should be set now
+<span class="nc bnc" id="L508" title="All 2 branches missed.">      if (LogProtoUtils.isStateMachineDataEmpty(entryProto)) {</span>
+<span class="nc" id="L509">        final String err = getName() + &quot;: State machine data not set for &quot; + this;</span>
+<span class="nc" id="L510">        LOG.error(err);</span>
+<span class="nc" id="L511">        throw new RaftLogIOException(err);</span>
+      }
+<span class="nc" id="L513">      return entryProto;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L518">      return toLogEntryString(logEntry);</span>
+    }
+  }
+
+  public String toLogEntryString(LogEntryProto logEntry) {
+<span class="nc" id="L523">    return LogProtoUtils.toLogEntryString(logEntry);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

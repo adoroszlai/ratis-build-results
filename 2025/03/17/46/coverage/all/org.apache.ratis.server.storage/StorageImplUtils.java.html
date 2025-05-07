@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StorageImplUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">StorageImplUtils.java</span></div><h1>StorageImplUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.RaftServerConfigKeys.Log;
+import org.apache.ratis.server.storage.RaftStorage.StartupOption;
+import org.apache.ratis.statemachine.StateMachineStorage;
+import org.apache.ratis.util.SizeInBytes;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import static org.apache.ratis.server.RaftServer.Division.LOG;
+
+public final class StorageImplUtils {
+<span class="nc" id="L41">  private static final File[] EMPTY_FILE_ARRAY = {};</span>
+
+  private StorageImplUtils() {
+    //Never constructed
+  }
+
+  public static SnapshotManager newSnapshotManager(RaftPeerId id,
+                                                   Supplier&lt;RaftStorageDirectory&gt; dir, StateMachineStorage smStorage) {
+<span class="nc" id="L49">    return new SnapshotManager(id, dir, smStorage);</span>
+  }
+
+  /** Create a {@link RaftStorageImpl}. */
+  @SuppressWarnings(&quot;java:S2095&quot;) // return Closable
+  public static RaftStorageImpl newRaftStorage(File dir, SizeInBytes freeSpaceMin,
+      RaftStorage.StartupOption option, Log.CorruptionPolicy logCorruptionPolicy) {
+<span class="nc" id="L56">    return new RaftStorageImpl(dir, freeSpaceMin, option, logCorruptionPolicy);</span>
+  }
+
+  /** @return a list of existing subdirectories matching the given storage directory name from the given volumes. */
+  static List&lt;File&gt; getExistingStorageSubs(List&lt;File&gt; volumes, String targetSubDir, Map&lt;File, Integer&gt; dirsPerVol) {
+<span class="nc" id="L61">    return volumes.stream().flatMap(volume -&gt; {</span>
+<span class="nc" id="L62">          final File[] dirs = Optional.ofNullable(volume.listFiles()).orElse(EMPTY_FILE_ARRAY);</span>
+<span class="nc" id="L63">          Optional.ofNullable(dirsPerVol).ifPresent(map -&gt; map.put(volume, dirs.length));</span>
+<span class="nc" id="L64">          return Arrays.stream(dirs);</span>
+<span class="nc" id="L65">        }).filter(dir -&gt; targetSubDir.equals(dir.getName()))</span>
+<span class="nc" id="L66">        .collect(Collectors.toList());</span>
+  }
+
+  /** @return a volume with the min dirs. */
+  static File chooseMin(Map&lt;File, Integer&gt; dirsPerVol) throws IOException {
+<span class="nc" id="L71">    return dirsPerVol.entrySet().stream()</span>
+<span class="nc" id="L72">        .min(Map.Entry.comparingByValue())</span>
+<span class="nc" id="L73">        .map(Map.Entry::getKey)</span>
+<span class="nc" id="L74">        .orElseThrow(() -&gt; new IOException(&quot;No storage directory found.&quot;));</span>
+  }
+
+  /**
+   * Choose a {@link RaftStorage} for the given storage directory name from the given configuration properties
+   * and then try to call {@link RaftStorage#initialize()}.
+   * &lt;p /&gt;
+   * {@link StartupOption#FORMAT}:
+   * - When there are more than one existing directories, throw an exception.
+   * - When there is an existing directory, throw an exception.
+   * - When there is no existing directory, try to initialize a new directory from the list specified
+   *   in the configuration properties until a directory succeeded or all directories failed.
+   * &lt;p /&gt;
+   * {@link StartupOption#RECOVER}:
+   * - When there are more than one existing directories, throw an exception.
+   * - When there is an existing directory, if it fails to initialize, throw an exception but not try a new directory.
+   * - When there is no existing directory, if only one directory is specified in the configuration, format it;
+   *   otherwise, there are &gt;1 directories specified, throw an exception.
+   *
+   * @param storageDirName the storage directory name
+   * @param option the startup option
+   * @param properties the configuration properties
+   * @return the chosen storage, which is initialized successfully.
+   */
+  public static RaftStorageImpl initRaftStorage(String storageDirName, StartupOption option,
+      RaftProperties properties) throws IOException {
+<span class="nc" id="L100">    return new Op(storageDirName, option, properties).run();</span>
+  }
+
+  private static class Op {
+    private final String storageDirName;
+    private final StartupOption option;
+
+    private final SizeInBytes freeSpaceMin;
+    private final Log.CorruptionPolicy logCorruptionPolicy;
+    private final List&lt;File&gt; dirsInConf;
+
+    private final List&lt;File&gt; existingSubs;
+<span class="nc" id="L112">    private final Map&lt;File, Integer&gt; dirsPerVol = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L114">    Op(String storageDirName, StartupOption option, RaftProperties properties) {</span>
+<span class="nc" id="L115">      this.storageDirName = storageDirName;</span>
+<span class="nc" id="L116">      this.option = option;</span>
+
+<span class="nc" id="L118">      this.freeSpaceMin = RaftServerConfigKeys.storageFreeSpaceMin(properties);</span>
+<span class="nc" id="L119">      this.logCorruptionPolicy = RaftServerConfigKeys.Log.corruptionPolicy(properties);</span>
+<span class="nc" id="L120">      this.dirsInConf = RaftServerConfigKeys.storageDir(properties);</span>
+
+<span class="nc" id="L122">      this.existingSubs = getExistingStorageSubs(dirsInConf, this.storageDirName, dirsPerVol);</span>
+<span class="nc" id="L123">    }</span>
+
+    RaftStorageImpl run() throws IOException {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">      if (option == StartupOption.FORMAT) {</span>
+<span class="nc" id="L127">        return format();</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      } else if (option == StartupOption.RECOVER) {</span>
+<span class="nc" id="L129">        final RaftStorageImpl recovered = recover();</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        return recovered != null? recovered: format();</span>
+      } else {
+<span class="nc" id="L132">        throw new IllegalArgumentException(&quot;Illegal option: &quot; + option);</span>
+      }
+    }
+
+    @SuppressWarnings(&quot;java:S1181&quot;) // catch Throwable
+    private RaftStorageImpl format() throws IOException {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      if (!existingSubs.isEmpty()) {</span>
+<span class="nc" id="L139">        throw new IOException(&quot;Failed to &quot; + option + &quot;: One or more existing directories found &quot; + existingSubs</span>
+            + &quot; for &quot; + storageDirName);
+      }
+
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      while (!dirsPerVol.isEmpty()) {</span>
+<span class="nc" id="L144">        final File vol = chooseMin(dirsPerVol);</span>
+<span class="nc" id="L145">        final File dir = new File(vol, storageDirName);</span>
+        try {
+<span class="nc" id="L147">          final RaftStorageImpl storage = newRaftStorage(dir, freeSpaceMin, StartupOption.FORMAT, logCorruptionPolicy);</span>
+<span class="nc" id="L148">          storage.initialize();</span>
+<span class="nc" id="L149">          return storage;</span>
+<span class="nc" id="L150">        } catch (Throwable e) {</span>
+<span class="nc" id="L151">          LOG.warn(&quot;Failed to initialize a new directory &quot; + dir.getAbsolutePath(), e);</span>
+<span class="nc" id="L152">          dirsPerVol.remove(vol);</span>
+        }
+<span class="nc" id="L154">      }</span>
+<span class="nc" id="L155">      throw new IOException(&quot;Failed to FORMAT a new storage dir for &quot; + storageDirName + &quot; from &quot; + dirsInConf);</span>
+    }
+
+    @SuppressWarnings(&quot;java:S1181&quot;) // catch Throwable
+    private RaftStorageImpl recover() throws IOException {
+<span class="nc" id="L160">      final int size = existingSubs.size();</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">      if (size &gt; 1) {</span>
+<span class="nc" id="L162">        throw new IOException(&quot;Failed to &quot; + option + &quot;: More than one existing directories found &quot;</span>
+            + existingSubs + &quot; for &quot; + storageDirName);
+<span class="nc bnc" id="L164" title="All 2 branches missed.">      } else if (size == 0) {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (dirsInConf.size() == 1) {</span>
+          // fallback to FORMAT
+<span class="nc" id="L167">          return null;</span>
+        }
+<span class="nc" id="L169">        throw new IOException(&quot;Failed to &quot; + option + &quot;: Storage directory not found for &quot;</span>
+            + storageDirName + &quot; from &quot; + dirsInConf);
+      }
+
+<span class="nc" id="L173">      final File dir = existingSubs.get(0);</span>
+      try {
+<span class="nc" id="L175">        final RaftStorageImpl storage = newRaftStorage(dir, freeSpaceMin, StartupOption.RECOVER, logCorruptionPolicy);</span>
+<span class="nc" id="L176">        storage.initialize();</span>
+<span class="nc" id="L177">        return storage;</span>
+<span class="nc" id="L178">      } catch (IOException e) {</span>
+<span class="nc" id="L179">        throw e;</span>
+<span class="nc" id="L180">      } catch (Throwable e) {</span>
+<span class="nc" id="L181">        throw new IOException(&quot;Failed to initialize the existing directory &quot; + dir.getAbsolutePath(), e);</span>
+      }
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

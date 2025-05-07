@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerMetricsImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.metrics</a> &gt; <span class="el_source">RaftServerMetricsImpl.java</span></div><h1>RaftServerMetricsImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.server.metrics;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.function.ToLongFunction;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.Timekeeper;
+
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase;
+import org.apache.ratis.protocol.RaftClientRequest.Type;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.metrics.RatisMetrics;
+import org.apache.ratis.server.RetryCache;
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+
+/**
+ * Metric Registry for Raft Group Server. One instance per leader/follower.
+ */
+public final class RaftServerMetricsImpl extends RatisMetrics implements RaftServerMetrics {
+
+  public static final String RATIS_SERVER_METRICS = &quot;server&quot;;
+  public static final String RATIS_SERVER_METRICS_DESC = &quot;Metrics for Raft server&quot;;
+
+  public static final String FOLLOWER_LAST_HEARTBEAT_ELAPSED_TIME_METRIC = &quot;%s_lastHeartbeatElapsedTime&quot;;
+  public static final String FOLLOWER_APPEND_ENTRIES_LATENCY = &quot;follower_append_entry_latency&quot;;
+  public static final String LEADER_METRIC_PEER_COMMIT_INDEX = &quot;%s_peerCommitIndex&quot;;
+  public static final String RAFT_CLIENT_READ_REQUEST = &quot;clientReadRequest&quot;;
+  public static final String RAFT_CLIENT_STALE_READ_REQUEST = &quot;clientStaleReadRequest&quot;;
+  public static final String RAFT_CLIENT_WRITE_REQUEST = &quot;clientWriteRequest&quot;;
+  public static final String RAFT_CLIENT_WATCH_REQUEST = &quot;clientWatch%sRequest&quot;;
+
+  public static final String REQUEST_QUEUE_LIMIT_HIT_COUNTER = &quot;numRequestQueueLimitHits&quot;;
+  public static final String REQUEST_BYTE_SIZE_LIMIT_HIT_COUNTER = &quot;numRequestsByteSizeLimitHits&quot;;
+  public static final String RESOURCE_LIMIT_HIT_COUNTER = &quot;numResourceLimitHits&quot;;
+  public static final String WATCH_REQUEST_QUEUE_LIMIT_HIT_COUNTER = &quot;numWatch%sRequestQueueLimitHits&quot;;
+
+  public static final String REQUEST_QUEUE_SIZE = &quot;numPendingRequestInQueue&quot;;
+  public static final String REQUEST_MEGA_BYTE_SIZE = &quot;numPendingRequestMegaByteSize&quot;;
+
+  public static final String WATCH_REQUEST_QUEUE_SIZE = &quot;numWatch%sRequestInQueue&quot;;
+  public static final String WATCH_REQUEST_TIMEOUT_COUNTER = &quot;numWatch%sRequestTimeout&quot;;
+
+  public static final String RETRY_CACHE_ENTRY_COUNT_METRIC = &quot;retryCacheEntryCount&quot;;
+  public static final String RETRY_CACHE_HIT_COUNT_METRIC = &quot;retryCacheHitCount&quot;;
+  public static final String RETRY_CACHE_HIT_RATE_METRIC = &quot;retryCacheHitRate&quot;;
+  public static final String RETRY_CACHE_MISS_COUNT_METRIC = &quot;retryCacheMissCount&quot;;
+  public static final String RETRY_CACHE_MISS_RATE_METRIC = &quot;retryCacheMissRate&quot;;
+
+  public static final String RATIS_SERVER_FAILED_CLIENT_STALE_READ_COUNT = &quot;numFailedClientStaleReadOnServer&quot;;
+  public static final String RATIS_SERVER_FAILED_CLIENT_READ_COUNT       = &quot;numFailedClientReadOnServer&quot;;
+  public static final String RATIS_SERVER_FAILED_CLIENT_WRITE_COUNT      = &quot;numFailedClientWriteOnServer&quot;;
+  public static final String RATIS_SERVER_FAILED_CLIENT_WATCH_COUNT      = &quot;numFailedClientWatchOnServer&quot;;
+  public static final String RATIS_SERVER_FAILED_CLIENT_STREAM_COUNT     = &quot;numFailedClientStreamOnServer&quot;;
+  public static final String RATIS_SERVER_INSTALL_SNAPSHOT_COUNT = &quot;numInstallSnapshot&quot;;
+
+<span class="nc" id="L81">  private final LongCounter numRequestQueueLimitHits = getRegistry().counter(REQUEST_QUEUE_LIMIT_HIT_COUNTER);</span>
+<span class="nc" id="L82">  private final LongCounter numRequestsByteSizeLimitHits = getRegistry().counter(REQUEST_BYTE_SIZE_LIMIT_HIT_COUNTER);</span>
+<span class="nc" id="L83">  private final LongCounter numResourceLimitHits = getRegistry().counter(RESOURCE_LIMIT_HIT_COUNTER);</span>
+<span class="nc" id="L84">  private final Map&lt;ReplicationLevel, LongCounter&gt; numWatchRequestQueueLimitHits = newCounterMap(ReplicationLevel.class,</span>
+<span class="nc" id="L85">      replication -&gt; getRegistry().counter(</span>
+<span class="nc" id="L86">          String.format(WATCH_REQUEST_QUEUE_LIMIT_HIT_COUNTER, Type.toString(replication))));</span>
+<span class="nc" id="L87">  private final Map&lt;ReplicationLevel, LongCounter&gt; numWatchRequestsTimeout = newCounterMap(ReplicationLevel.class,</span>
+<span class="nc" id="L88">      replication -&gt; getRegistry().counter(String.format(WATCH_REQUEST_TIMEOUT_COUNTER, Type.toString(replication))));</span>
+
+<span class="nc" id="L90">  private final LongCounter numFailedClientStaleRead</span>
+<span class="nc" id="L91">      = getRegistry().counter(RATIS_SERVER_FAILED_CLIENT_STALE_READ_COUNT);</span>
+<span class="nc" id="L92">  private final LongCounter numFailedClientRead = getRegistry().counter(RATIS_SERVER_FAILED_CLIENT_READ_COUNT);</span>
+<span class="nc" id="L93">  private final LongCounter numFailedClientWrite = getRegistry().counter(RATIS_SERVER_FAILED_CLIENT_WRITE_COUNT);</span>
+<span class="nc" id="L94">  private final LongCounter numFailedClientWatch = getRegistry().counter(RATIS_SERVER_FAILED_CLIENT_WATCH_COUNT);</span>
+<span class="nc" id="L95">  private final LongCounter numFailedClientStream = getRegistry().counter(RATIS_SERVER_FAILED_CLIENT_STREAM_COUNT);</span>
+
+<span class="nc" id="L97">  private final LongCounter numInstallSnapshot = getRegistry().counter(RATIS_SERVER_INSTALL_SNAPSHOT_COUNT);</span>
+
+<span class="nc" id="L99">  private final Timekeeper readTimer = getRegistry().timer(RAFT_CLIENT_READ_REQUEST);</span>
+<span class="nc" id="L100">  private final Timekeeper staleReadTimer = getRegistry().timer(RAFT_CLIENT_STALE_READ_REQUEST);</span>
+<span class="nc" id="L101">  private final Timekeeper writeTimer = getRegistry().timer(RAFT_CLIENT_WRITE_REQUEST);</span>
+<span class="nc" id="L102">  private final Map&lt;ReplicationLevel, Timekeeper&gt; watchTimers = newTimerMap(ReplicationLevel.class,</span>
+<span class="nc" id="L103">      replication -&gt; getRegistry().timer(String.format(RAFT_CLIENT_WATCH_REQUEST, Type.toString(replication))));</span>
+
+<span class="nc" id="L105">  private final Function&lt;Boolean, Timekeeper&gt; followerAppendEntryLatency</span>
+<span class="nc" id="L106">      = newHeartbeatTimer(FOLLOWER_APPEND_ENTRIES_LATENCY);</span>
+
+  /** Follower Id -&gt; heartbeat elapsed */
+<span class="nc" id="L109">  private final Map&lt;RaftPeerId, Long&gt; followerLastHeartbeatElapsedTimeMap = new ConcurrentHashMap&lt;&gt;();</span>
+  private final ToLongFunction&lt;RaftPeerId&gt; commitInfoCache;
+
+  /** id -&gt; metric */
+<span class="nc" id="L113">  private static final Map&lt;RaftGroupMemberId, RaftServerMetricsImpl&gt; METRICS = new ConcurrentHashMap&lt;&gt;();</span>
+  /** id -&gt; key */
+<span class="nc" id="L115">  private static final Map&lt;RaftPeerId, String&gt; PEER_COMMIT_INDEX_GAUGE_KEYS = new ConcurrentHashMap&lt;&gt;();</span>
+
+  static String getPeerCommitIndexGaugeKey(RaftPeerId serverId) {
+<span class="nc" id="L118">    return PEER_COMMIT_INDEX_GAUGE_KEYS.computeIfAbsent(serverId,</span>
+<span class="nc" id="L119">        key -&gt; String.format(LEADER_METRIC_PEER_COMMIT_INDEX, key));</span>
+  }
+
+  public static RaftServerMetricsImpl computeIfAbsentRaftServerMetrics(RaftGroupMemberId serverId,
+      ToLongFunction&lt;RaftPeerId&gt; commitInfoCache,
+      Supplier&lt;RetryCache.Statistics&gt; retryCacheStatistics) {
+<span class="nc" id="L125">    return METRICS.computeIfAbsent(serverId,</span>
+<span class="nc" id="L126">        key -&gt; new RaftServerMetricsImpl(serverId, commitInfoCache, retryCacheStatistics));</span>
+  }
+
+  public static void removeRaftServerMetrics(RaftGroupMemberId serverId) {
+<span class="nc" id="L130">    METRICS.remove(serverId);</span>
+<span class="nc" id="L131">  }</span>
+
+  public RaftServerMetricsImpl(RaftGroupMemberId serverId,
+      ToLongFunction&lt;RaftPeerId&gt; commitInfoCache,
+      Supplier&lt;RetryCache.Statistics&gt; retryCacheStatistics) {
+<span class="nc" id="L136">    super(createRegistry(serverId.toString()));</span>
+<span class="nc" id="L137">    this.commitInfoCache = commitInfoCache;</span>
+
+<span class="nc" id="L139">    addPeerCommitIndexGauge(serverId.getPeerId());</span>
+<span class="nc" id="L140">    addRetryCacheMetric(retryCacheStatistics);</span>
+<span class="nc" id="L141">  }</span>
+
+  public LongCounter getNumRequestQueueLimitHits() {
+<span class="nc" id="L144">    return numRequestQueueLimitHits;</span>
+  }
+
+  public LongCounter getNumRequestsByteSizeLimitHits() {
+<span class="nc" id="L148">    return numRequestsByteSizeLimitHits;</span>
+  }
+
+  public LongCounter getNumResourceLimitHits() {
+<span class="nc" id="L152">    return numResourceLimitHits;</span>
+  }
+
+  public LongCounter getNumFailedClientStaleRead() {
+<span class="nc" id="L156">    return numFailedClientStaleRead;</span>
+  }
+
+  public LongCounter getNumInstallSnapshot() {
+<span class="nc" id="L160">    return numInstallSnapshot;</span>
+  }
+
+  public LongCounter getNumWatchRequestQueueLimitHits(ReplicationLevel replication) {
+<span class="nc" id="L164">    return numWatchRequestQueueLimitHits.get(replication);</span>
+  }
+
+  public LongCounter getNumWatchRequestsTimeout(ReplicationLevel replication) {
+<span class="nc" id="L168">    return numWatchRequestsTimeout.get(replication);</span>
+  }
+
+  private static RatisMetricRegistry createRegistry(String serverId) {
+<span class="nc" id="L172">    return create(new MetricRegistryInfo(serverId,</span>
+        RATIS_APPLICATION_NAME_METRICS, RATIS_SERVER_METRICS,
+        RATIS_SERVER_METRICS_DESC));
+  }
+
+  private void addRetryCacheMetric(Supplier&lt;RetryCache.Statistics&gt; retryCacheStatistics) {
+<span class="nc" id="L178">    getRegistry().gauge(RETRY_CACHE_ENTRY_COUNT_METRIC, () -&gt; () -&gt; retryCacheStatistics.get().size());</span>
+<span class="nc" id="L179">    getRegistry().gauge(RETRY_CACHE_HIT_COUNT_METRIC  , () -&gt; () -&gt; retryCacheStatistics.get().hitCount());</span>
+<span class="nc" id="L180">    getRegistry().gauge(RETRY_CACHE_HIT_RATE_METRIC   , () -&gt; () -&gt; retryCacheStatistics.get().hitRate());</span>
+<span class="nc" id="L181">    getRegistry().gauge(RETRY_CACHE_MISS_COUNT_METRIC , () -&gt; () -&gt; retryCacheStatistics.get().missCount());</span>
+<span class="nc" id="L182">    getRegistry().gauge(RETRY_CACHE_MISS_RATE_METRIC  , () -&gt; () -&gt; retryCacheStatistics.get().missRate());</span>
+<span class="nc" id="L183">  }</span>
+
+  /**
+   * Register a follower with this Leader Metrics registry instance.
+   */
+  public void addFollower(RaftPeerId followerName) {
+<span class="nc" id="L189">    String followerHbMetricKey = String.format(</span>
+        FOLLOWER_LAST_HEARTBEAT_ELAPSED_TIME_METRIC,
+        followerName);
+
+<span class="nc" id="L193">    followerLastHeartbeatElapsedTimeMap.put(followerName, 0L);</span>
+<span class="nc" id="L194">    getRegistry().gauge(followerHbMetricKey, () -&gt; () -&gt; followerLastHeartbeatElapsedTimeMap.get(followerName));</span>
+
+<span class="nc" id="L196">    addPeerCommitIndexGauge(followerName);</span>
+<span class="nc" id="L197">  }</span>
+
+  /**
+   * Register a commit index tracker for the peer in cluster.
+   */
+  private void addPeerCommitIndexGauge(RaftPeerId peerId) {
+<span class="nc" id="L203">    getRegistry().gauge(getPeerCommitIndexGaugeKey(peerId),</span>
+<span class="nc" id="L204">        () -&gt; () -&gt; commitInfoCache.applyAsLong(peerId));</span>
+<span class="nc" id="L205">  }</span>
+
+  @VisibleForTesting
+  static RaftServerMetricsImpl getImpl(RaftGroupMemberId serverId) {
+<span class="nc" id="L209">    return METRICS.get(serverId);</span>
+  }
+
+  /**
+   * Record heartbeat elapsed time for a follower within a Raft group.
+   * @param followerId the follower id.
+   * @param elapsedTimeNs Elapsed time in Nanos.
+   */
+  public void recordFollowerHeartbeatElapsedTime(RaftPeerId followerId, long elapsedTimeNs) {
+<span class="nc" id="L218">    followerLastHeartbeatElapsedTimeMap.put(followerId, elapsedTimeNs);</span>
+<span class="nc" id="L219">  }</span>
+
+  public Timekeeper getFollowerAppendEntryTimer(boolean isHeartbeat) {
+<span class="nc" id="L222">    return followerAppendEntryLatency.apply(isHeartbeat);</span>
+  }
+
+  public Timekeeper getClientRequestTimer(Type request) {
+<span class="nc bnc" id="L226" title="All 2 branches missed.">    if (request.is(TypeCase.READ)) {</span>
+<span class="nc" id="L227">      return readTimer;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    } else if (request.is(TypeCase.STALEREAD)) {</span>
+<span class="nc" id="L229">      return staleReadTimer;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">    } else if (request.is(TypeCase.WATCH)) {</span>
+<span class="nc" id="L231">      return watchTimers.get(request.getWatch().getReplication());</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">    } else if (request.is(TypeCase.WRITE)) {</span>
+<span class="nc" id="L233">      return writeTimer;</span>
+    }
+<span class="nc" id="L235">    return null;</span>
+  }
+
+  public void onRequestQueueLimitHit() {
+<span class="nc" id="L239">    numRequestQueueLimitHits.inc();</span>
+<span class="nc" id="L240">  }</span>
+
+  public void addNumPendingRequestsGauge(Supplier&lt;Integer&gt; queueSize) {
+<span class="nc" id="L243">    getRegistry().gauge(REQUEST_QUEUE_SIZE, () -&gt; queueSize);</span>
+<span class="nc" id="L244">  }</span>
+
+  public boolean removeNumPendingRequestsGauge() {
+<span class="nc" id="L247">    return getRegistry().remove(REQUEST_QUEUE_SIZE);</span>
+  }
+
+  public void addNumPendingRequestsMegaByteSize(Supplier&lt;Integer&gt; megabyteSize) {
+<span class="nc" id="L251">    getRegistry().gauge(REQUEST_MEGA_BYTE_SIZE, () -&gt; megabyteSize);</span>
+<span class="nc" id="L252">  }</span>
+
+  public boolean removeNumPendingRequestsByteSize() {
+<span class="nc" id="L255">    return getRegistry().remove(REQUEST_MEGA_BYTE_SIZE);</span>
+  }
+
+  public void onWatchRequestQueueLimitHit(ReplicationLevel replicationLevel) {
+<span class="nc" id="L259">    numWatchRequestQueueLimitHits.get(replicationLevel).inc();</span>
+<span class="nc" id="L260">  }</span>
+
+  public void onWatchRequestTimeout(ReplicationLevel replicationLevel) {
+<span class="nc" id="L263">    numWatchRequestsTimeout.get(replicationLevel).inc();</span>
+<span class="nc" id="L264">  }</span>
+
+  public void addNumPendingWatchRequestsGauge(Supplier&lt;Integer&gt; queueSize, ReplicationLevel replication) {
+<span class="nc" id="L267">    getRegistry().gauge(String.format(WATCH_REQUEST_QUEUE_SIZE, Type.toString(replication)), () -&gt; queueSize);</span>
+<span class="nc" id="L268">  }</span>
+
+  public boolean removeNumPendingWatchRequestsGauge(ReplicationLevel replication) {
+<span class="nc" id="L271">    return getRegistry().remove(String.format(WATCH_REQUEST_QUEUE_SIZE, Type.toString(replication)));</span>
+  }
+
+  public void onRequestByteSizeLimitHit() {
+<span class="nc" id="L275">    numRequestsByteSizeLimitHits.inc();</span>
+<span class="nc" id="L276">  }</span>
+
+  public void onResourceLimitHit() {
+<span class="nc" id="L279">    numResourceLimitHits.inc();</span>
+<span class="nc" id="L280">  }</span>
+
+  void onFailedClientStaleRead() {
+<span class="nc" id="L283">    numFailedClientStaleRead.inc();</span>
+<span class="nc" id="L284">  }</span>
+
+  void onFailedClientRead() {
+<span class="nc" id="L287">    numFailedClientRead.inc();</span>
+<span class="nc" id="L288">  }</span>
+
+  void onFailedClientWatch() {
+<span class="nc" id="L291">    numFailedClientWatch.inc();</span>
+<span class="nc" id="L292">  }</span>
+
+  void onFailedClientWrite() {
+<span class="nc" id="L295">    numFailedClientWrite.inc();</span>
+<span class="nc" id="L296">  }</span>
+
+  void onFailedClientStream() {
+<span class="nc" id="L299">    numFailedClientStream.inc();</span>
+<span class="nc" id="L300">  }</span>
+
+  public void incFailedRequestCount(Type type) {
+<span class="nc bnc" id="L303" title="All 2 branches missed.">    if (type.is(TypeCase.STALEREAD)) {</span>
+<span class="nc" id="L304">      onFailedClientStaleRead();</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">    } else if (type.is(TypeCase.WATCH)) {</span>
+<span class="nc" id="L306">      onFailedClientWatch();</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">    } else if (type.is(TypeCase.WRITE)) {</span>
+<span class="nc" id="L308">      onFailedClientWrite();</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">    } else if (type.is(TypeCase.READ)) {</span>
+<span class="nc" id="L310">      onFailedClientRead();</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">    } else if (type.is(TypeCase.MESSAGESTREAM)) {</span>
+<span class="nc" id="L312">      onFailedClientStream();</span>
+    }
+<span class="nc" id="L314">  }</span>
+
+  @Override
+  public void onSnapshotInstalled() {
+<span class="nc" id="L318">    numInstallSnapshot.inc();</span>
+<span class="nc" id="L319">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

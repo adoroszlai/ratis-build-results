@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogAppender.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">LogAppender.java</span></div><h1>LogAppender.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerRpc;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.util.AwaitForSignal;
+import org.apache.ratis.util.ReflectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Comparator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+
+/**
+ * A {@link LogAppender} is for the leader to send appendEntries to a particular follower.
+ */
+public interface LogAppender {
+<span class="nc" id="L43">  Logger LOG = LoggerFactory.getLogger(LogAppender.class);</span>
+
+<span class="nc" id="L45">  Class&lt;? extends LogAppender&gt; DEFAULT_CLASS = ReflectionUtils.getClass(</span>
+<span class="nc" id="L46">      LogAppender.class.getName() + &quot;Default&quot;, LogAppender.class);</span>
+
+  /** Create the default {@link LogAppender}. */
+  static LogAppender newLogAppenderDefault(RaftServer.Division server, LeaderState leaderState, FollowerInfo f) {
+<span class="nc" id="L50">    final Class&lt;?&gt;[] argClasses = {RaftServer.Division.class, LeaderState.class, FollowerInfo.class};</span>
+<span class="nc" id="L51">    return ReflectionUtils.newInstance(DEFAULT_CLASS, argClasses, server, leaderState, f);</span>
+  }
+
+  /** @return the server. */
+  RaftServer.Division getServer();
+
+  /** The same as getServer().getRaftServer().getServerRpc(). */
+  default RaftServerRpc getServerRpc() {
+<span class="nc" id="L59">    return getServer().getRaftServer().getServerRpc();</span>
+  }
+
+  /** The same as getServer().getRaftLog(). */
+  default RaftLog getRaftLog() {
+<span class="nc" id="L64">    return getServer().getRaftLog();</span>
+  }
+
+  /** Start this {@link LogAppender}. */
+  void start();
+
+  /** Is this {@link LogAppender} running? */
+  boolean isRunning();
+
+  /**
+   * Stop this {@link LogAppender} asynchronously.
+   * @deprecated override {@link #stopAsync()} instead.
+   */
+  @Deprecated
+  default void stop() {
+<span class="nc" id="L79">    throw new UnsupportedOperationException();</span>
+  }
+
+  /**
+   * Stop this {@link LogAppender} asynchronously.
+   *
+   * @return a future of the final state.
+   */
+  default CompletableFuture&lt;?&gt; stopAsync() {
+<span class="nc" id="L88">    stop();</span>
+<span class="nc" id="L89">    return CompletableFuture.supplyAsync(() -&gt; {</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">      while (isRunning()) {</span>
+        try {
+<span class="nc" id="L92">          Thread.sleep(10);</span>
+<span class="nc" id="L93">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L94">          Thread.currentThread().interrupt();</span>
+<span class="nc" id="L95">          throw new CompletionException(&quot;stopAsync interrupted&quot;, e);</span>
+<span class="nc" id="L96">        }</span>
+      }
+<span class="nc" id="L98">      return null;</span>
+    });
+  }
+
+  /** @return the leader state. */
+  LeaderState getLeaderState();
+
+  /** @return the follower information for this {@link LogAppender}. */
+  FollowerInfo getFollower();
+
+  /** The same as getFollower().getPeer().getId(). */
+  default RaftPeerId getFollowerId() {
+<span class="nc" id="L110">    return getFollower().getId();</span>
+  }
+
+  /** @return the call id for the next {@link AppendEntriesRequestProto}. */
+  long getCallId();
+
+  /** @return the a {@link Comparator} for comparing call ids. */
+  Comparator&lt;Long&gt; getCallIdComparator();
+
+  /**
+   * Create a {@link AppendEntriesRequestProto} object using the {@link FollowerInfo} of this {@link LogAppender}.
+   * The {@link AppendEntriesRequestProto} object may contain zero or more log entries.
+   * When there is zero log entries, the {@link AppendEntriesRequestProto} object is a heartbeat.
+   *
+   * @param callId The call id of the returned request.
+   * @param heartbeat the returned request must be a heartbeat.
+   *
+   * @return a new {@link AppendEntriesRequestProto} object.
+   * @deprecated this is no longer a public API.
+   */
+  @Deprecated
+  AppendEntriesRequestProto newAppendEntriesRequest(long callId, boolean heartbeat) throws RaftLogIOException;
+
+  /** @return a new {@link InstallSnapshotRequestProto} object. */
+  InstallSnapshotRequestProto newInstallSnapshotNotificationRequest(TermIndex firstAvailableLogTermIndex);
+
+  /** @return an {@link Iterable} of {@link InstallSnapshotRequestProto} for sending the given snapshot. */
+  Iterable&lt;InstallSnapshotRequestProto&gt; newInstallSnapshotRequests(String requestId, SnapshotInfo snapshot);
+
+  /**
+   * Should this {@link LogAppender} send a snapshot to the follower?
+   *
+   * @return the snapshot if it should install a snapshot; otherwise, return null.
+   */
+  default SnapshotInfo shouldInstallSnapshot() {
+    // we should install snapshot if the follower needs to catch up and:
+    // 1. there is no local log entry but there is snapshot
+    // 2. or the follower's next index is smaller than the log start index
+    // 3. or the follower is bootstrapping and has not installed any snapshot yet
+<span class="nc" id="L149">    final FollowerInfo follower = getFollower();</span>
+<span class="nc" id="L150">    final boolean isFollowerBootstrapping = getLeaderState().isFollowerBootstrapping(follower);</span>
+<span class="nc" id="L151">    final SnapshotInfo snapshot = getServer().getStateMachine().getLatestSnapshot();</span>
+
+<span class="nc bnc" id="L153" title="All 4 branches missed.">    if (isFollowerBootstrapping &amp;&amp; !follower.hasAttemptedToInstallSnapshot()) {</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">      if (snapshot == null) {</span>
+        // Leader cannot send null snapshot to follower. Hence, acknowledge InstallSnapshot attempt (even though it
+        // was not attempted) so that follower can come out of staging state after appending log entries.
+<span class="nc" id="L157">        follower.setAttemptedToInstallSnapshot();</span>
+      } else {
+<span class="nc" id="L159">        return snapshot;</span>
+      }
+    }
+
+<span class="nc" id="L163">    final long followerNextIndex = getFollower().getNextIndex();</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    if (followerNextIndex &lt; getRaftLog().getNextIndex()) {</span>
+<span class="nc" id="L165">      final long logStartIndex = getRaftLog().getStartIndex();</span>
+<span class="nc bnc" id="L166" title="All 6 branches missed.">      if (followerNextIndex &lt; logStartIndex || (logStartIndex == RaftLog.INVALID_LOG_INDEX &amp;&amp; snapshot != null)) {</span>
+<span class="nc" id="L167">        return snapshot;</span>
+      }
+    }
+<span class="nc" id="L170">    return null;</span>
+  }
+
+  /** Define how this {@link LogAppender} should run. */
+  void run() throws InterruptedException, IOException;
+
+  /**
+   * Get the {@link AwaitForSignal} for events, which can be:
+   * (1) new log entries available,
+   * (2) log indices changed, or
+   * (3) a snapshot installation completed.
+   */
+  AwaitForSignal getEventAwaitForSignal();
+
+  /** The same as getEventAwaitForSignal().signal(). */
+  default void notifyLogAppender() {
+<span class="nc" id="L186">    getEventAwaitForSignal().signal();</span>
+<span class="nc" id="L187">  }</span>
+
+  /** Should the leader send appendEntries RPC to the follower? */
+  default boolean shouldSendAppendEntries() {
+<span class="nc bnc" id="L191" title="All 4 branches missed.">    return hasAppendEntries() || getHeartbeatWaitTimeMs() &lt;= 0;</span>
+  }
+
+  /** Does it have outstanding appendEntries? */
+  default boolean hasAppendEntries() {
+<span class="nc bnc" id="L196" title="All 2 branches missed.">    return getFollower().getNextIndex() &lt; getRaftLog().getNextIndex();</span>
+  }
+
+  /** Trigger to send a heartbeat AppendEntries. */
+  void triggerHeartbeat();
+
+  /** @return the wait time in milliseconds to send the next heartbeat. */
+  default long getHeartbeatWaitTimeMs() {
+<span class="nc" id="L204">    final int min = getServer().properties().minRpcTimeoutMs();</span>
+    // time remaining to send a heartbeat
+<span class="nc" id="L206">    final long heartbeatRemainingTimeMs = min/2 - getFollower().getLastRpcResponseTime().elapsedTimeMs();</span>
+    // avoid sending heartbeat too frequently
+<span class="nc" id="L208">    final long noHeartbeatTimeMs = min/4 - getFollower().getLastHeartbeatSendTime().elapsedTimeMs();</span>
+<span class="nc" id="L209">    return Math.max(heartbeatRemainingTimeMs, noHeartbeatTimeMs);</span>
+  }
+
+  /** Handle the event that the follower has replied a term. */
+  default boolean onFollowerTerm(long followerTerm) {
+<span class="nc" id="L214">    synchronized (getServer()) {</span>
+<span class="nc bnc" id="L215" title="All 4 branches missed.">      return isRunning() &amp;&amp; getLeaderState().onFollowerTerm(getFollower(), followerTerm);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

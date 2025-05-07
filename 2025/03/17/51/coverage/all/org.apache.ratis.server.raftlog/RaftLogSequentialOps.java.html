@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftLogSequentialOps.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog</a> &gt; <span class="el_source">RaftLogSequentialOps.java</span></div><h1>RaftLogSequentialOps.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.StringUtils;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.apache.ratis.util.function.UncheckedAutoCloseableSupplier;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+
+/**
+ * Sequential operations in {@link RaftLog}.
+ *
+ * All methods in this class MUST be invoked by a single thread at any time.
+ * The threads can be different in different time.
+ * The same thread may invoke any of the methods again and again.
+ * In other words, two or more threads invoking these methods (the same method or different methods)
+ * at the same time is not allowed since the sequence of invocations cannot be guaranteed.
+ *
+ * All methods in this class are asynchronous in the sense that the underlying I/O operations are asynchronous.
+ */
+interface RaftLogSequentialOps {
+  class Runner {
+    private final Object name;
+<span class="nc" id="L50">    private final AtomicReference&lt;Thread&gt; runner = new AtomicReference&lt;&gt;();</span>
+
+<span class="nc" id="L52">    Runner(Supplier&lt;String&gt; name) {</span>
+<span class="nc" id="L53">      this.name = StringUtils.stringSupplierAsObject(name);</span>
+<span class="nc" id="L54">    }</span>
+
+    /**
+     * Run the given operation sequentially.
+     * This method can be invoked by different threads but only one thread at any given time is allowed.
+     * The same thread can call this method multiple times.
+     *
+     * @throws IllegalStateException if this runner is already running another operation.
+     */
+    &lt;OUTPUT, THROWABLE extends Throwable&gt; OUTPUT runSequentially(
+        CheckedSupplier&lt;OUTPUT, THROWABLE&gt; operation) throws THROWABLE {
+<span class="nc" id="L65">      final Thread current = Thread.currentThread();</span>
+      // update only if the runner is null
+<span class="nc bnc" id="L67" title="All 2 branches missed.">      final Thread previous = runner.getAndUpdate(prev -&gt; prev != null? prev: current);</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">      if (previous == null) {</span>
+        // The current thread becomes the runner.
+        try {
+<span class="nc" id="L71">          return operation.get();</span>
+        } finally {
+          // prev is expected to be current
+<span class="nc bnc" id="L74" title="All 2 branches missed.">          final Thread got = runner.getAndUpdate(prev -&gt; prev != current? prev: null);</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">          Preconditions.assertTrue(got == current,</span>
+<span class="nc" id="L76">              () -&gt; name + &quot;: Unexpected runner &quot; + got + &quot; != &quot; + current);</span>
+        }
+<span class="nc bnc" id="L78" title="All 2 branches missed.">      } else if (previous == current) {</span>
+        // The current thread is already the runner.
+<span class="nc" id="L80">        return operation.get();</span>
+      } else {
+<span class="nc" id="L82">        final Throwable cause = new Throwable(&quot;The thread already running: &quot; + previous);</span>
+<span class="nc" id="L83">        cause.setStackTrace(previous.getStackTrace());</span>
+<span class="nc" id="L84">        throw new IllegalStateException(</span>
+            name + &quot;: Already running a method by &quot; + previous + &quot;, current=&quot; + current, cause);
+      }
+    }
+  }
+
+  /**
+   * Append asynchronously a log entry for the given term and transaction.
+   * Used by the leader.
+   *
+   * Note that the underlying I/O operation is submitted but may not be completed when this method returns.
+   *
+   * @return the index of the new log entry.
+   */
+  long append(long term, TransactionContext transaction) throws StateMachineException;
+
+  /**
+   * Append asynchronously a log entry for the given term and configuration
+   * Used by the leader.
+   *
+   * Note that the underlying I/O operation is submitted but may not be completed when this method returns.
+   *
+   * @return the index of the new log entry.
+   */
+  long append(long term, RaftConfiguration configuration);
+
+  /**
+   * Append asynchronously a log entry for the given term and commit index
+   * unless the given commit index is an index of a metadata entry
+   * Used by the leader.
+   *
+   * Note that the underlying I/O operation is submitted but may not be completed when this method returns.
+   *
+   * @return the index of the new log entry if it is appended;
+   *         otherwise, return {@link org.apache.ratis.server.raftlog.RaftLog#INVALID_LOG_INDEX}.
+   */
+  long appendMetadata(long term, long commitIndex);
+
+  /**
+   * Append asynchronously an entry.
+   * Used by the leader and the followers.
+   */
+  CompletableFuture&lt;Long&gt; appendEntry(LogEntryProto entry);
+
+  /**
+   * @deprecated use {@link #appendEntry(ReferenceCountedObject, TransactionContext)}}.
+   */
+  @Deprecated
+  default CompletableFuture&lt;Long&gt; appendEntry(LogEntryProto entry, TransactionContext context) {
+<span class="nc" id="L133">    throw new UnsupportedOperationException();</span>
+  }
+
+  /**
+   * Append asynchronously an entry.
+   * Used for scenarios that there is a ReferenceCountedObject context for resource cleanup when the given entry
+   * is no longer used/referenced by this log.
+   */
+  default CompletableFuture&lt;Long&gt; appendEntry(ReferenceCountedObject&lt;LogEntryProto&gt; entryRef,
+      TransactionContext context) {
+<span class="nc" id="L143">    return appendEntry(entryRef.get(), context);</span>
+  }
+
+  /**
+   * The same as append(Arrays.asList(entries)).
+   *
+   * @deprecated use {@link #append(ReferenceCountedObject)}.
+   */
+  @Deprecated
+  default List&lt;CompletableFuture&lt;Long&gt;&gt; append(LogEntryProto... entries) {
+<span class="nc" id="L153">    return append(Arrays.asList(entries));</span>
+  }
+
+  /**
+   * @deprecated use {@link #append(ReferenceCountedObject)}.
+   */
+  @Deprecated
+  default List&lt;CompletableFuture&lt;Long&gt;&gt; append(List&lt;LogEntryProto&gt; entries) {
+<span class="nc" id="L161">    throw new UnsupportedOperationException();</span>
+  }
+
+  /**
+   * Append asynchronously all the given log entries.
+   * Used by the followers.
+   *
+   * If an existing entry conflicts with a new one (same index but different terms),
+   * delete the existing entry and all entries that follow it (§5.3).
+   *
+   * A reference counter is also submitted.
+   * For each entry, implementations of this method should retain the counter, process it and then release.
+   */
+  default List&lt;CompletableFuture&lt;Long&gt;&gt; append(ReferenceCountedObject&lt;List&lt;LogEntryProto&gt;&gt; entriesRef) {
+<span class="nc" id="L175">    try(UncheckedAutoCloseableSupplier&lt;List&lt;LogEntryProto&gt;&gt; entries = entriesRef.retainAndReleaseOnClose()) {</span>
+<span class="nc" id="L176">      return append(entries.get());</span>
+    }
+  }
+
+  /**
+   * Truncate asynchronously the log entries till the given index (inclusively).
+   * Used by the leader and the followers.
+   */
+  CompletableFuture&lt;Long&gt; truncate(long index);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

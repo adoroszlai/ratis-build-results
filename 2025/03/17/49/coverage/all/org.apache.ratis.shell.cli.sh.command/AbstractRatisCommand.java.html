@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractRatisCommand.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli.sh.command</a> &gt; <span class="el_source">AbstractRatisCommand.java</span></div><h1>AbstractRatisCommand.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli.sh.command;
+
+import org.apache.commons.cli.Option;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.GroupInfoReply;
+import org.apache.ratis.shell.cli.CliUtils;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Options;
+import org.apache.ratis.client.RaftClient;
+import org.apache.ratis.proto.RaftProtos.RaftConfigurationProto;
+import org.apache.ratis.proto.RaftProtos.FollowerInfoProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.RoleInfoProto;
+import org.apache.ratis.util.ProtoUtils;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * The base class for the ratis shell which need to connect to server.
+ */
+public abstract class AbstractRatisCommand extends AbstractCommand {
+  public static final String PEER_OPTION_NAME = &quot;peers&quot;;
+  public static final String GROUPID_OPTION_NAME = &quot;groupid&quot;;
+  private RaftGroup raftGroup;
+  private GroupInfoReply groupInfoReply;
+
+  protected AbstractRatisCommand(Context context) {
+<span class="nc" id="L60">    super(context);</span>
+<span class="nc" id="L61">  }</span>
+
+  @Override
+  public int run(CommandLine cl) throws IOException {
+<span class="nc" id="L65">    final List&lt;RaftPeer&gt; peers = CliUtils.parseRaftPeers(cl.getOptionValue(PEER_OPTION_NAME));</span>
+<span class="nc" id="L66">    final RaftGroupId groupIdSpecified = CliUtils.parseRaftGroupId(cl.getOptionValue(GROUPID_OPTION_NAME));</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    raftGroup = RaftGroup.valueOf(groupIdSpecified != null? groupIdSpecified: RaftGroupId.randomId(), peers);</span>
+<span class="nc" id="L68">    PrintStream printStream = getPrintStream();</span>
+<span class="nc" id="L69">    try (final RaftClient client = newRaftClient()) {</span>
+<span class="nc" id="L70">      final RaftGroupId remoteGroupId = CliUtils.getGroupId(client, peers, groupIdSpecified, printStream);</span>
+<span class="nc" id="L71">      groupInfoReply = CliUtils.getGroupInfo(client, peers, remoteGroupId, printStream);</span>
+<span class="nc" id="L72">      raftGroup = groupInfoReply.getGroup();</span>
+    }
+<span class="nc" id="L74">    return 0;</span>
+  }
+
+  protected RaftClient newRaftClient() {
+<span class="nc" id="L78">    return getContext().newRaftClient(getRaftGroup());</span>
+  }
+
+  @Override
+  public Options getOptions() {
+<span class="nc" id="L83">    return new Options()</span>
+<span class="nc" id="L84">            .addOption(</span>
+<span class="nc" id="L85">                Option.builder()</span>
+<span class="nc" id="L86">                    .option(PEER_OPTION_NAME)</span>
+<span class="nc" id="L87">                    .hasArg()</span>
+<span class="nc" id="L88">                    .required()</span>
+<span class="nc" id="L89">                    .desc(&quot;Peer addresses seperated by comma&quot;)</span>
+<span class="nc" id="L90">                    .build())</span>
+<span class="nc" id="L91">            .addOption(GROUPID_OPTION_NAME, true, &quot;Raft group id&quot;);</span>
+  }
+
+  protected RaftGroup getRaftGroup() {
+<span class="nc" id="L95">    return raftGroup;</span>
+  }
+
+  protected GroupInfoReply getGroupInfoReply() {
+<span class="nc" id="L99">    return groupInfoReply;</span>
+  }
+
+  /**
+   * Get the leader id.
+   *
+   * @param roleInfo the role info
+   * @return the leader id
+   */
+  protected RaftPeerProto getLeader(RoleInfoProto roleInfo) {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    if (roleInfo == null) {</span>
+<span class="nc" id="L110">      return null;</span>
+    }
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (roleInfo.getRole() == RaftPeerRole.LEADER) {</span>
+<span class="nc" id="L113">      return roleInfo.getSelf();</span>
+    }
+<span class="nc" id="L115">    FollowerInfoProto followerInfo = roleInfo.getFollowerInfo();</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    if (followerInfo == null) {</span>
+<span class="nc" id="L117">      return null;</span>
+    }
+<span class="nc" id="L119">    return followerInfo.getLeaderInfo().getId();</span>
+  }
+
+  protected void processReply(RaftClientReply reply, Supplier&lt;String&gt; messageSupplier) throws IOException {
+<span class="nc" id="L123">    CliUtils.checkReply(reply, messageSupplier, getPrintStream());</span>
+<span class="nc" id="L124">  }</span>
+
+  protected List&lt;RaftPeerId&gt; getIds(String[] optionValues, BiConsumer&lt;RaftPeerId, InetSocketAddress&gt; consumer) {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    if (optionValues == null) {</span>
+<span class="nc" id="L128">      return Collections.emptyList();</span>
+    }
+<span class="nc" id="L130">    final List&lt;RaftPeerId&gt; ids = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">    for (String address : optionValues) {</span>
+<span class="nc" id="L132">      final InetSocketAddress serverAddress = CliUtils.parseInetSocketAddress(address);</span>
+<span class="nc" id="L133">      final RaftPeerId peerId = CliUtils.getPeerId(serverAddress);</span>
+<span class="nc" id="L134">      consumer.accept(peerId, serverAddress);</span>
+<span class="nc" id="L135">      ids.add(peerId);</span>
+    }
+<span class="nc" id="L137">    return ids;</span>
+  }
+
+  protected Stream&lt;RaftPeer&gt; getPeerStream(RaftPeerRole role) {
+<span class="nc" id="L141">    final RaftConfigurationProto conf = groupInfoReply.getConf().orElse(null);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">    if (conf == null) {</span>
+      // Assume all peers are followers in order preserve the pre-listener behaviors.
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      return role == RaftPeerRole.FOLLOWER ? getRaftGroup().getPeers().stream() : Stream.empty();</span>
+    }
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    final Set&lt;RaftPeer&gt; targets = (role == RaftPeerRole.LISTENER ? conf.getListenersList() : conf.getPeersList())</span>
+<span class="nc" id="L147">        .stream()</span>
+<span class="nc" id="L148">        .map(ProtoUtils::toRaftPeer)</span>
+<span class="nc" id="L149">        .collect(Collectors.toSet());</span>
+<span class="nc" id="L150">    return getRaftGroup()</span>
+<span class="nc" id="L151">        .getPeers()</span>
+<span class="nc" id="L152">        .stream()</span>
+<span class="nc" id="L153">        .filter(targets::contains);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

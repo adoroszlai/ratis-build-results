@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JmxRegister.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">JmxRegister.java</span></div><h1>JmxRegister.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.management.JMException;
+import javax.management.ObjectName;
+import java.lang.management.ManagementFactory;
+import java.util.function.Supplier;
+
+/** For registering JMX beans. */
+<span class="nc" id="L29">public class JmxRegister {</span>
+<span class="nc" id="L30">  static final Logger LOG = LoggerFactory.getLogger(JmxRegister.class);</span>
+
+  private ObjectName registeredName;
+
+  static ObjectName tryRegister(String name, Object mBean) {
+    final ObjectName objectName;
+    try {
+<span class="nc" id="L37">      objectName = new ObjectName(name);</span>
+<span class="nc" id="L38">      ManagementFactory.getPlatformMBeanServer().registerMBean(mBean, objectName);</span>
+<span class="nc" id="L39">    } catch (Exception e) {</span>
+<span class="nc" id="L40">      LOG.error(&quot;Failed to register JMX Bean with name &quot; + name, e);</span>
+<span class="nc" id="L41">      return null;</span>
+<span class="nc" id="L42">    }</span>
+
+<span class="nc" id="L44">    LOG.info(&quot;Successfully registered JMX Bean with object name &quot; + objectName);</span>
+<span class="nc" id="L45">    return objectName;</span>
+  }
+
+  /**
+   * Try registering the mxBean with the names one by one.
+   * @return the registered name, or, if it fails, return null.
+   */
+  public synchronized String register(Object mxBean, Iterable&lt;Supplier&lt;String&gt;&gt; names) {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    if (registeredName == null) {</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">      for (Supplier&lt;String&gt; supplier : names) {</span>
+<span class="nc" id="L55">        final String name = supplier.get();</span>
+<span class="nc" id="L56">        registeredName = tryRegister(name, mxBean);</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (registeredName != null) {</span>
+<span class="nc" id="L58">          LOG.info(&quot;register mxBean {} as {}&quot;, mxBean.getClass(), name);</span>
+<span class="nc" id="L59">          return name;</span>
+        }
+<span class="nc" id="L61">      }</span>
+    }
+
+    // failed
+<span class="nc" id="L65">    return null;</span>
+  }
+
+  /** Un-register the previously registered mBean. */
+  public synchronized boolean unregister() throws JMException {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">    if (registeredName == null) {</span>
+<span class="nc" id="L71">      return false;</span>
+    }
+<span class="nc" id="L73">    ManagementFactory.getPlatformMBeanServer().unregisterMBean(registeredName);</span>
+<span class="nc" id="L74">    LOG.info(&quot;Successfully un-registered JMX Bean with object name &quot; + registeredName);</span>
+<span class="nc" id="L75">    registeredName = null;</span>
+<span class="nc" id="L76">    return true;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

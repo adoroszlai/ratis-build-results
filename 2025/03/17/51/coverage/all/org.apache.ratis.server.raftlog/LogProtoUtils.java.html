@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogProtoUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog</a> &gt; <span class="el_source">LogProtoUtils.java</span></div><h1>LogProtoUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog;
+
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.impl.ServerImplUtils;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.thirdparty.com.google.protobuf.AbstractMessage;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/** Log proto utilities. */
+public final class LogProtoUtils {
+  private LogProtoUtils() {}
+
+  public static String toLogEntryString(LogEntryProto entry, Function&lt;StateMachineLogEntryProto, String&gt; function) {
+<span class="nc bnc" id="L43" title="All 2 branches missed.">    if (entry == null) {</span>
+<span class="nc" id="L44">      return null;</span>
+    }
+    final String s;
+<span class="nc bnc" id="L47" title="All 2 branches missed.">    if (entry.hasStateMachineLogEntry()) {</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">      if (function == null) {</span>
+<span class="nc" id="L49">        function = LogProtoUtils::stateMachineLogEntryProtoToString;</span>
+      }
+<span class="nc" id="L51">      s = &quot;, &quot; + function.apply(entry.getStateMachineLogEntry());</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">    } else if (entry.hasMetadataEntry()) {</span>
+<span class="nc" id="L53">      final MetadataProto metadata = entry.getMetadataEntry();</span>
+<span class="nc" id="L54">      s = &quot;(c:&quot; + metadata.getCommitIndex() + &quot;)&quot;;</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    } else if (entry.hasConfigurationEntry()) {</span>
+<span class="nc" id="L56">      final RaftConfigurationProto config = entry.getConfigurationEntry();</span>
+<span class="nc" id="L57">      s = &quot;(current:&quot; + peersToString(config.getPeersList())</span>
+<span class="nc" id="L58">          + &quot;, old:&quot; + peersToString(config.getOldPeersList()) + &quot;)&quot;;</span>
+<span class="nc" id="L59">    } else {</span>
+<span class="nc" id="L60">      s = &quot;&quot;;</span>
+    }
+<span class="nc" id="L62">    return TermIndex.valueOf(entry) + &quot;, &quot; + entry.getLogEntryBodyCase() + s;</span>
+  }
+
+  static String peersToString(List&lt;RaftPeerProto&gt; peers) {
+<span class="nc" id="L66">    return peers.stream().map(AbstractMessage::toString)</span>
+<span class="nc" id="L67">        .map(s -&gt; s.replace(&quot;\n&quot;, &quot;&quot;))</span>
+<span class="nc" id="L68">        .map(s -&gt; s.replace(&quot; &quot;, &quot;&quot;))</span>
+<span class="nc" id="L69">        .collect(Collectors.joining(&quot;, &quot;));</span>
+  }
+
+  static String stateMachineLogEntryProtoToString(StateMachineLogEntryProto p) {
+<span class="nc" id="L73">    final StateMachineEntryProto stateMachineEntry = p.getStateMachineEntry();</span>
+<span class="nc" id="L74">    return p.getType()</span>
+<span class="nc" id="L75">        + &quot;: logData.size=&quot; + p.getLogData().size()</span>
+<span class="nc" id="L76">        + &quot;, stateMachineData.size=&quot; + stateMachineEntry.getStateMachineData().size()</span>
+<span class="nc" id="L77">        + &quot;, logEntryProtoSerializedSize=&quot; + stateMachineEntry.getLogEntryProtoSerializedSize();</span>
+  }
+
+  public static String toLogEntryString(LogEntryProto entry) {
+<span class="nc" id="L81">    return toLogEntryString(entry, LogProtoUtils::stateMachineLogEntryProtoToString);</span>
+  }
+
+  public static String toLogEntriesString(List&lt;LogEntryProto&gt; entries) {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    return entries == null ? null</span>
+<span class="nc" id="L86">        : entries.stream().map(LogProtoUtils::toLogEntryString).collect(Collectors.toList()).toString();</span>
+  }
+
+  public static String toLogEntriesShortString(List&lt;LogEntryProto&gt; entries,
+      Function&lt;StateMachineLogEntryProto, String&gt; stateMachineToString) {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">    return entries == null ? null</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        : entries.isEmpty()? &quot;&lt;empty&gt;&quot;</span>
+<span class="nc" id="L93">        : &quot;size=&quot; + entries.size() + &quot;, first=&quot; + toLogEntryString(entries.get(0), stateMachineToString);</span>
+  }
+
+  public static LogEntryProto toLogEntryProto(RaftConfiguration conf, Long term, long index) {
+<span class="nc" id="L97">    final LogEntryProto.Builder b = LogEntryProto.newBuilder();</span>
+<span class="nc" id="L98">    Optional.ofNullable(term).ifPresent(b::setTerm);</span>
+<span class="nc" id="L99">    return b.setIndex(index)</span>
+<span class="nc" id="L100">        .setConfigurationEntry(toRaftConfigurationProtoBuilder(conf))</span>
+<span class="nc" id="L101">        .build();</span>
+  }
+
+  public static RaftConfigurationProto.Builder toRaftConfigurationProtoBuilder(RaftConfiguration conf) {
+<span class="nc" id="L105">    return RaftConfigurationProto.newBuilder()</span>
+<span class="nc" id="L106">        .addAllPeers(ProtoUtils.toRaftPeerProtos(conf.getCurrentPeers()))</span>
+<span class="nc" id="L107">        .addAllListeners(ProtoUtils.toRaftPeerProtos(conf.getCurrentPeers(RaftPeerRole.LISTENER)))</span>
+<span class="nc" id="L108">        .addAllOldPeers(ProtoUtils.toRaftPeerProtos(conf.getPreviousPeers()))</span>
+<span class="nc" id="L109">        .addAllOldListeners(</span>
+<span class="nc" id="L110">            ProtoUtils.toRaftPeerProtos(conf.getPreviousPeers(RaftPeerRole.LISTENER)));</span>
+  }
+
+  public static LogEntryProto toLogEntryProto(StateMachineLogEntryProto proto, long term, long index) {
+<span class="nc" id="L114">    return LogEntryProto.newBuilder()</span>
+<span class="nc" id="L115">        .setTerm(term)</span>
+<span class="nc" id="L116">        .setIndex(index)</span>
+<span class="nc" id="L117">        .setStateMachineLogEntry(proto)</span>
+<span class="nc" id="L118">        .build();</span>
+  }
+
+  public static LogEntryProto toLogEntryProto(long commitIndex, long term, long index) {
+<span class="nc" id="L122">    return LogEntryProto.newBuilder()</span>
+<span class="nc" id="L123">        .setTerm(term)</span>
+<span class="nc" id="L124">        .setIndex(index)</span>
+<span class="nc" id="L125">        .setMetadataEntry(MetadataProto.newBuilder().setCommitIndex(commitIndex))</span>
+<span class="nc" id="L126">        .build();</span>
+  }
+
+  /**
+   * If the given entry has state machine log entry and it has state machine data,
+   * build a new entry without the state machine data.
+   *
+   * @return a new entry without the state machine data if the given has state machine data;
+   *         otherwise, return the given entry.
+   */
+  public static LogEntryProto removeStateMachineData(LogEntryProto entry) {
+<span class="nc" id="L137">    return getStateMachineEntry(entry)</span>
+<span class="nc" id="L138">        .map(StateMachineEntryProto::getStateMachineData)</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        .filter(stateMachineData -&gt; !stateMachineData.isEmpty())</span>
+<span class="nc" id="L140">        .map(_dummy -&gt; replaceStateMachineDataWithSerializedSize(entry))</span>
+<span class="nc" id="L141">        .orElse(entry);</span>
+  }
+
+  private static LogEntryProto replaceStateMachineDataWithSerializedSize(LogEntryProto entry) {
+<span class="nc" id="L145">    LogEntryProto replaced = replaceStateMachineEntry(entry,</span>
+<span class="nc" id="L146">        StateMachineEntryProto.newBuilder().setLogEntryProtoSerializedSize(entry.getSerializedSize()));</span>
+<span class="nc" id="L147">    return copy(replaced);</span>
+  }
+
+  private static LogEntryProto replaceStateMachineEntry(LogEntryProto proto, StateMachineEntryProto.Builder newEntry) {
+<span class="nc" id="L151">    Preconditions.assertTrue(proto.hasStateMachineLogEntry(), () -&gt; &quot;Unexpected proto &quot; + proto);</span>
+<span class="nc" id="L152">    return LogEntryProto.newBuilder(proto).setStateMachineLogEntry(</span>
+<span class="nc" id="L153">        StateMachineLogEntryProto.newBuilder(proto.getStateMachineLogEntry()).setStateMachineEntry(newEntry)</span>
+<span class="nc" id="L154">    ).build();</span>
+  }
+
+  /**
+   * Return a new log entry based on the input log entry with stateMachineData added.
+   * @param stateMachineData - state machine data to be added
+   * @param entry - log entry to which stateMachineData needs to be added
+   * @return LogEntryProto with stateMachineData added
+   */
+  static LogEntryProto addStateMachineData(ByteString stateMachineData, LogEntryProto entry) {
+<span class="nc" id="L164">    Preconditions.assertTrue(isStateMachineDataEmpty(entry),</span>
+<span class="nc" id="L165">        () -&gt; &quot;Failed to addStateMachineData to &quot; + entry + &quot; since shouldReadStateMachineData is false.&quot;);</span>
+<span class="nc" id="L166">    return replaceStateMachineEntry(entry, StateMachineEntryProto.newBuilder().setStateMachineData(stateMachineData));</span>
+  }
+
+  public static boolean hasStateMachineData(LogEntryProto entry) {
+<span class="nc" id="L170">    return getStateMachineEntry(entry)</span>
+<span class="nc" id="L171">        .map(StateMachineEntryProto::getStateMachineData)</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        .map(data -&gt; !data.isEmpty())</span>
+<span class="nc" id="L173">        .orElse(false);</span>
+  }
+
+  public static boolean isStateMachineDataEmpty(LogEntryProto entry) {
+<span class="nc" id="L177">    return getStateMachineEntry(entry)</span>
+<span class="nc" id="L178">        .map(StateMachineEntryProto::getStateMachineData)</span>
+<span class="nc" id="L179">        .map(ByteString::isEmpty)</span>
+<span class="nc" id="L180">        .orElse(false);</span>
+  }
+
+  private static Optional&lt;StateMachineEntryProto&gt; getStateMachineEntry(LogEntryProto entry) {
+<span class="nc" id="L184">    return Optional.of(entry)</span>
+<span class="nc" id="L185">        .filter(LogEntryProto::hasStateMachineLogEntry)</span>
+<span class="nc" id="L186">        .map(LogEntryProto::getStateMachineLogEntry)</span>
+<span class="nc" id="L187">        .filter(StateMachineLogEntryProto::hasStateMachineEntry)</span>
+<span class="nc" id="L188">        .map(StateMachineLogEntryProto::getStateMachineEntry);</span>
+  }
+
+  public static int getSerializedSize(LogEntryProto entry) {
+<span class="nc" id="L192">    return getStateMachineEntry(entry)</span>
+<span class="nc" id="L193">        .filter(stateMachineEntry -&gt; stateMachineEntry.getStateMachineData().isEmpty())</span>
+<span class="nc" id="L194">        .map(StateMachineEntryProto::getLogEntryProtoSerializedSize)</span>
+<span class="nc" id="L195">        .orElseGet(entry::getSerializedSize);</span>
+  }
+
+  private static StateMachineLogEntryProto.Type toStateMachineLogEntryProtoType(RaftClientRequestProto.TypeCase type) {
+<span class="nc bnc" id="L199" title="All 3 branches missed.">    switch (type) {</span>
+<span class="nc" id="L200">      case WRITE: return StateMachineLogEntryProto.Type.WRITE;</span>
+<span class="nc" id="L201">      case DATASTREAM: return StateMachineLogEntryProto.Type.DATASTREAM;</span>
+      default:
+<span class="nc" id="L203">        throw new IllegalStateException(&quot;Unexpected request type &quot; + type);</span>
+    }
+  }
+
+  public static StateMachineLogEntryProto toStateMachineLogEntryProto(
+      RaftClientRequest request, ByteString logData, ByteString stateMachineData) {
+<span class="nc bnc" id="L209" title="All 2 branches missed.">    if (logData == null) {</span>
+<span class="nc" id="L210">      logData = request.getMessage().getContent();</span>
+    }
+<span class="nc" id="L212">    final StateMachineLogEntryProto.Type type = toStateMachineLogEntryProtoType(request.getType().getTypeCase());</span>
+<span class="nc" id="L213">    return toStateMachineLogEntryProto(request.getClientId(), request.getCallId(), type, logData, stateMachineData);</span>
+  }
+
+  public static StateMachineLogEntryProto toStateMachineLogEntryProto(ClientId clientId, long callId,
+      StateMachineLogEntryProto.Type type, ByteString logData, ByteString stateMachineData) {
+<span class="nc" id="L218">    final StateMachineLogEntryProto.Builder b = StateMachineLogEntryProto.newBuilder()</span>
+<span class="nc" id="L219">        .setClientId(clientId.toByteString())</span>
+<span class="nc" id="L220">        .setCallId(callId)</span>
+<span class="nc" id="L221">        .setType(type)</span>
+<span class="nc" id="L222">        .setLogData(logData);</span>
+<span class="nc" id="L223">    Optional.ofNullable(stateMachineData)</span>
+<span class="nc" id="L224">        .map(StateMachineEntryProto.newBuilder()::setStateMachineData)</span>
+<span class="nc" id="L225">        .ifPresent(b::setStateMachineEntry);</span>
+<span class="nc" id="L226">    return b.build();</span>
+  }
+
+  public static RaftConfiguration toRaftConfiguration(LogEntryProto entry) {
+<span class="nc" id="L230">    Preconditions.assertTrue(entry.hasConfigurationEntry());</span>
+<span class="nc" id="L231">    final RaftConfigurationProto proto = entry.getConfigurationEntry();</span>
+<span class="nc" id="L232">    final List&lt;RaftPeer&gt; conf = ProtoUtils.toRaftPeers(proto.getPeersList());</span>
+<span class="nc" id="L233">    final List&lt;RaftPeer&gt; listener = ProtoUtils.toRaftPeers(proto.getListenersList());</span>
+<span class="nc" id="L234">    final List&lt;RaftPeer&gt; oldConf = ProtoUtils.toRaftPeers(proto.getOldPeersList());</span>
+<span class="nc" id="L235">    final List&lt;RaftPeer&gt; oldListener = ProtoUtils.toRaftPeers(proto.getOldListenersList());</span>
+<span class="nc" id="L236">    return ServerImplUtils.newRaftConfiguration(conf, listener, entry.getIndex(), oldConf, oldListener);</span>
+  }
+
+  public static LogEntryProto copy(LogEntryProto proto) {
+<span class="nc bnc" id="L240" title="All 2 branches missed.">    if (proto == null) {</span>
+<span class="nc" id="L241">      return null;</span>
+    }
+
+<span class="nc bnc" id="L244" title="All 6 branches missed.">    if (!proto.hasStateMachineLogEntry() &amp;&amp; !proto.hasMetadataEntry() &amp;&amp; !proto.hasConfigurationEntry()) {</span>
+      // empty entry, just return as is.
+<span class="nc" id="L246">      return proto;</span>
+    }
+
+    try {
+<span class="nc" id="L250">      return LogEntryProto.parseFrom(proto.toByteString());</span>
+<span class="nc" id="L251">    } catch (InvalidProtocolBufferException e) {</span>
+<span class="nc" id="L252">      throw new IllegalArgumentException(&quot;Failed to copy log entry &quot; + TermIndex.valueOf(proto), e);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftStorageDirectoryImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">RaftStorageDirectoryImpl.java</span></div><h1>RaftStorageDirectoryImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import org.apache.ratis.util.AtomicFileOutputStream;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.SizeInBytes;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.lang.management.ManagementFactory;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Objects;
+
+import static java.nio.file.Files.newDirectoryStream;
+
+class RaftStorageDirectoryImpl implements RaftStorageDirectory {
+
+  private static final String IN_USE_LOCK_NAME = &quot;in_use.lock&quot;;
+  private static final String META_FILE_NAME = &quot;raft-meta&quot;;
+  private static final String CONF_EXTENSION = &quot;.conf&quot;;
+<span class="nc" id="L43">  private static final String JVM_NAME = ManagementFactory.getRuntimeMXBean().getName();</span>
+
+<span class="nc" id="L45">  enum StorageState {</span>
+<span class="nc" id="L46">    UNINITIALIZED,</span>
+<span class="nc" id="L47">    NON_EXISTENT,</span>
+<span class="nc" id="L48">    NOT_FORMATTED,</span>
+<span class="nc" id="L49">    NO_SPACE,</span>
+<span class="nc" id="L50">    NORMAL</span>
+  }
+
+  private final File root; // root directory
+  private FileLock lock;   // storage lock
+  private final SizeInBytes freeSpaceMin;
+
+  /**
+   * Constructor
+   * @param dir directory corresponding to the storage
+   */
+<span class="nc" id="L61">  RaftStorageDirectoryImpl(File dir, SizeInBytes freeSpaceMin) {</span>
+<span class="nc" id="L62">    this.root = dir;</span>
+<span class="nc" id="L63">    this.lock = null;</span>
+<span class="nc" id="L64">    this.freeSpaceMin = freeSpaceMin;</span>
+<span class="nc" id="L65">  }</span>
+
+  @Override
+  public File getRoot() {
+<span class="nc" id="L69">    return root;</span>
+  }
+
+  /**
+   * Clear and re-create storage directory.
+   * &lt;p&gt;
+   * Removes contents of the current directory and creates an empty directory.
+   *
+   * This does not fully format storage directory.
+   * It cannot write the version file since it should be written last after
+   * all other storage type dependent files are written.
+   * Derived storage is responsible for setting specific storage values and
+   * writing the version file to disk.
+   */
+  void clearDirectory() throws IOException {
+<span class="nc" id="L84">    clearDirectory(getCurrentDir());</span>
+<span class="nc" id="L85">    clearDirectory(getStateMachineDir());</span>
+<span class="nc" id="L86">  }</span>
+
+  private static void clearDirectory(File dir) throws IOException {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    if (dir.exists()) {</span>
+<span class="nc" id="L90">      LOG.info(&quot;{} already exists.  Deleting it ...&quot;, dir);</span>
+<span class="nc" id="L91">      FileUtils.deleteFully(dir);</span>
+    }
+<span class="nc" id="L93">    FileUtils.createDirectories(dir);</span>
+<span class="nc" id="L94">  }</span>
+
+
+  File getMetaFile() {
+<span class="nc" id="L98">    return new File(getCurrentDir(), META_FILE_NAME);</span>
+  }
+
+  File getMetaTmpFile() {
+<span class="nc" id="L102">    return AtomicFileOutputStream.getTemporaryFile(getMetaFile());</span>
+  }
+
+  File getMetaConfFile() {
+<span class="nc" id="L106">    return new File(getCurrentDir(), META_FILE_NAME + CONF_EXTENSION);</span>
+  }
+
+  /**
+   * Check to see if current/ directory is empty.
+   */
+  boolean isCurrentEmpty() throws IOException {
+<span class="nc" id="L113">    File currentDir = getCurrentDir();</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">    if(!currentDir.exists()) {</span>
+      // if current/ does not exist, it's safe to format it.
+<span class="nc" id="L116">      return true;</span>
+    }
+<span class="nc" id="L118">    try(DirectoryStream&lt;Path&gt; dirStream =</span>
+<span class="nc" id="L119">            newDirectoryStream(currentDir.toPath())) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">      if (dirStream.iterator().hasNext()) {</span>
+<span class="nc" id="L121">        return false;</span>
+      }
+    }
+<span class="nc" id="L124">    return true;</span>
+  }
+
+  /**
+   * Check consistency of the storage directory.
+   *
+   * @return state {@link StorageState} of the storage directory
+   */
+  StorageState analyzeStorage(boolean toLock) throws IOException {
+<span class="nc" id="L133">    Objects.requireNonNull(root, &quot;root directory is null&quot;);</span>
+
+<span class="nc" id="L135">    String rootPath = root.getCanonicalPath();</span>
+    try { // check that storage exists
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      if (!root.exists()) {</span>
+<span class="nc" id="L138">        LOG.info(&quot;The storage directory {} does not exist. Creating ...&quot;, rootPath);</span>
+<span class="nc" id="L139">        FileUtils.createDirectories(root);</span>
+      }
+      // or is inaccessible
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (!root.isDirectory()) {</span>
+<span class="nc" id="L143">        LOG.warn(&quot;{} is not a directory&quot;, rootPath);</span>
+<span class="nc" id="L144">        return StorageState.NON_EXISTENT;</span>
+      }
+<span class="nc bnc" id="L146" title="All 2 branches missed.">      if (!Files.isWritable(root.toPath())) {</span>
+<span class="nc" id="L147">        LOG.warn(&quot;The storage directory {} is not writable.&quot;, rootPath);</span>
+<span class="nc" id="L148">        return StorageState.NON_EXISTENT;</span>
+      }
+<span class="nc" id="L150">    } catch(SecurityException ex) {</span>
+<span class="nc" id="L151">      LOG.warn(&quot;Cannot access storage directory &quot; + rootPath, ex);</span>
+<span class="nc" id="L152">      return StorageState.NON_EXISTENT;</span>
+<span class="nc" id="L153">    }</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    if (toLock) {</span>
+<span class="nc" id="L156">      this.lock(); // lock storage if it exists</span>
+    }
+
+    // check enough space
+<span class="nc" id="L160">    final long freeSpace = root.getFreeSpace();</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">    if (freeSpace &lt; freeSpaceMin.getSize()) {</span>
+<span class="nc" id="L162">      LOG.warn(&quot;{} in directory {}: free space = {} &lt; required = {}&quot;,</span>
+<span class="nc" id="L163">          StorageState.NO_SPACE, rootPath, freeSpace, freeSpaceMin);</span>
+<span class="nc" id="L164">      return StorageState.NO_SPACE;</span>
+    }
+
+    // check whether current directory is valid
+<span class="nc bnc" id="L168" title="All 2 branches missed.">    if (isHealthy()) {</span>
+<span class="nc" id="L169">      return StorageState.NORMAL;</span>
+    } else {
+<span class="nc" id="L171">      return StorageState.NOT_FORMATTED;</span>
+    }
+  }
+
+  @Override
+  public boolean isHealthy() {
+<span class="nc" id="L177">    return getMetaFile().exists();</span>
+  }
+
+  /**
+   * Lock storage to provide exclusive access.
+   *
+   * &lt;p&gt; Locking is not supported by all file systems.
+   * E.g., NFS does not consistently support exclusive locks.
+   *
+   * &lt;p&gt; If locking is supported we guarantee exclusive access to the
+   * storage directory. Otherwise, no guarantee is given.
+   *
+   * @throws IOException if locking fails
+   */
+  void lock() throws IOException {
+<span class="nc" id="L192">    final File lockF = new File(root, IN_USE_LOCK_NAME);</span>
+<span class="nc" id="L193">    final FileLock newLock = FileUtils.attempt(() -&gt; tryLock(lockF), () -&gt; &quot;tryLock &quot; + lockF);</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">    if (newLock == null) {</span>
+<span class="nc" id="L195">      String msg = &quot;Cannot lock storage &quot; + this.root</span>
+          + &quot;. The directory is already locked&quot;;
+<span class="nc" id="L197">      LOG.info(msg);</span>
+<span class="nc" id="L198">      throw new IOException(msg);</span>
+    }
+    // Don't overwrite lock until success - this way if we accidentally
+    // call lock twice, the internal state won't be cleared by the second
+    // (failed) lock attempt
+<span class="nc" id="L203">    lock = newLock;</span>
+<span class="nc" id="L204">  }</span>
+
+  /**
+   * Attempts to acquire an exclusive lock on the storage.
+   *
+   * @return A lock object representing the newly-acquired lock or
+   * &lt;code&gt;null&lt;/code&gt; if storage is already locked.
+   * @throws IOException if locking fails.
+   */
+  @SuppressWarnings({&quot;squid:S2095&quot;}) // Suppress closeable  warning
+  private FileLock tryLock(File lockF) throws IOException {
+<span class="nc" id="L215">    boolean deletionHookAdded = false;</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">    if (!lockF.exists()) {</span>
+<span class="nc" id="L217">      lockF.deleteOnExit();</span>
+<span class="nc" id="L218">      deletionHookAdded = true;</span>
+    }
+<span class="nc" id="L220">    RandomAccessFile file = new RandomAccessFile(lockF, &quot;rws&quot;);</span>
+    FileLock res;
+    try {
+<span class="nc" id="L223">      res = file.getChannel().tryLock();</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">      if (null == res) {</span>
+<span class="nc" id="L225">        LOG.error(&quot;Unable to acquire file lock on path {}&quot;, lockF);</span>
+<span class="nc" id="L226">        throw new OverlappingFileLockException();</span>
+      }
+<span class="nc" id="L228">      file.write(JVM_NAME.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L229">      LOG.info(&quot;Lock on {} acquired by nodename {}&quot;, lockF, JVM_NAME);</span>
+<span class="nc" id="L230">    } catch (OverlappingFileLockException oe) {</span>
+      // Cannot read from the locked file on Windows.
+<span class="nc" id="L232">      LOG.error(&quot;It appears that another process &quot;</span>
+          + &quot;has already locked the storage directory: &quot; + root, oe);
+<span class="nc" id="L234">      file.close();</span>
+<span class="nc" id="L235">      throw new IOException(&quot;Failed to lock storage &quot; + this.root + &quot;. The directory is already locked&quot;, oe);</span>
+<span class="nc" id="L236">    } catch(IOException e) {</span>
+<span class="nc" id="L237">      LOG.error(&quot;Failed to acquire lock on &quot; + lockF</span>
+          + &quot;. If this storage directory is mounted via NFS, &quot;
+          + &quot;ensure that the appropriate nfs lock services are running.&quot;, e);
+<span class="nc" id="L240">      file.close();</span>
+<span class="nc" id="L241">      throw e;</span>
+<span class="nc" id="L242">    }</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    if (!deletionHookAdded) {</span>
+      // If the file existed prior to our startup, we didn't
+      // call deleteOnExit above. But since we successfully locked
+      // the dir, we can take care of cleaning it up.
+<span class="nc" id="L247">      lockF.deleteOnExit();</span>
+    }
+<span class="nc" id="L249">    return res;</span>
+  }
+
+  /**
+   * Unlock storage.
+   */
+  void unlock() throws IOException {
+<span class="nc bnc" id="L256" title="All 2 branches missed.">    if (this.lock == null) {</span>
+<span class="nc" id="L257">      return;</span>
+    }
+<span class="nc" id="L259">    this.lock.release();</span>
+<span class="nc" id="L260">    lock.channel().close();</span>
+<span class="nc" id="L261">    lock = null;</span>
+<span class="nc" id="L262">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L266">    return &quot;Storage Directory &quot; + this.root;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

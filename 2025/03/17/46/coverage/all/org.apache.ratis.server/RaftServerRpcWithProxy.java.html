@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerRpcWithProxy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server</a> &gt; <span class="el_source">RaftServerRpcWithProxy.java</span></div><h1>RaftServerRpcWithProxy.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server;
+
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.PeerProxyMap;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Collection;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/** An abstract implementation of {@link RaftServerRpc} using a {@link PeerProxyMap}. */
+public abstract class RaftServerRpcWithProxy&lt;PROXY extends Closeable, PROXIES extends PeerProxyMap&lt;PROXY&gt;&gt;
+    implements RaftServerRpc {
+  private final Supplier&lt;RaftPeerId&gt; idSupplier;
+  private final Supplier&lt;LifeCycle&gt; lifeCycleSupplier;
+  private final Supplier&lt;PROXIES&gt; proxiesSupplier;
+
+<span class="nc" id="L39">  protected RaftServerRpcWithProxy(Supplier&lt;RaftPeerId&gt; idSupplier, Function&lt;RaftPeerId, PROXIES&gt; proxyCreater) {</span>
+<span class="nc" id="L40">    this.idSupplier = idSupplier;</span>
+<span class="nc" id="L41">    this.lifeCycleSupplier = JavaUtils.memoize(</span>
+<span class="nc" id="L42">        () -&gt; new LifeCycle(getId() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass())));</span>
+<span class="nc" id="L43">    this.proxiesSupplier = JavaUtils.memoize(() -&gt; proxyCreater.apply(getId()));</span>
+<span class="nc" id="L44">  }</span>
+
+  /** @return the server id. */
+  public RaftPeerId getId() {
+<span class="nc" id="L48">    return idSupplier.get();</span>
+  }
+
+  private LifeCycle getLifeCycle() {
+<span class="nc" id="L52">    return lifeCycleSupplier.get();</span>
+  }
+
+  /** @return the underlying {@link PeerProxyMap}. */
+  public PROXIES getProxies() {
+<span class="nc" id="L57">    return proxiesSupplier.get();</span>
+  }
+
+  @Override
+  public void addRaftPeers(Collection&lt;RaftPeer&gt; peers) {
+<span class="nc" id="L62">    getProxies().addRaftPeers(peers);</span>
+<span class="nc" id="L63">  }</span>
+
+  @Override
+  public void handleException(RaftPeerId serverId, Exception e, boolean reconnect) {
+<span class="nc" id="L67">    getProxies().handleException(serverId, e, reconnect);</span>
+<span class="nc" id="L68">  }</span>
+
+  @Override
+  public final void start() throws IOException {
+<span class="nc" id="L72">    getLifeCycle().startAndTransition(this::startImpl, IOException.class);</span>
+<span class="nc" id="L73">  }</span>
+
+  /** Implementation of the {@link #start()} method. */
+  protected abstract void startImpl() throws IOException;
+
+  @Override
+  public final void close() throws IOException{
+<span class="nc" id="L80">    getLifeCycle().checkStateAndClose(this::closeImpl);</span>
+<span class="nc" id="L81">  }</span>
+
+  /** Implementation of the {@link #close()} method. */
+  public void closeImpl() throws IOException {
+<span class="nc" id="L85">    getProxies().close();</span>
+<span class="nc" id="L86">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JvmPauseMonitor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">JvmPauseMonitor.java</span></div><h1>JvmPauseMonitor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryManagerMXBean;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
+/**
+ * Detect pauses in JVM causing by GC or other problems in the machine.
+ */
+public final class JvmPauseMonitor {
+<span class="nc" id="L39">  static final Logger LOG = LoggerFactory.getLogger(JvmPauseMonitor.class);</span>
+<span class="nc" id="L40">  private static final AtomicInteger THREAD_COUNT = new AtomicInteger(0);</span>
+
+  static final class GcInfo {
+    private final long count;
+    private final long timeMs;
+
+    private GcInfo(GarbageCollectorMXBean gcBean) {
+<span class="nc" id="L47">      this(gcBean.getCollectionCount(), gcBean.getCollectionTime());</span>
+<span class="nc" id="L48">    }</span>
+
+<span class="nc" id="L50">    private GcInfo(long count, long timeMs) {</span>
+<span class="nc" id="L51">      this.count = count;</span>
+<span class="nc" id="L52">      this.timeMs = timeMs;</span>
+<span class="nc" id="L53">    }</span>
+
+    GcInfo subtract(GcInfo that) {
+<span class="nc" id="L56">      return new GcInfo(this.count - that.count, this.timeMs - that.timeMs);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L61">      return &quot;count=&quot; + count + &quot; time=&quot; + timeMs + &quot;ms&quot;;</span>
+    }
+  }
+
+  static Map&lt;String, GcInfo&gt; getGcTimes() {
+<span class="nc" id="L66">    return ManagementFactory.getGarbageCollectorMXBeans().stream()</span>
+<span class="nc" id="L67">        .collect(Collectors.toMap(MemoryManagerMXBean::getName, GcInfo::new));</span>
+  }
+
+  static String toString(Map&lt;String, GcInfo&gt; beforeSleep, TimeDuration extraSleepTime, Map&lt;String, GcInfo&gt; afterSleep) {
+<span class="nc" id="L71">    final StringBuilder b = new StringBuilder();</span>
+<span class="nc" id="L72">    long ms = 0;</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    for(Map.Entry&lt;String, GcInfo&gt; before: beforeSleep.entrySet()) {</span>
+<span class="nc" id="L74">      final String name = before.getKey();</span>
+<span class="nc" id="L75">      final GcInfo after = afterSleep.get(name);</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">      if (after != null) {</span>
+<span class="nc" id="L77">        final GcInfo diff = after.subtract(before.getValue());</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (diff.count != 0) {</span>
+<span class="nc" id="L79">          ms += diff.timeMs;</span>
+<span class="nc" id="L80">          b.append(System.lineSeparator()).append(&quot;GC pool '&quot;).append(name)</span>
+<span class="nc" id="L81">              .append(&quot;' had collection(s): &quot;).append(diff);</span>
+        }
+      }
+<span class="nc" id="L84">    }</span>
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    final String gc = b.length() == 0? &quot; without any GCs.&quot;</span>
+<span class="nc" id="L87">        : &quot; with &quot; + TimeDuration.valueOf(ms, TimeUnit.MILLISECONDS).toString(TimeUnit.SECONDS, 3)</span>
+        + &quot; GC time.&quot; + b;
+<span class="nc" id="L89">    return &quot;Detected pause in JVM or host machine approximately &quot;</span>
+<span class="nc" id="L90">        + extraSleepTime.toString(TimeUnit.SECONDS, 3) + gc;</span>
+  }
+
+  /** To build {@link JvmPauseMonitor}. */
+<span class="nc" id="L94">  public static class Builder {</span>
+<span class="nc" id="L95">    private Object name = &quot;default&quot;;</span>
+<span class="nc" id="L96">    private TimeDuration sleepDeviationThreshold = TimeDuration.valueOf(300, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L97">    private TimeDuration sleepTime = sleepDeviationThreshold;</span>
+<span class="nc" id="L98">    private CheckedConsumer&lt;TimeDuration, IOException&gt; handler = t -&gt; {};</span>
+
+    public Builder setName(Object name) {
+<span class="nc" id="L101">      this.name = name;</span>
+<span class="nc" id="L102">      return this;</span>
+    }
+
+    public Builder setSleepTime(TimeDuration sleepTime) {
+<span class="nc" id="L106">      this.sleepTime = sleepTime;</span>
+<span class="nc" id="L107">      return this;</span>
+    }
+
+    public Builder setSleepDeviationThreshold(TimeDuration sleepDeviationThreshold) {
+<span class="nc" id="L111">      this.sleepDeviationThreshold = sleepDeviationThreshold;</span>
+<span class="nc" id="L112">      return this;</span>
+    }
+
+    public Builder setHandler(CheckedConsumer&lt;TimeDuration, IOException&gt; handler) {
+<span class="nc" id="L116">      this.handler = handler;</span>
+<span class="nc" id="L117">      return this;</span>
+    }
+
+    public JvmPauseMonitor build() {
+<span class="nc" id="L121">      return new JvmPauseMonitor(name, sleepTime, sleepDeviationThreshold, handler);</span>
+    }
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L126">    return new Builder();</span>
+  }
+
+  private final TimeDuration sleepTime;
+  private final TimeDuration sleepDeviationThreshold;
+
+  private final String name;
+<span class="nc" id="L133">  private final AtomicReference&lt;Thread&gt; threadRef = new AtomicReference&lt;&gt;();</span>
+  private final CheckedConsumer&lt;TimeDuration, IOException&gt; handler;
+
+  private JvmPauseMonitor(Object name, TimeDuration sleepTime, TimeDuration sleepDeviationThreshold,
+<span class="nc" id="L137">      CheckedConsumer&lt;TimeDuration, IOException&gt; handler) {</span>
+<span class="nc" id="L138">    this.name = JavaUtils.getClassSimpleName(getClass()) + &quot;-&quot; + name;</span>
+    // use min -- if the sleep time is too long, it may not be able to detect the given deviation.
+<span class="nc" id="L140">    this.sleepTime = TimeDuration.min(sleepTime, sleepDeviationThreshold);</span>
+<span class="nc" id="L141">    this.sleepDeviationThreshold = sleepDeviationThreshold;</span>
+<span class="nc" id="L142">    this.handler = handler;</span>
+<span class="nc" id="L143">  }</span>
+
+  private void run() {
+<span class="nc" id="L146">    LOG.info(&quot;{}: Started&quot;, this);</span>
+    try {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">      for (; Thread.currentThread().equals(threadRef.get()); ) {</span>
+<span class="nc" id="L149">        detectPause();</span>
+      }
+    } finally {
+<span class="nc" id="L152">      LOG.info(&quot;{}: Stopped&quot;, this);</span>
+    }
+<span class="nc" id="L154">  }</span>
+
+  private void detectPause() {
+<span class="nc" id="L157">    final Map&lt;String, GcInfo&gt; before = getGcTimes();</span>
+    final TimeDuration extraSleep;
+    try {
+<span class="nc" id="L160">      extraSleep = sleepTime.sleep();</span>
+<span class="nc" id="L161">    } catch (InterruptedException ie) {</span>
+<span class="nc" id="L162">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L163">      return;</span>
+<span class="nc" id="L164">    }</span>
+
+<span class="nc bnc" id="L166" title="All 2 branches missed.">    if (extraSleep.compareTo(sleepDeviationThreshold) &gt; 0) {</span>
+<span class="nc" id="L167">      final Map&lt;String, GcInfo&gt; after = getGcTimes();</span>
+<span class="nc" id="L168">      LOG.warn(&quot;{}: {}&quot;, this, toString(before, extraSleep, after));</span>
+    }
+
+<span class="nc" id="L171">    handle(extraSleep);</span>
+<span class="nc" id="L172">  }</span>
+
+  private void handle(TimeDuration extraSleep) {
+    try {
+<span class="nc" id="L176">      handler.accept(extraSleep);</span>
+<span class="nc" id="L177">    } catch (Throwable t) {</span>
+<span class="nc" id="L178">      LOG.error(&quot;{}: Failed to handle extra sleep {}&quot;, this, extraSleep, t);</span>
+<span class="nc" id="L179">    }</span>
+<span class="nc" id="L180">  }</span>
+
+  /** Start this monitor. */
+  public void start() {
+<span class="nc" id="L184">    final MemoizedSupplier&lt;Thread&gt; supplier = JavaUtils.memoize(() -&gt; Daemon.newBuilder()</span>
+<span class="nc" id="L185">        .setName(JavaUtils.getClassSimpleName(getClass()) + THREAD_COUNT.getAndIncrement())</span>
+<span class="nc" id="L186">        .setRunnable(this::run)</span>
+<span class="nc" id="L187">        .build());</span>
+<span class="nc" id="L188">    Optional.of(threadRef.updateAndGet(previous -&gt; Optional.ofNullable(previous).orElseGet(supplier)))</span>
+<span class="nc" id="L189">        .filter(t -&gt; supplier.isInitialized())</span>
+<span class="nc" id="L190">        .ifPresent(Thread::start);</span>
+<span class="nc" id="L191">  }</span>
+
+  /** Stop this monitor. */
+  public void stop() {
+<span class="nc" id="L195">    final Thread previous = threadRef.getAndSet(null);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">    if (previous != null) {</span>
+<span class="nc" id="L197">      previous.interrupt();</span>
+      try {
+<span class="nc" id="L199">        previous.join();</span>
+<span class="nc" id="L200">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L201">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L202">      }</span>
+    }
+<span class="nc" id="L204">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L208">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

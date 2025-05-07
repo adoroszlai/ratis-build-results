@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstallSnapshotRequests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">InstallSnapshotRequests.java</span></div><h1>InstallSnapshotRequests.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.proto.RaftProtos.FileChunkProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto.SnapshotChunkProto;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.storage.FileChunkReader;
+import org.apache.ratis.server.storage.FileInfo;
+import org.apache.ratis.server.storage.RaftStorageDirectory;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.util.JavaUtils;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.function.Function;
+
+/**
+ * An {@link Iterable} of {@link InstallSnapshotRequestProto} for sending a snapshot.
+ * &lt;p&gt;
+ * The snapshot is sent by one or more requests, where
+ * a snapshot has one or more files, and
+ * a file is sent by one or more chunks.
+ * The number of requests is equal to the sum of the numbers of chunks of each file.
+ */
+class InstallSnapshotRequests implements Iterable&lt;InstallSnapshotRequestProto&gt; {
+  private final RaftServer.Division server;
+  private final RaftPeerId followerId;
+  private final Function&lt;FileInfo, Path&gt; getRelativePath;
+
+  /** The snapshot to be sent. */
+  private final SnapshotInfo snapshot;
+  /** A fixed id for all the requests. */
+  private final String requestId;
+
+  /** Maximum chunk size. */
+  private final int snapshotChunkMaxSize;
+  /** The total size of snapshot files. */
+  private final long totalSize;
+  /** The total number of snapshot files. */
+  private final int numFiles;
+
+
+  InstallSnapshotRequests(RaftServer.Division server, RaftPeerId followerId,
+<span class="nc" id="L67">      String requestId, SnapshotInfo snapshot, int snapshotChunkMaxSize) {</span>
+<span class="nc" id="L68">    this.server = server;</span>
+<span class="nc" id="L69">    this.followerId = followerId;</span>
+<span class="nc" id="L70">    this.requestId = requestId;</span>
+<span class="nc" id="L71">    this.snapshot = snapshot;</span>
+<span class="nc" id="L72">    this.snapshotChunkMaxSize = snapshotChunkMaxSize;</span>
+<span class="nc" id="L73">    final List&lt;FileInfo&gt; files = snapshot.getFiles();</span>
+<span class="nc" id="L74">    this.totalSize = files.stream().mapToLong(FileInfo::getFileSize).reduce(Long::sum).orElseThrow(</span>
+<span class="nc" id="L75">            () -&gt; new IllegalStateException(&quot;Failed to compute total size for snapshot &quot; + snapshot));</span>
+<span class="nc" id="L76">    this.numFiles = files.size();</span>
+
+<span class="nc" id="L78">    final File snapshotDir = server.getStateMachine().getStateMachineStorage().getSnapshotDir();</span>
+    final Function&lt;Path, Path&gt; relativize;
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    if (snapshotDir != null) {</span>
+<span class="nc" id="L81">      final Path dir = snapshotDir.toPath();</span>
+      // add STATE_MACHINE_DIR_NAME for compatibility.
+<span class="nc" id="L83">      relativize = p -&gt; new File(RaftStorageDirectory.STATE_MACHINE_DIR_NAME, dir.relativize(p).toString()).toPath();</span>
+<span class="nc" id="L84">    } else {</span>
+<span class="nc" id="L85">      final Path dir = server.getRaftStorage().getStorageDir().getRoot().toPath();</span>
+<span class="nc" id="L86">      relativize = dir::relativize;</span>
+    }
+<span class="nc" id="L88">    this.getRelativePath = info -&gt; Optional.of(info.getPath())</span>
+<span class="nc" id="L89">        .filter(Path::isAbsolute)</span>
+<span class="nc" id="L90">        .map(relativize)</span>
+<span class="nc" id="L91">        .orElseGet(info::getPath);</span>
+<span class="nc" id="L92">  }</span>
+
+  @Override
+  public Iterator&lt;InstallSnapshotRequestProto&gt; iterator() {
+<span class="nc" id="L96">    return new Iter();</span>
+  }
+
+<span class="nc" id="L99">  private class Iter implements Iterator&lt;InstallSnapshotRequestProto&gt; {</span>
+
+    /** The index of the current request. */
+<span class="nc" id="L102">    private int requestIndex = 0;</span>
+    /** The index of the current file. */
+<span class="nc" id="L104">    private int fileIndex = 0;</span>
+    /** The current file. */
+    private FileChunkReader current;
+
+    @Override
+    public boolean hasNext() {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">      return fileIndex &lt; numFiles;</span>
+    }
+
+    @Override
+    public InstallSnapshotRequestProto next() {
+<span class="nc bnc" id="L115" title="All 2 branches missed.">      if (!hasNext()) {</span>
+<span class="nc" id="L116">        throw new NoSuchElementException(&quot;fileIndex = &quot; + fileIndex + &quot; &gt;= numFiles = &quot; + numFiles);</span>
+      }
+
+<span class="nc" id="L119">      final FileInfo info = snapshot.getFiles().get(fileIndex);</span>
+      try {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (current == null) {</span>
+<span class="nc" id="L122">          current = new FileChunkReader(info, getRelativePath.apply(info));</span>
+        }
+<span class="nc" id="L124">        final FileChunkProto chunk = current.readFileChunk(snapshotChunkMaxSize);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (chunk.getDone()) {</span>
+<span class="nc" id="L126">          current.close();</span>
+<span class="nc" id="L127">          current = null;</span>
+<span class="nc" id="L128">          fileIndex++;</span>
+        }
+
+<span class="nc bnc" id="L131" title="All 4 branches missed.">        final boolean done = fileIndex == numFiles &amp;&amp; chunk.getDone();</span>
+<span class="nc" id="L132">        return newInstallSnapshotRequest(chunk, done);</span>
+<span class="nc" id="L133">      } catch (IOException e) {</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (current != null) {</span>
+          try {
+<span class="nc" id="L136">            current.close();</span>
+<span class="nc" id="L137">            current = null;</span>
+<span class="nc" id="L138">          } catch (IOException ignored) {</span>
+<span class="nc" id="L139">          }</span>
+        }
+<span class="nc" id="L141">        throw new IllegalStateException(&quot;Failed to iterate installSnapshot requests: &quot; + this, e);</span>
+      }
+    }
+
+    private InstallSnapshotRequestProto newInstallSnapshotRequest(FileChunkProto chunk, boolean done) {
+<span class="nc" id="L146">      synchronized (server) {</span>
+<span class="nc" id="L147">        final SnapshotChunkProto.Builder b = LeaderProtoUtils.toSnapshotChunkProtoBuilder(</span>
+<span class="nc" id="L148">            requestId, requestIndex++, snapshot.getTermIndex(), chunk, totalSize, done);</span>
+<span class="nc" id="L149">        return LeaderProtoUtils.toInstallSnapshotRequestProto(server, followerId, b);</span>
+      }
+    }
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L156">    return server.getId() + &quot;-&gt;&quot; + followerId + JavaUtils.getClassSimpleName(getClass())</span>
+        + &quot;: requestId=&quot; + requestId
+        + &quot;, snapshot=&quot; + snapshot;
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

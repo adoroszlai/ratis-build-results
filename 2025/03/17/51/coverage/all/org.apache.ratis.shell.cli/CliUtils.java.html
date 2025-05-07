@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CliUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli</a> &gt; <span class="el_source">CliUtils.java</span></div><h1>CliUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli;
+
+import org.apache.ratis.client.RaftClient;
+import org.apache.ratis.protocol.GroupInfoReply;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.util.function.CheckedFunction;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+/**
+ * Utilities for command line interface.
+ */
+public final class CliUtils {
+  private CliUtils() {
+    // prevent instantiation
+  }
+
+  /** @return {@link RaftPeerId} from the given address. */
+  public static RaftPeerId getPeerId(InetSocketAddress address) {
+<span class="nc" id="L50">    return getPeerId(address.getHostString(), address.getPort());</span>
+  }
+
+  /** @return {@link RaftPeerId} from the given host and port. */
+  public static RaftPeerId getPeerId(String host, int port) {
+<span class="nc" id="L55">    return RaftPeerId.getRaftPeerId(host + &quot;_&quot; + port);</span>
+  }
+
+  /**
+   * Apply the given function to the given parameter a list.
+   *
+   * @param list the input parameter list
+   * @param function the function to be applied
+   * @param &lt;PARAMETER&gt; parameter type
+   * @param &lt;RETURN&gt; return value type
+   * @param &lt;EXCEPTION&gt; the exception type thrown by the given function.
+   * @return the first non-null value returned by the given function applied to the given list.
+   */
+  private static &lt;PARAMETER, RETURN, EXCEPTION extends Throwable&gt; RETURN applyFunctionReturnFirstNonNull(
+      Collection&lt;PARAMETER&gt; list, CheckedFunction&lt;PARAMETER, RETURN, EXCEPTION&gt; function, PrintStream out) {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">    for (PARAMETER parameter : list) {</span>
+      try {
+<span class="nc" id="L72">        RETURN ret = function.apply(parameter);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (ret != null) {</span>
+<span class="nc" id="L74">          return ret;</span>
+        }
+<span class="nc" id="L76">      } catch (Throwable e) {</span>
+<span class="nc" id="L77">        e.printStackTrace(out);</span>
+<span class="nc" id="L78">      }</span>
+<span class="nc" id="L79">    }</span>
+<span class="nc" id="L80">    return null;</span>
+  }
+
+  /** Parse the given string as a list of {@link RaftPeer}. */
+  public static List&lt;RaftPeer&gt; parseRaftPeers(String peers) {
+<span class="nc" id="L85">    List&lt;InetSocketAddress&gt; addresses = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L86">    String[] peersArray = peers.split(&quot;,&quot;);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">    for (String peer : peersArray) {</span>
+<span class="nc" id="L88">      addresses.add(parseInetSocketAddress(peer));</span>
+    }
+
+<span class="nc" id="L91">    return addresses.stream()</span>
+<span class="nc" id="L92">        .map(addr -&gt; RaftPeer.newBuilder().setId(getPeerId(addr)).setAddress(addr).build())</span>
+<span class="nc" id="L93">        .collect(Collectors.toList());</span>
+  }
+
+  /** Parse the given string as a {@link RaftGroupId}. */
+  public static RaftGroupId parseRaftGroupId(String groupId) {
+<span class="nc bnc" id="L98" title="All 4 branches missed.">    return groupId != null &amp;&amp; groupId.isEmpty() ? RaftGroupId.valueOf(UUID.fromString(groupId)) : null;</span>
+  }
+
+  /**
+   * Get the group id from the given peers if the given group id is null.
+   *
+   * @param client for communicating to the peers.
+   * @param peers the peers of the group.
+   * @param groupId the given group id, if there is any.
+   * @param err for printing error messages.
+   * @return the group id from the given peers if the given group id is null;
+   *         otherwise, return the given group id.
+   */
+  public static RaftGroupId getGroupId(RaftClient client, List&lt;RaftPeer&gt; peers, RaftGroupId groupId,
+      PrintStream err) throws IOException {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (groupId != null) {</span>
+<span class="nc" id="L114">      return groupId;</span>
+    }
+
+<span class="nc" id="L117">    final List&lt;RaftGroupId&gt; groupIds = applyFunctionReturnFirstNonNull(peers,</span>
+<span class="nc" id="L118">        p -&gt; client.getGroupManagementApi(p.getId()).list().getGroupIds(), err);</span>
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (groupIds == null) {</span>
+<span class="nc" id="L121">      final String message = &quot;Failed to get group ID from &quot; + peers;</span>
+<span class="nc" id="L122">      err.println(&quot;Failed to get group ID from &quot; + peers);</span>
+<span class="nc" id="L123">      throw new IOException(message);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    } else if (groupIds.size() == 1) {</span>
+<span class="nc" id="L125">      return groupIds.get(0);</span>
+    } else {
+<span class="nc" id="L127">      String message = &quot;Unexpected multiple group IDs &quot; + groupIds</span>
+          + &quot;.  In such case, the target group ID must be specified.&quot;;
+<span class="nc" id="L129">      err.println(message);</span>
+<span class="nc" id="L130">      throw new IOException(message);</span>
+    }
+  }
+
+  /**
+   * Get the group info from the given peers.
+   *
+   * @param client for communicating to the peers.
+   * @param peers the peers of the group.
+   * @param groupId the target group
+   * @param err for printing error messages.
+   * @return the group info
+   */
+  public static GroupInfoReply getGroupInfo(RaftClient client, List&lt;RaftPeer&gt; peers, RaftGroupId groupId,
+      PrintStream err) throws IOException {
+<span class="nc" id="L145">    GroupInfoReply groupInfoReply = applyFunctionReturnFirstNonNull(peers,</span>
+<span class="nc" id="L146">        p -&gt; client.getGroupManagementApi((p.getId())).info(groupId), err);</span>
+<span class="nc" id="L147">    checkReply(groupInfoReply, () -&gt; &quot;Failed to get group info for &quot; + groupId.getUuid()</span>
+            + &quot; from &quot; + peers, err);
+<span class="nc" id="L149">    return groupInfoReply;</span>
+  }
+
+  /** Check if the given reply is success. */
+  public static void checkReply(RaftClientReply reply, Supplier&lt;String&gt; message, PrintStream printStream)
+      throws IOException {
+<span class="nc bnc" id="L155" title="All 4 branches missed.">    if (reply == null || !reply.isSuccess()) {</span>
+<span class="nc" id="L156">      final RaftException e = Optional.ofNullable(reply)</span>
+<span class="nc" id="L157">          .map(RaftClientReply::getException)</span>
+<span class="nc" id="L158">          .orElseGet(() -&gt; new RaftException(&quot;Reply: &quot; + reply));</span>
+<span class="nc" id="L159">      printStream.println(message.get());</span>
+<span class="nc" id="L160">      throw new IOException(message.get(), e);</span>
+    }
+<span class="nc" id="L162">  }</span>
+
+  /** Parse the given string as a {@link InetSocketAddress}. */
+  public static InetSocketAddress parseInetSocketAddress(String address) {
+    try {
+<span class="nc" id="L167">      final String[] hostPortPair = address.split(&quot;:&quot;);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">      if (hostPortPair.length &lt; 2) {</span>
+<span class="nc" id="L169">        throw new IllegalArgumentException(&quot;Unexpected address format &lt;HOST:PORT&gt;.&quot;);</span>
+      }
+<span class="nc" id="L171">      return new InetSocketAddress(hostPortPair[0], Integer.parseInt(hostPortPair[1]));</span>
+<span class="nc" id="L172">    } catch (Exception e) {</span>
+<span class="nc" id="L173">      throw new IllegalArgumentException(&quot;Failed to parse the server address parameter \&quot;&quot; + address + &quot;\&quot;.&quot;, e);</span>
+    }
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

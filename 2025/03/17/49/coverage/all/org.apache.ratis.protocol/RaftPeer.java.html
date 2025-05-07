@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftPeer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.protocol</a> &gt; <span class="el_source">RaftPeer.java</span></div><h1>RaftPeer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.protocol;
+
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.RaftPeerProto;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.NetUtils;
+
+import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
+
+/**
+ * A {@link RaftPeer} contains the information of a server.
+ *
+ * The objects of this class are immutable.
+ */
+public final class RaftPeer {
+<span class="nc" id="L39">  private static final RaftPeer[] EMPTY_ARRAY = {};</span>
+
+  /** @return an empty array. */
+  public static RaftPeer[] emptyArray() {
+<span class="nc" id="L43">    return EMPTY_ARRAY;</span>
+  }
+
+  public interface Add {
+    /** Add the given peers. */
+    void addRaftPeers(Collection&lt;RaftPeer&gt; peers);
+
+    /** Add the given peers. */
+    default void addRaftPeers(RaftPeer... peers) {
+<span class="nc" id="L52">      addRaftPeers(Arrays.asList(peers));</span>
+<span class="nc" id="L53">    }</span>
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L57">    return new Builder();</span>
+  }
+
+  /** @return a new builder initialized from {@code peer} */
+  public static Builder newBuilder(RaftPeer peer) {
+<span class="nc" id="L62">    Objects.requireNonNull(peer, &quot;peer == null&quot;);</span>
+<span class="nc" id="L63">    return newBuilder()</span>
+<span class="nc" id="L64">        .setId(peer.getId())</span>
+<span class="nc" id="L65">        .setAddress(peer.getAddress())</span>
+<span class="nc" id="L66">        .setAdminAddress(peer.getAdminAddress())</span>
+<span class="nc" id="L67">        .setClientAddress(peer.getClientAddress())</span>
+<span class="nc" id="L68">        .setDataStreamAddress(peer.getDataStreamAddress())</span>
+<span class="nc" id="L69">        .setPriority(peer.getPriority())</span>
+<span class="nc" id="L70">        .setStartupRole(peer.getStartupRole());</span>
+  }
+
+<span class="nc" id="L73">  public static class Builder {</span>
+    private RaftPeerId id;
+    private String address;
+    private String adminAddress;
+    private String clientAddress;
+    private String dataStreamAddress;
+    private int priority;
+<span class="nc" id="L80">    private RaftPeerRole startupRole = RaftPeerRole.FOLLOWER;</span>
+
+    public Builder setId(RaftPeerId id) {
+<span class="nc" id="L83">      this.id = id;</span>
+<span class="nc" id="L84">      return this;</span>
+    }
+
+    public Builder setId(String id) {
+<span class="nc" id="L88">      return setId(RaftPeerId.valueOf(id));</span>
+    }
+
+    public Builder setId(ByteString id) {
+<span class="nc" id="L92">      return setId(RaftPeerId.valueOf(id));</span>
+    }
+
+    public Builder setAddress(String address) {
+<span class="nc" id="L96">      this.address = address;</span>
+<span class="nc" id="L97">      return this;</span>
+    }
+
+    public Builder setAddress(InetSocketAddress address) {
+<span class="nc" id="L101">      return setAddress(NetUtils.address2String(address));</span>
+    }
+
+    public Builder setAdminAddress(String addr) {
+<span class="nc" id="L105">      this.adminAddress = addr;</span>
+<span class="nc" id="L106">      return this;</span>
+    }
+
+    public Builder setAdminAddress(InetSocketAddress addr) {
+<span class="nc" id="L110">      return setAdminAddress(NetUtils.address2String(addr));</span>
+    }
+
+    public Builder setClientAddress(String addr) {
+<span class="nc" id="L114">      this.clientAddress = addr;</span>
+<span class="nc" id="L115">      return this;</span>
+    }
+
+    public Builder setClientAddress(InetSocketAddress addr) {
+<span class="nc" id="L119">      return setClientAddress(NetUtils.address2String(addr));</span>
+    }
+
+    public Builder setDataStreamAddress(String dataStreamAddress) {
+<span class="nc" id="L123">      this.dataStreamAddress = dataStreamAddress;</span>
+<span class="nc" id="L124">      return this;</span>
+    }
+
+    public Builder setDataStreamAddress(InetSocketAddress dataStreamAddress) {
+<span class="nc" id="L128">      return setDataStreamAddress(NetUtils.address2String(dataStreamAddress));</span>
+    }
+
+    public Builder setPriority(int priority) {
+<span class="nc bnc" id="L132" title="All 2 branches missed.">      if (priority &lt; 0) {</span>
+<span class="nc" id="L133">        throw new IllegalArgumentException(&quot;priority = &quot; + priority + &quot; &lt; 0&quot;);</span>
+      }
+<span class="nc" id="L135">      this.priority = priority;</span>
+<span class="nc" id="L136">      return this;</span>
+    }
+
+    public Builder setStartupRole(RaftPeerRole startupRole) {
+<span class="nc bnc" id="L140" title="All 4 branches missed.">      if (startupRole != RaftPeerRole.FOLLOWER</span>
+          &amp;&amp; startupRole != RaftPeerRole.LISTENER) {
+<span class="nc" id="L142">        throw new IllegalArgumentException(</span>
+            &quot;At startup the role can only be set to FOLLOWER or LISTENER, the current value is &quot; +
+                startupRole);
+      }
+<span class="nc" id="L146">      this.startupRole = startupRole;</span>
+<span class="nc" id="L147">      return this;</span>
+    }
+
+    public RaftPeer build() {
+<span class="nc" id="L151">      return new RaftPeer(</span>
+<span class="nc" id="L152">          Objects.requireNonNull(id, &quot;The 'id' field is not initialized.&quot;),</span>
+          address, adminAddress, clientAddress, dataStreamAddress, priority, startupRole);
+    }
+  }
+
+  /** The id of the peer. */
+  private final RaftPeerId id;
+  /** The RPC address of the peer. */
+  private final String address;
+  private final String adminAddress;
+  private final String clientAddress;
+  /** The DataStream address of the peer. */
+  private final String dataStreamAddress;
+  /** The priority of the peer. */
+  private final int priority;
+
+  private final RaftPeerRole startupRole;
+
+  private final Supplier&lt;RaftPeerProto&gt; raftPeerProto;
+
+  private RaftPeer(RaftPeerId id,
+      String address, String adminAddress, String clientAddress, String dataStreamAddress,
+<span class="nc" id="L174">      int priority, RaftPeerRole startupRole) {</span>
+<span class="nc" id="L175">    this.id = Objects.requireNonNull(id, &quot;id == null&quot;);</span>
+<span class="nc" id="L176">    this.address = address;</span>
+<span class="nc" id="L177">    this.dataStreamAddress = dataStreamAddress;</span>
+<span class="nc" id="L178">    this.adminAddress = adminAddress;</span>
+<span class="nc" id="L179">    this.clientAddress = clientAddress;</span>
+<span class="nc" id="L180">    this.priority = priority;</span>
+<span class="nc" id="L181">    this.startupRole = startupRole;</span>
+<span class="nc" id="L182">    this.raftPeerProto = JavaUtils.memoize(this::buildRaftPeerProto);</span>
+<span class="nc" id="L183">  }</span>
+
+  private RaftPeerProto buildRaftPeerProto() {
+<span class="nc" id="L186">    final RaftPeerProto.Builder builder = RaftPeerProto.newBuilder()</span>
+<span class="nc" id="L187">        .setId(getId().toByteString());</span>
+<span class="nc" id="L188">    Optional.ofNullable(getAddress()).ifPresent(builder::setAddress);</span>
+<span class="nc" id="L189">    Optional.ofNullable(getDataStreamAddress()).ifPresent(builder::setDataStreamAddress);</span>
+<span class="nc" id="L190">    Optional.ofNullable(getClientAddress()).ifPresent(builder::setClientAddress);</span>
+<span class="nc" id="L191">    Optional.ofNullable(getAdminAddress()).ifPresent(builder::setAdminAddress);</span>
+<span class="nc" id="L192">    builder.setPriority(priority);</span>
+<span class="nc" id="L193">    builder.setStartupRole(startupRole);</span>
+<span class="nc" id="L194">    return builder.build();</span>
+  }
+
+  /** @return The id of the peer. */
+  public RaftPeerId getId() {
+<span class="nc" id="L199">    return id;</span>
+  }
+
+  /** @return The RPC address of the peer for server-server communication. */
+  public String getAddress() {
+<span class="nc" id="L204">    return address;</span>
+  }
+
+  /** @return The RPC address of the peer for admin operations.
+   * May be {@code null}, in which case {@link #getAddress()} should be used. */
+  public String getAdminAddress() {
+<span class="nc" id="L210">    return adminAddress;</span>
+  }
+
+  /** @return The RPC address of the peer for client operations.
+   * May be {@code null}, in which case {@link #getAddress()} should be used. */
+  public String getClientAddress() {
+<span class="nc" id="L216">    return clientAddress;</span>
+  }
+
+  /** @return The data stream address of the peer. */
+  public String getDataStreamAddress() {
+<span class="nc" id="L221">    return dataStreamAddress;</span>
+  }
+
+  /** @return The priority of the peer. */
+  public int getPriority() {
+<span class="nc" id="L226">    return priority;</span>
+  }
+
+  public RaftPeerRole getStartupRole() {
+<span class="nc" id="L230">    return startupRole;</span>
+  }
+
+  public RaftPeerProto getRaftPeerProto() {
+<span class="nc" id="L234">    return raftPeerProto.get();</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc bnc" id="L239" title="All 2 branches missed.">    final String rpc = address != null? &quot;|&quot; + address: &quot;&quot;;</span>
+<span class="nc" id="L240">    return id + rpc;</span>
+  }
+
+  public String getDetails() {
+<span class="nc" id="L244">    final String prefix = toString();</span>
+<span class="nc bnc" id="L245" title="All 4 branches missed.">    final String admin = adminAddress != null &amp;&amp; !Objects.equals(address, adminAddress)</span>
+        ? &quot;|admin:&quot; + adminAddress : &quot;&quot;;
+<span class="nc bnc" id="L247" title="All 4 branches missed.">    final String client = clientAddress != null &amp;&amp; !Objects.equals(address, clientAddress)</span>
+        ? &quot;|client:&quot; + clientAddress : &quot;&quot;;
+<span class="nc bnc" id="L249" title="All 2 branches missed.">    final String data = dataStreamAddress != null? &quot;|dataStream:&quot; + dataStreamAddress: &quot;&quot;;</span>
+<span class="nc" id="L250">    final String p = &quot;|priority:&quot; + priority;</span>
+<span class="nc" id="L251">    final String role = &quot;|startupRole:&quot; + startupRole;</span>
+<span class="nc" id="L252">    return prefix + admin + client + data + p + role;</span>
+  }
+
+  @Override
+  public boolean equals(Object o) {
+<span class="nc bnc" id="L257" title="All 4 branches missed.">    return (o instanceof RaftPeer) &amp;&amp; id.equals(((RaftPeer) o).getId());</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L262">    return id.hashCode();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

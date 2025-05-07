@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerImplUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">ServerImplUtils.java</span></div><h1>ServerImplUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.exceptions.GroupMismatchException;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.TimeDuration;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+
+/** Server utilities for internal use. */
+public final class ServerImplUtils {
+  /** The consecutive indices within the same term. */
+  static class ConsecutiveIndices {
+    /** Convert the given entries to a list of {@link ConsecutiveIndices} */
+    static List&lt;ConsecutiveIndices&gt; convert(List&lt;LogEntryProto&gt; entries) {
+<span class="nc bnc" id="L57" title="All 4 branches missed.">      if (entries == null || entries.isEmpty()) {</span>
+<span class="nc" id="L58">        return Collections.emptyList();</span>
+      }
+
+<span class="nc" id="L61">      List&lt;ConsecutiveIndices&gt; indices = null;</span>
+
+<span class="nc" id="L63">      LogEntryProto previous = entries.get(0);</span>
+<span class="nc" id="L64">      long startIndex = previous.getIndex();</span>
+<span class="nc" id="L65">      int count = 1;</span>
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">      for (int i = 1; i &lt; entries.size(); i++) {</span>
+<span class="nc" id="L68">        final LogEntryProto current = entries.get(i);</span>
+        // validate if the indices are consecutive
+<span class="nc" id="L70">        Preconditions.assertSame(previous.getIndex() + 1, current.getIndex(), &quot;index&quot;);</span>
+
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (current.getTerm() == previous.getTerm()) {</span>
+<span class="nc" id="L73">          count++;</span>
+        } else {
+          // validate if the terms are increasing
+<span class="nc bnc" id="L76" title="All 2 branches missed.">          Preconditions.assertTrue(previous.getTerm() &lt; current.getTerm(), &quot;term&quot;);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">          if (indices == null) {</span>
+<span class="nc" id="L78">            indices = new ArrayList&lt;&gt;();</span>
+          }
+<span class="nc" id="L80">          indices.add(new ConsecutiveIndices(previous.getTerm(), startIndex, count));</span>
+
+<span class="nc" id="L82">          startIndex = current.getIndex();</span>
+<span class="nc" id="L83">          count = 1;</span>
+        }
+<span class="nc" id="L85">        previous = current;</span>
+      }
+
+<span class="nc" id="L88">      final ConsecutiveIndices last = new ConsecutiveIndices(previous.getTerm(), startIndex, count);</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">      if (indices == null) {</span>
+<span class="nc" id="L90">        return Collections.singletonList(last);</span>
+      } else {
+<span class="nc" id="L92">        indices.add(last);</span>
+<span class="nc" id="L93">        return indices;</span>
+      }
+    }
+
+    private final long term;
+    private final long startIndex;
+    private final int count;
+
+<span class="nc" id="L101">    ConsecutiveIndices(long term, long startIndex, int count) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">      Preconditions.assertTrue(count &gt; 0, () -&gt; &quot;count = &quot; + count + &quot; &lt;= 0 &quot;);</span>
+<span class="nc" id="L103">      this.term = term;</span>
+<span class="nc" id="L104">      this.startIndex = startIndex;</span>
+<span class="nc" id="L105">      this.count = count;</span>
+<span class="nc" id="L106">    }</span>
+
+    long getNextIndex() {
+<span class="nc" id="L109">      return startIndex + count;</span>
+    }
+
+    Long getTerm(long index) {
+<span class="nc" id="L113">      final long diff = index - startIndex;</span>
+<span class="nc bnc" id="L114" title="All 4 branches missed.">      return diff &lt; 0 || diff &gt;= count ? null: term;</span>
+    }
+  }
+
+  /** A data structure to support the {@link #contains(TermIndex)} method. */
+<span class="nc" id="L119">  static class NavigableIndices {</span>
+<span class="nc" id="L120">    private final NavigableMap&lt;Long, ConsecutiveIndices&gt; map = new TreeMap&lt;&gt;();</span>
+
+    boolean contains(TermIndex ti) {
+<span class="nc" id="L123">      final Long term = getTerm(ti.getIndex());</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">      return term != null &amp;&amp; term == ti.getTerm();</span>
+    }
+
+    synchronized Long getTerm(long index) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      if (map.isEmpty()) {</span>
+<span class="nc" id="L129">        return null;</span>
+      }
+
+<span class="nc" id="L132">      final Map.Entry&lt;Long, ConsecutiveIndices&gt; floorEntry = map.floorEntry(index);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">      if (floorEntry == null) {</span>
+<span class="nc" id="L134">        return null;</span>
+      }
+<span class="nc" id="L136">      return floorEntry.getValue().getTerm(index);</span>
+    }
+
+    synchronized void append(List&lt;ConsecutiveIndices&gt; entriesTermIndices) {
+<span class="nc bnc" id="L140" title="All 2 branches missed.">      for(ConsecutiveIndices indices : entriesTermIndices) {</span>
+        // validate startIndex
+<span class="nc" id="L142">        final Map.Entry&lt;Long, ConsecutiveIndices&gt; lastEntry = map.lastEntry();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        if (lastEntry != null) {</span>
+<span class="nc" id="L144">          Preconditions.assertSame(lastEntry.getValue().getNextIndex(), indices.startIndex, &quot;startIndex&quot;);</span>
+        }
+<span class="nc" id="L146">        map.put(indices.startIndex, indices);</span>
+<span class="nc" id="L147">      }</span>
+<span class="nc" id="L148">    }</span>
+
+    synchronized void removeExisting(List&lt;ConsecutiveIndices&gt; entriesTermIndices) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">      for(ConsecutiveIndices indices : entriesTermIndices) {</span>
+<span class="nc" id="L152">        final ConsecutiveIndices removed = map.remove(indices.startIndex);</span>
+<span class="nc" id="L153">        Preconditions.assertSame(indices, removed, &quot;removed&quot;);</span>
+<span class="nc" id="L154">      }</span>
+<span class="nc" id="L155">    }</span>
+  }
+
+  private ServerImplUtils() {
+    //Never constructed
+  }
+
+  /** Create a {@link RaftServerProxy}. */
+  public static RaftServerProxy newRaftServer(
+      RaftPeerId id, RaftGroup group, RaftStorage.StartupOption option, StateMachine.Registry stateMachineRegistry,
+      ThreadGroup threadGroup, RaftProperties properties, Parameters parameters) throws IOException {
+<span class="nc" id="L166">    RaftServer.LOG.debug(&quot;newRaftServer: {}, {}&quot;, id, group);</span>
+<span class="nc bnc" id="L167" title="All 4 branches missed.">    if (group != null &amp;&amp; !group.getPeers().isEmpty()) {</span>
+<span class="nc" id="L168">      Preconditions.assertNotNull(id, &quot;RaftPeerId %s is not in RaftGroup %s&quot;, id, group);</span>
+<span class="nc" id="L169">      Preconditions.assertNotNull(group.getPeer(id), &quot;RaftPeerId %s is not in RaftGroup %s&quot;, id, group);</span>
+    }
+<span class="nc" id="L171">    final RaftServerProxy proxy = newRaftServer(id, stateMachineRegistry, threadGroup, properties, parameters);</span>
+<span class="nc" id="L172">    proxy.initGroups(group, option);</span>
+<span class="nc" id="L173">    return proxy;</span>
+  }
+
+  private static RaftServerProxy newRaftServer(
+      RaftPeerId id, StateMachine.Registry stateMachineRegistry, ThreadGroup threadGroup, RaftProperties properties,
+      Parameters parameters) throws IOException {
+<span class="nc" id="L179">    final TimeDuration sleepTime = TimeDuration.valueOf(500, TimeUnit.MILLISECONDS);</span>
+    final RaftServerProxy proxy;
+    try {
+      // attempt multiple times to avoid temporary bind exception
+<span class="nc" id="L183">      proxy = JavaUtils.attemptRepeatedly(</span>
+<span class="nc" id="L184">          () -&gt; new RaftServerProxy(id, stateMachineRegistry, properties, parameters, threadGroup),</span>
+          5, sleepTime, &quot;new RaftServerProxy&quot;, RaftServer.LOG);
+<span class="nc" id="L186">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L187">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L188">      throw IOUtils.toInterruptedIOException(</span>
+          &quot;Interrupted when creating RaftServer &quot; + id, e);
+<span class="nc" id="L190">    }</span>
+<span class="nc" id="L191">    return proxy;</span>
+  }
+
+  public static RaftConfiguration newRaftConfiguration(List&lt;RaftPeer&gt; conf, List&lt;RaftPeer&gt; listener,
+      long index, List&lt;RaftPeer&gt; oldConf, List&lt;RaftPeer&gt; oldListener) {
+<span class="nc" id="L196">    final RaftConfigurationImpl.Builder b = RaftConfigurationImpl.newBuilder()</span>
+<span class="nc" id="L197">        .setConf(conf, listener)</span>
+<span class="nc" id="L198">        .setLogEntryIndex(index);</span>
+<span class="nc bnc" id="L199" title="All 4 branches missed.">    if (!oldConf.isEmpty() || !oldListener.isEmpty()) {</span>
+<span class="nc" id="L200">      b.setOldConf(oldConf, oldListener);</span>
+    }
+<span class="nc" id="L202">    return b.build();</span>
+  }
+
+  static long effectiveCommitIndex(long leaderCommitIndex, TermIndex followerPrevious, int numAppendEntries) {
+<span class="nc bnc" id="L206" title="All 2 branches missed.">    final long previous = followerPrevious != null? followerPrevious.getIndex() : RaftLog.LEAST_VALID_LOG_INDEX;</span>
+<span class="nc" id="L207">    return Math.min(leaderCommitIndex, previous + numAppendEntries);</span>
+  }
+
+  static void assertGroup(RaftGroupMemberId serverMemberId, RaftClientRequest request) throws GroupMismatchException {
+<span class="nc" id="L211">    assertGroup(serverMemberId, request.getRequestorId(), request.getRaftGroupId());</span>
+<span class="nc" id="L212">  }</span>
+
+  static void assertGroup(RaftGroupMemberId localMemberId, Object remoteId, RaftGroupId remoteGroupId)
+      throws GroupMismatchException {
+<span class="nc" id="L216">    final RaftGroupId localGroupId = localMemberId.getGroupId();</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">    if (!localGroupId.equals(remoteGroupId)) {</span>
+<span class="nc" id="L218">      throw new GroupMismatchException(localMemberId</span>
+          + &quot;: The group (&quot; + remoteGroupId + &quot;) of remote &quot; + remoteId
+<span class="nc" id="L220">          + &quot; does not match the group (&quot; + localGroupId + &quot;) of local &quot; + localMemberId.getPeerId());</span>
+    }
+<span class="nc" id="L222">  }</span>
+
+  static void assertEntries(AppendEntriesRequestProto proto, TermIndex previous, ServerState state) {
+<span class="nc" id="L225">    final List&lt;LogEntryProto&gt; entries = proto.getEntriesList();</span>
+<span class="nc bnc" id="L226" title="All 4 branches missed.">    if (entries != null &amp;&amp; !entries.isEmpty()) {</span>
+<span class="nc" id="L227">      final long index0 = entries.get(0).getIndex();</span>
+      // Check if next entry's index is 1 greater than the snapshotIndex. If yes, then
+      // we do not have to check for the existence of previous.
+<span class="nc bnc" id="L230" title="All 2 branches missed.">      if (index0 != state.getSnapshotIndex() + 1) {</span>
+<span class="nc bnc" id="L231" title="All 4 branches missed.">        final long expected = previous == null || previous.getTerm() == 0 ? 0 : previous.getIndex() + 1;</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        Preconditions.assertTrue(index0 == expected,</span>
+            &quot;Unexpected Index: previous is %s but entries[%s].getIndex() == %s != %s&quot;,
+<span class="nc" id="L234">            previous, 0, index0, expected);</span>
+      }
+
+<span class="nc" id="L237">      final long leaderTerm = proto.getLeaderTerm();</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">      for (int i = 0; i &lt; entries.size(); i++) {</span>
+<span class="nc" id="L239">        final LogEntryProto entry = entries.get(i);</span>
+<span class="nc" id="L240">        final long entryTerm = entry.getTerm();</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        Preconditions.assertTrue(entryTerm &lt;= leaderTerm ,</span>
+            &quot;Unexpected Term: entries[%s].getTerm() == %s &gt; leaderTerm == %s&quot;,
+<span class="nc" id="L243">            i, entryTerm, leaderTerm);</span>
+
+<span class="nc" id="L245">        final long indexI = entry.getIndex();</span>
+<span class="nc" id="L246">        final long expected = index0 + i;</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        Preconditions.assertTrue(indexI == expected,</span>
+            &quot;Unexpected Index: entries[0].getIndex() == %s but entries[%s].getIndex() == %s != %s&quot;,
+<span class="nc" id="L249">            index0, i, indexI, expected);</span>
+      }
+    }
+<span class="nc" id="L252">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

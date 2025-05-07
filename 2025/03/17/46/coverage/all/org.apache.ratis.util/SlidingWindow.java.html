@@ -1,0 +1,533 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SlidingWindow.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">SlidingWindow.java</span></div><h1>SlidingWindow.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.Consumer;
+import java.util.function.LongFunction;
+
+/**
+ * A single-client-to-multiple-server sliding window.
+ * The client only talks to a server at any time.
+ * When the current server fails, the client fails over to another server.
+ */
+public interface SlidingWindow {
+<span class="nc" id="L40">  Logger LOG = LoggerFactory.getLogger(SlidingWindow.class);</span>
+
+  static String getName(Class&lt;?&gt; clazz, Object name) {
+<span class="nc" id="L43">    return JavaUtils.getClassSimpleName(SlidingWindow.class) +  &quot;$&quot; + JavaUtils.getClassSimpleName(clazz) + &quot;:&quot; + name;</span>
+  }
+
+  interface Request&lt;REPLY&gt; {
+    long getSeqNum();
+
+    void setReply(REPLY reply);
+
+    boolean hasReply();
+
+    void fail(Throwable e);
+
+    default void release() {
+<span class="nc" id="L56">    }</span>
+  }
+
+  interface ClientSideRequest&lt;REPLY&gt; extends Request&lt;REPLY&gt; {
+    void setFirstRequest();
+  }
+
+  interface ServerSideRequest&lt;REPLY&gt; extends Request&lt;REPLY&gt; {
+    boolean isFirstRequest();
+  }
+
+  /** A seqNum-to-request map, sorted by seqNum. */
+  class RequestMap&lt;REQUEST extends Request&lt;REPLY&gt;, REPLY&gt; implements Iterable&lt;REQUEST&gt; {
+    private final Object name;
+    /** Request map: seqNum -&gt; request */
+<span class="nc" id="L71">    private final SortedMap&lt;Long, REQUEST&gt; requests = new ConcurrentSkipListMap&lt;&gt;();</span>
+
+<span class="nc" id="L73">    RequestMap(Object name) {</span>
+<span class="nc" id="L74">      this.name = name;</span>
+<span class="nc" id="L75">    }</span>
+
+    Object getName() {
+<span class="nc" id="L78">      return name;</span>
+    }
+
+    boolean isEmpty() {
+<span class="nc" id="L82">      return requests.isEmpty();</span>
+    }
+
+    private REQUEST get(long seqNum) {
+<span class="nc" id="L86">      return requests.get(seqNum);</span>
+    }
+
+    /**
+     * If the request with the given seqNum is non-replied, return it.
+     * Otherwise, return null.
+     *
+     * A request is non-replied if
+     * (1) it is in the request map, and
+     * (2) it does not has reply.
+     */
+    REQUEST getNonRepliedRequest(long seqNum, String op) {
+<span class="nc" id="L98">      final REQUEST request = get(seqNum);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      if (request == null) {</span>
+<span class="nc" id="L100">        LOG.debug(&quot;{}: {}, seq={} not found in {}&quot;, getName(), op, seqNum, this);</span>
+<span class="nc" id="L101">        return null;</span>
+      }
+<span class="nc bnc" id="L103" title="All 2 branches missed.">      if (request.hasReply()) {</span>
+<span class="nc" id="L104">        LOG.debug(&quot;{}: {}, seq={} already has replied in {}&quot;, getName(), op, seqNum, this);</span>
+<span class="nc" id="L105">        return null;</span>
+      }
+<span class="nc" id="L107">      return request;</span>
+    }
+
+    long firstSeqNum() {
+<span class="nc" id="L111">      return requests.firstKey();</span>
+    }
+
+    long lastSeqNum() {
+<span class="nc" id="L115">      return requests.lastKey();</span>
+    }
+
+    /** Iterate the requests in the order of seqNum. */
+    @Override
+    public Iterator&lt;REQUEST&gt; iterator() {
+<span class="nc" id="L121">      return requests.values().iterator();</span>
+    }
+
+    /** @return true iff the request already exists. */
+    boolean putIfAbsent(REQUEST request) {
+<span class="nc" id="L126">      final long seqNum = request.getSeqNum();</span>
+<span class="nc" id="L127">      final REQUEST previous = requests.putIfAbsent(seqNum, request);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      return previous != null;</span>
+    }
+
+    void putNewRequest(REQUEST request) {
+<span class="nc" id="L132">      final long seqNum = request.getSeqNum();</span>
+<span class="nc" id="L133">      CollectionUtils.putNew(seqNum, request, requests, () -&gt; getName() + &quot;:requests&quot;);</span>
+<span class="nc" id="L134">    }</span>
+
+    /**
+     * Set reply for the request with the given seqNum if it is non-replied.
+     * Otherwise, do nothing.
+     *
+     * @return true iff this method does set the reply for the request.
+     */
+    boolean setReply(long seqNum, REPLY reply) {
+<span class="nc" id="L143">      final REQUEST request = getNonRepliedRequest(seqNum, &quot;setReply&quot;);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      if (request == null) {</span>
+<span class="nc" id="L145">        LOG.debug(&quot;{}: DUPLICATED reply {} for seq={} in {}&quot;, getName(), reply, seqNum, this);</span>
+<span class="nc" id="L146">        return false;</span>
+      }
+
+<span class="nc" id="L149">      LOG.debug(&quot;{}: set reply {} for seq={} in {}&quot;, getName(), reply, seqNum, this);</span>
+<span class="nc" id="L150">      request.setReply(reply);</span>
+<span class="nc" id="L151">      return true;</span>
+    }
+
+    void endOfRequests(long nextToProcess, REQUEST end, Consumer&lt;REQUEST&gt; replyMethod) {
+<span class="nc" id="L155">      final REQUEST nextToProcessRequest = requests.get(nextToProcess);</span>
+<span class="nc" id="L156">      Preconditions.assertNull(nextToProcessRequest,</span>
+<span class="nc" id="L157">          () -&gt; &quot;nextToProcessRequest = &quot; + nextToProcessRequest + &quot; != null, nextToProcess = &quot; + nextToProcess);</span>
+
+<span class="nc" id="L159">      final SortedMap&lt;Long, REQUEST&gt; tail = requests.tailMap(nextToProcess);</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">      for (REQUEST r : tail.values()) {</span>
+<span class="nc" id="L161">        final AlreadyClosedException e = new AlreadyClosedException(</span>
+<span class="nc" id="L162">            getName() + &quot; is closing: seq = &quot; + r.getSeqNum() + &quot; &gt; nextToProcess = &quot; + nextToProcess</span>
+                + &quot; will NEVER be processed; request = &quot; + r);
+<span class="nc" id="L164">        r.fail(e);</span>
+<span class="nc" id="L165">        replyMethod.accept(r);</span>
+<span class="nc" id="L166">        r.release();</span>
+<span class="nc" id="L167">      }</span>
+<span class="nc" id="L168">      tail.clear();</span>
+
+<span class="nc" id="L170">      putNewRequest(end);</span>
+<span class="nc" id="L171">    }</span>
+
+    void clear(long nextToProcess) {
+<span class="nc" id="L174">      LOG.debug(&quot;close {}&quot;, this);</span>
+<span class="nc" id="L175">      final SortedMap&lt;Long, REQUEST&gt; tail = requests.tailMap(nextToProcess);</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">      for (REQUEST r : tail.values()) {</span>
+<span class="nc" id="L177">        r.release();</span>
+<span class="nc" id="L178">      }</span>
+<span class="nc" id="L179">      requests.clear();</span>
+<span class="nc" id="L180">    }</span>
+
+    void log() {
+<span class="nc" id="L183">      LOG.debug(this.toString());</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">      for(REQUEST r : requests.values()) {</span>
+<span class="nc" id="L185">        LOG.debug(&quot;  {}: hasReply? {}&quot;, r.getSeqNum(), r.hasReply());</span>
+<span class="nc" id="L186">      }</span>
+<span class="nc" id="L187">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L191">      return getName() + &quot;: requests&quot; + asString(requests);</span>
+    }
+
+    private static String asString(SortedMap&lt;Long, ?&gt; map) {
+<span class="nc bnc" id="L195" title="All 2 branches missed.">      return map.isEmpty()? &quot;[]&quot;: &quot;[&quot; + map.firstKey() + &quot;..&quot; + map.lastKey() + &quot;]&quot;;</span>
+    }
+  }
+
+<span class="nc" id="L199">  class DelayedRequests {</span>
+<span class="nc" id="L200">    private final SortedMap&lt;Long, Long&gt; sorted = new TreeMap&lt;&gt;();</span>
+
+    synchronized Long put(Long seqNum) {
+<span class="nc" id="L203">      return sorted.put(seqNum, seqNum);</span>
+    }
+
+    synchronized boolean containsKey(long seqNum) {
+<span class="nc" id="L207">      return sorted.containsKey(seqNum);</span>
+    }
+
+    synchronized List&lt;Long&gt; getAllAndClear() {
+<span class="nc" id="L211">      final List&lt;Long&gt; keys = new ArrayList&lt;&gt;(sorted.keySet());</span>
+<span class="nc" id="L212">      sorted.clear();</span>
+<span class="nc" id="L213">      return keys;</span>
+    }
+
+    synchronized Long remove(long seqNum) {
+<span class="nc" id="L217">      return sorted.remove(seqNum);</span>
+    }
+
+    @Override
+    public synchronized String toString() {
+<span class="nc" id="L222">      return &quot;&quot; + sorted.keySet();</span>
+    }
+  }
+
+  /**
+   * Client side sliding window.
+   * A client may
+   * (1) allocate seqNum for new requests;
+   * (2) send requests/retries to the server;
+   * (3) receive replies/exceptions from the server;
+   * (4) return the replies/exceptions to client.
+   *
+   * Depend on the replies/exceptions, the client may retry the requests
+   * to the same or a different server.
+   */
+  class Client&lt;REQUEST extends ClientSideRequest&lt;REPLY&gt;, REPLY&gt; {
+    /** The requests in the sliding window. */
+    private final RequestMap&lt;REQUEST, REPLY&gt; requests;
+    /** Delayed requests. */
+<span class="nc" id="L241">    private final DelayedRequests delayedRequests = new DelayedRequests();</span>
+
+    /** The seqNum for the next new request. */
+<span class="nc" id="L244">    private long nextSeqNum = 1;</span>
+    /** The seqNum of the first request. */
+<span class="nc" id="L246">    private long firstSeqNum = -1;</span>
+    /** Is the first request replied? */
+    private boolean firstReplied;
+    /** The exception, if there is any. */
+    private Throwable exception;
+
+<span class="nc" id="L252">    public Client(Object name) {</span>
+<span class="nc" id="L253">      this.requests = new RequestMap&lt;REQUEST, REPLY&gt;(getName(getClass(), name)) {</span>
+        @Override
+        void log() {
+<span class="nc bnc" id="L256" title="All 2 branches missed.">          if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L257">            logDebug();</span>
+          }
+<span class="nc" id="L259">        }</span>
+
+        synchronized void logDebug() {
+<span class="nc" id="L262">          LOG.debug(super.toString());</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">          for (REQUEST r : requests) {</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">            LOG.debug(&quot;  {}: {}&quot;, r.getSeqNum(), r.hasReply() ? &quot;replied&quot;</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                : delayedRequests.containsKey(r.getSeqNum()) ? &quot;delayed&quot; : &quot;submitted&quot;);</span>
+<span class="nc" id="L266">          }</span>
+<span class="nc" id="L267">        }</span>
+      };
+<span class="nc" id="L269">    }</span>
+
+    @Override
+    public synchronized String toString() {
+<span class="nc" id="L273">      return requests + &quot;, nextSeqNum=&quot; + nextSeqNum</span>
+          + &quot;, firstSubmitted=&quot; + firstSeqNum + &quot;, replied? &quot; + firstReplied
+          + &quot;, delayed=&quot; + delayedRequests;
+    }
+
+    /**
+     * A new request arrives, create it with {@link #nextSeqNum}
+     * and then try sending it to the server.
+     *
+     * @param requestConstructor use seqNum to create a new request.
+     * @return the new request.
+     */
+    public synchronized REQUEST submitNewRequest(
+        LongFunction&lt;REQUEST&gt; requestConstructor, Consumer&lt;REQUEST&gt; sendMethod) {
+<span class="nc bnc" id="L287" title="All 2 branches missed.">      if (!requests.isEmpty()) {</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        Preconditions.assertTrue(nextSeqNum == requests.lastSeqNum() + 1,</span>
+<span class="nc" id="L289">            () -&gt; &quot;nextSeqNum=&quot; + nextSeqNum + &quot; but &quot; + this);</span>
+      }
+
+<span class="nc" id="L292">      final long seqNum = nextSeqNum++;</span>
+<span class="nc" id="L293">      final REQUEST r = requestConstructor.apply(seqNum);</span>
+
+<span class="nc bnc" id="L295" title="All 2 branches missed.">      if (exception != null) {</span>
+<span class="nc" id="L296">        alreadyClosed(r, exception);</span>
+<span class="nc" id="L297">        return r;</span>
+      }
+
+<span class="nc" id="L300">      requests.putNewRequest(r);</span>
+
+<span class="nc" id="L302">      final boolean submitted = sendOrDelayRequest(r, sendMethod);</span>
+<span class="nc" id="L303">      LOG.debug(&quot;{}: submitting a new request {} in {}? {}&quot;,</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">          requests.getName(), r, this, submitted? &quot;submitted&quot;: &quot;delayed&quot;);</span>
+<span class="nc" id="L305">      return r;</span>
+    }
+
+    private boolean sendOrDelayRequest(REQUEST request, Consumer&lt;REQUEST&gt; sendMethod) {
+<span class="nc" id="L309">      final long seqNum = request.getSeqNum();</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">      Preconditions.assertTrue(requests.getNonRepliedRequest(seqNum, &quot;sendOrDelayRequest&quot;) == request);</span>
+
+<span class="nc bnc" id="L312" title="All 2 branches missed.">      if (firstReplied) {</span>
+        // already received the reply for the first request, submit any request.
+<span class="nc" id="L314">        sendMethod.accept(request);</span>
+<span class="nc" id="L315">        return true;</span>
+      }
+
+<span class="nc bnc" id="L318" title="All 4 branches missed.">      if (firstSeqNum == -1 &amp;&amp; seqNum == requests.firstSeqNum()) {</span>
+        // first request is not yet submitted and this is the first request, submit it.
+<span class="nc" id="L320">        LOG.debug(&quot;{}: detect firstSubmitted {} in {}&quot;, requests.getName(), request, this);</span>
+<span class="nc" id="L321">        firstSeqNum = seqNum;</span>
+<span class="nc" id="L322">        request.setFirstRequest();</span>
+<span class="nc" id="L323">        sendMethod.accept(request);</span>
+<span class="nc" id="L324">        return true;</span>
+      }
+
+      // delay other requests
+<span class="nc" id="L328">      CollectionUtils.putNew(seqNum, delayedRequests::put, () -&gt; requests.getName() + &quot;:delayedRequests&quot;);</span>
+<span class="nc" id="L329">      return false;</span>
+    }
+
+    /** Receive a retry from an existing request (may out-of-order). */
+    public synchronized void retry(REQUEST request, Consumer&lt;REQUEST&gt; sendMethod) {
+<span class="nc bnc" id="L334" title="All 2 branches missed.">      if (requests.getNonRepliedRequest(request.getSeqNum(), &quot;retry&quot;) != request) {</span>
+        // out-dated or invalid retry
+<span class="nc" id="L336">        LOG.debug(&quot;{}: Ignore retry {} in {}&quot;, requests.getName(), request, this);</span>
+<span class="nc" id="L337">        return;</span>
+      }
+<span class="nc" id="L339">      final boolean submitted = sendOrDelayRequest(request, sendMethod);</span>
+<span class="nc" id="L340">      LOG.debug(&quot;{}: submitting a retry {} in {}? {}&quot;,</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">          requests.getName(), request, this, submitted? &quot;submitted&quot;: &quot;delayed&quot;);</span>
+<span class="nc" id="L342">    }</span>
+
+    private void removeRepliedFromHead() {
+<span class="nc bnc" id="L345" title="All 2 branches missed.">      for (final Iterator&lt;REQUEST&gt; i = requests.iterator(); i.hasNext(); i.remove()) {</span>
+<span class="nc" id="L346">        final REQUEST r = i.next();</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">        if (!r.hasReply()) {</span>
+<span class="nc" id="L348">          return;</span>
+        }
+      }
+<span class="nc" id="L351">    }</span>
+
+    /**
+     * Receive a reply with the given seqNum (may out-of-order).
+     * It may trigger the client to send delayed requests.
+     */
+    public synchronized void receiveReply(
+        long seqNum, REPLY reply, Consumer&lt;REQUEST&gt; sendMethod) {
+<span class="nc bnc" id="L359" title="All 2 branches missed.">      if (!requests.setReply(seqNum, reply)) {</span>
+<span class="nc" id="L360">        return; // request already replied</span>
+      }
+<span class="nc bnc" id="L362" title="All 2 branches missed.">      if (seqNum == firstSeqNum) {</span>
+<span class="nc" id="L363">        firstReplied = true; // received the reply for the first submitted request</span>
+      }
+<span class="nc" id="L365">      removeRepliedFromHead();</span>
+<span class="nc" id="L366">      trySendDelayed(sendMethod);</span>
+<span class="nc" id="L367">    }</span>
+
+    private void trySendDelayed(Consumer&lt;REQUEST&gt; sendMethod) {
+<span class="nc bnc" id="L370" title="All 2 branches missed.">      if (firstReplied) {</span>
+        // after first received, all other requests can be submitted (out-of-order)
+<span class="nc" id="L372">        delayedRequests.getAllAndClear().forEach(</span>
+<span class="nc" id="L373">            seqNum -&gt; sendMethod.accept(requests.getNonRepliedRequest(seqNum, &quot;trySendDelayed&quot;)));</span>
+      } else {
+        // Otherwise, submit the first only if it is a delayed request
+<span class="nc" id="L376">        final Iterator&lt;REQUEST&gt; i = requests.iterator();</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">        if (i.hasNext()) {</span>
+<span class="nc" id="L378">          final REQUEST r = i.next();</span>
+<span class="nc" id="L379">          final Long delayed = delayedRequests.remove(r.getSeqNum());</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">          if (delayed != null) {</span>
+<span class="nc" id="L381">            sendOrDelayRequest(r, sendMethod);</span>
+          }
+        }
+      }
+<span class="nc" id="L385">    }</span>
+
+    /** Reset the {@link #firstSeqNum} The stream has an error. */
+    public synchronized void resetFirstSeqNum() {
+<span class="nc" id="L389">      firstSeqNum = -1;</span>
+<span class="nc" id="L390">      firstReplied = false;</span>
+<span class="nc" id="L391">      LOG.debug(&quot;After resetFirstSeqNum: {}&quot;, this);</span>
+<span class="nc" id="L392">    }</span>
+
+    /** Fail all requests starting from the given seqNum. */
+    public synchronized void fail(final long startingSeqNum, Throwable e) {
+<span class="nc" id="L396">      exception = e;</span>
+
+<span class="nc" id="L398">      boolean handled = false;</span>
+<span class="nc bnc" id="L399" title="All 2 branches missed.">      for(long i = startingSeqNum; i &lt;= requests.lastSeqNum(); i++) {</span>
+<span class="nc" id="L400">        final REQUEST request = requests.getNonRepliedRequest(i, &quot;fail&quot;);</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        if (request != null) {</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">          if (request.getSeqNum() == startingSeqNum) {</span>
+<span class="nc" id="L403">            request.fail(e);</span>
+          } else {
+<span class="nc" id="L405">            alreadyClosed(request, e);</span>
+          }
+<span class="nc" id="L407">          handled = true;</span>
+        }
+      }
+
+<span class="nc bnc" id="L411" title="All 2 branches missed.">      if (handled) {</span>
+<span class="nc" id="L412">        removeRepliedFromHead();</span>
+      }
+<span class="nc" id="L414">    }</span>
+
+    private void alreadyClosed(REQUEST request, Throwable e) {
+<span class="nc" id="L417">      request.fail(new AlreadyClosedException(requests.getName() + &quot; is closed.&quot;, e));</span>
+<span class="nc" id="L418">    }</span>
+
+    public synchronized boolean isFirst(long seqNum) {
+<span class="nc bnc" id="L421" title="All 4 branches missed.">      return seqNum == (firstSeqNum != -1 ? firstSeqNum : requests.firstSeqNum());</span>
+    }
+  }
+
+  /**
+   * Server side sliding window.
+   * A server may
+   * (1) receive requests from client;
+   * (2) submit the requests for processing;
+   * (3) receive replies from the processing unit;
+   * (4) send replies to the client.
+   */
+  class Server&lt;REQUEST extends ServerSideRequest&lt;REPLY&gt;, REPLY&gt; implements Closeable {
+    /** The requests in the sliding window. */
+    private final RequestMap&lt;REQUEST, REPLY&gt; requests;
+    /** The end of requests */
+    private final REQUEST end;
+
+<span class="nc" id="L439">    private long nextToProcess = -1;</span>
+
+<span class="nc" id="L441">    public Server(Object name, REQUEST end) {</span>
+<span class="nc" id="L442">      this.requests = new RequestMap&lt;&gt;(getName(getClass(), name));</span>
+<span class="nc" id="L443">      this.end = end;</span>
+<span class="nc bnc" id="L444" title="All 2 branches missed.">      Preconditions.assertTrue(end.getSeqNum() == Long.MAX_VALUE);</span>
+<span class="nc" id="L445">    }</span>
+
+    @Override
+    public synchronized String toString() {
+<span class="nc" id="L449">      return requests + &quot;, nextToProcess=&quot; + nextToProcess;</span>
+    }
+
+    /** A request (or a retry) arrives (may be out-of-order except for the first request). */
+    public synchronized void receivedRequest(REQUEST request, Consumer&lt;REQUEST&gt; processingMethod) {
+<span class="nc" id="L454">      final long seqNum = request.getSeqNum();</span>
+      final boolean accepted;
+<span class="nc bnc" id="L456" title="All 6 branches missed.">      if (nextToProcess == -1 &amp;&amp; (request.isFirstRequest() || seqNum == 0)) {</span>
+<span class="nc" id="L457">        nextToProcess = seqNum;</span>
+<span class="nc" id="L458">        requests.putNewRequest(request);</span>
+<span class="nc" id="L459">        LOG.debug(&quot;Received seq={} (first request), {}&quot;, seqNum, this);</span>
+<span class="nc" id="L460">        accepted = true;</span>
+<span class="nc bnc" id="L461" title="All 2 branches missed.">      } else if (request.getSeqNum() &lt; nextToProcess) {</span>
+<span class="nc" id="L462">        LOG.debug(&quot;Received seq={} &lt; nextToProcess {}, {}&quot;, seqNum, nextToProcess, this);</span>
+<span class="nc" id="L463">        accepted = false;</span>
+      } else {
+<span class="nc" id="L465">        final boolean isRetry = requests.putIfAbsent(request);</span>
+<span class="nc" id="L466">        LOG.debug(&quot;Received seq={}, isRetry? {}, {}&quot;, seqNum, isRetry, this);</span>
+<span class="nc bnc" id="L467" title="All 2 branches missed.">        accepted = !isRetry;</span>
+      }
+
+<span class="nc bnc" id="L470" title="All 2 branches missed.">      if (accepted) {</span>
+<span class="nc" id="L471">        processRequestsFromHead(processingMethod);</span>
+      } else {
+<span class="nc" id="L473">        request.release();</span>
+      }
+<span class="nc" id="L475">    }</span>
+
+    private void processRequestsFromHead(Consumer&lt;REQUEST&gt; processingMethod) {
+<span class="nc bnc" id="L478" title="All 2 branches missed.">      for(REQUEST r : requests) {</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">        if (r.getSeqNum() &gt; nextToProcess) {</span>
+<span class="nc" id="L480">          return;</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        } else if (r.getSeqNum() == nextToProcess) {</span>
+<span class="nc" id="L482">          processingMethod.accept(r);</span>
+<span class="nc" id="L483">          r.release();</span>
+<span class="nc" id="L484">          nextToProcess++;</span>
+        }
+<span class="nc" id="L486">      }</span>
+<span class="nc" id="L487">    }</span>
+
+    /**
+     * Receives a reply for the given seqNum (may out-of-order) from the processor.
+     * It may trigger sending replies to client.
+     */
+    public synchronized void receiveReply(long seqNum, REPLY reply, Consumer&lt;REQUEST&gt; replyMethod) {
+<span class="nc bnc" id="L494" title="All 2 branches missed.">      if (!requests.setReply(seqNum, reply)) {</span>
+<span class="nc" id="L495">        return; // request already replied</span>
+      }
+<span class="nc" id="L497">      sendRepliesFromHead(replyMethod);</span>
+<span class="nc" id="L498">    }</span>
+
+    private void sendRepliesFromHead(Consumer&lt;REQUEST&gt; replyMethod) {
+<span class="nc bnc" id="L501" title="All 2 branches missed.">      for(final Iterator&lt;REQUEST&gt; i = requests.iterator(); i.hasNext(); i.remove()) {</span>
+<span class="nc" id="L502">        final REQUEST r = i.next();</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">        if (!r.hasReply()) {</span>
+<span class="nc" id="L504">          return;</span>
+        }
+<span class="nc" id="L506">        replyMethod.accept(r);</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        if (r == end) {</span>
+<span class="nc" id="L508">          return;</span>
+        }
+      }
+<span class="nc" id="L511">    }</span>
+
+    /**
+     * Signal the end of requests.
+     * @return true if no more outstanding requests.
+     */
+    public synchronized boolean endOfRequests(Consumer&lt;REQUEST&gt; replyMethod) {
+<span class="nc bnc" id="L518" title="All 2 branches missed.">      if (requests.isEmpty()) {</span>
+<span class="nc" id="L519">        return true;</span>
+      }
+
+<span class="nc" id="L522">      LOG.debug(&quot;{}: put end-of-request in {}&quot;, requests.getName(), this);</span>
+<span class="nc" id="L523">      requests.endOfRequests(nextToProcess, end, replyMethod);</span>
+<span class="nc" id="L524">      return false;</span>
+    }
+
+    @Override
+    public void close() {
+<span class="nc" id="L529">      requests.clear(nextToProcess);</span>
+<span class="nc" id="L530">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

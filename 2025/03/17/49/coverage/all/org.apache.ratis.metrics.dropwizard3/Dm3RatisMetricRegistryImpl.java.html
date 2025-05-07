@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Dm3RatisMetricRegistryImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.metrics.dropwizard3</a> &gt; <span class="el_source">Dm3RatisMetricRegistryImpl.java</span></div><h1>Dm3RatisMetricRegistryImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.metrics.dropwizard3;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.metrics.Timekeeper;
+import com.codahale.metrics.ConsoleReporter;
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Metric;
+import com.codahale.metrics.MetricFilter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.MetricSet;
+import com.codahale.metrics.JmxReporter;
+
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.SortedMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+
+/**
+ * Custom implementation of {@link MetricRegistry}.
+ */
+public class Dm3RatisMetricRegistryImpl implements RatisMetricRegistry {
+  static Dm3RatisMetricRegistryImpl cast(RatisMetricRegistry registry) {
+<span class="nc bnc" id="L46" title="All 2 branches missed.">    if (!(registry instanceof Dm3RatisMetricRegistryImpl)) {</span>
+<span class="nc" id="L47">      throw new IllegalStateException(&quot;Unexpected class: &quot; + registry.getClass().getName());</span>
+    }
+<span class="nc" id="L49">    return (Dm3RatisMetricRegistryImpl) registry;</span>
+  }
+
+<span class="nc" id="L52">  private final MetricRegistry metricRegistry = new MetricRegistry();</span>
+
+  private final MetricRegistryInfo info;
+  private final String namePrefix;
+<span class="nc" id="L56">  private final Map&lt;String, String&gt; metricNameCache = new ConcurrentHashMap&lt;&gt;();</span>
+
+  private JmxReporter jmxReporter;
+  private ConsoleReporter consoleReporter;
+
+<span class="nc" id="L61">  public Dm3RatisMetricRegistryImpl(MetricRegistryInfo info) {</span>
+<span class="nc" id="L62">    this.info = Objects.requireNonNull(info, &quot;info == null&quot;);</span>
+<span class="nc" id="L63">    this.namePrefix = MetricRegistry.name(info.getApplicationName(), info.getMetricsComponentName(), info.getPrefix());</span>
+<span class="nc" id="L64">  }</span>
+
+  @Override
+  public Timekeeper timer(String name) {
+<span class="nc" id="L68">    return new Dm3TimekeeperImpl(metricRegistry.timer(getMetricName(name)));</span>
+  }
+
+  static LongCounter toLongCounter(Counter c) {
+<span class="nc" id="L72">    return new LongCounter() {</span>
+      @Override
+      public void inc(long n) {
+<span class="nc" id="L75">        c.inc(n);</span>
+<span class="nc" id="L76">      }</span>
+
+      @Override
+      public void dec(long n) {
+<span class="nc" id="L80">        c.dec(n);</span>
+<span class="nc" id="L81">      }</span>
+
+      @Override
+      public long getCount() {
+<span class="nc" id="L85">        return c.getCount();</span>
+      }
+    };
+  }
+
+  @Override
+  public LongCounter counter(String name) {
+<span class="nc" id="L92">    return toLongCounter(metricRegistry.counter(getMetricName(name)));</span>
+  }
+
+  @Override
+  public boolean remove(String name) {
+<span class="nc" id="L97">    return metricRegistry.remove(getMetricName(name));</span>
+  }
+
+  static &lt;T&gt; Gauge&lt;T&gt; toGauge(Supplier&lt;T&gt; supplier) {
+<span class="nc" id="L101">    return supplier::get;</span>
+  }
+
+  @Override
+  public &lt;T&gt; void gauge(String name, Supplier&lt;Supplier&lt;T&gt;&gt; gaugeSupplier) {
+<span class="nc" id="L106">    metricRegistry.gauge(getMetricName(name), () -&gt; toGauge(gaugeSupplier.get()));</span>
+<span class="nc" id="L107">  }</span>
+
+  public SortedMap&lt;String, Gauge&gt; getGauges(MetricFilter filter) {
+<span class="nc" id="L110">    return metricRegistry.getGauges(filter);</span>
+  }
+
+  @VisibleForTesting
+  public Metric get(String shortName) {
+<span class="nc" id="L115">    return metricRegistry.getMetrics().get(getMetricName(shortName));</span>
+  }
+
+  private String getMetricName(String shortName) {
+<span class="nc" id="L119">    return metricNameCache.computeIfAbsent(shortName, key -&gt; MetricRegistry.name(namePrefix, shortName));</span>
+  }
+
+  private &lt;T extends Metric&gt; T register(String name, T metric) throws IllegalArgumentException {
+<span class="nc" id="L123">    return metricRegistry.register(getMetricName(name), metric);</span>
+  }
+
+
+  public MetricRegistry getDropWizardMetricRegistry() {
+<span class="nc" id="L128">    return metricRegistry;</span>
+  }
+
+  @Override public MetricRegistryInfo getMetricRegistryInfo(){
+<span class="nc" id="L132">    return this.info;</span>
+  }
+
+  void registerAll(String prefix, MetricSet metricSet) {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    for (Map.Entry&lt;String, Metric&gt; entry : metricSet.getMetrics().entrySet()) {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      if (entry.getValue() instanceof MetricSet) {</span>
+<span class="nc" id="L138">        registerAll(prefix + &quot;.&quot; + entry.getKey(), (MetricSet) entry.getValue());</span>
+      } else {
+<span class="nc" id="L140">        register(prefix + &quot;.&quot; + entry.getKey(), entry.getValue());</span>
+      }
+<span class="nc" id="L142">    }</span>
+<span class="nc" id="L143">  }</span>
+
+  void setJmxReporter(JmxReporter jmxReporter) {
+<span class="nc" id="L146">    this.jmxReporter = jmxReporter;</span>
+<span class="nc" id="L147">  }</span>
+
+  JmxReporter getJmxReporter() {
+<span class="nc" id="L150">    return this.jmxReporter;</span>
+  }
+
+  void setConsoleReporter(ConsoleReporter consoleReporter) {
+<span class="nc" id="L154">    this.consoleReporter = consoleReporter;</span>
+<span class="nc" id="L155">  }</span>
+
+  ConsoleReporter getConsoleReporter() {
+<span class="nc" id="L158">    return this.consoleReporter;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

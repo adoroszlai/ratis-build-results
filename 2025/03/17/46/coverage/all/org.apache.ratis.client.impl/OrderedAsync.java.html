@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderedAsync.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">OrderedAsync.java</span></div><h1>OrderedAsync.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import org.apache.ratis.client.retry.ClientRetryEvent;
+import org.apache.ratis.client.RaftClientConfigKeys;
+import org.apache.ratis.client.impl.RaftClientImpl.PendingClientRequest;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase;
+import org.apache.ratis.proto.RaftProtos.SlidingWindowEntry;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.GroupMismatchException;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.retry.RetryPolicy;
+import org.apache.ratis.rpc.CallId;
+import org.apache.ratis.util.BatchLogger;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.SlidingWindow;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.LongFunction;
+
+/** Send ordered asynchronous requests to a raft service. */
+public final class OrderedAsync {
+<span class="nc" id="L60">  public static final Logger LOG = LoggerFactory.getLogger(OrderedAsync.class);</span>
+
+<span class="nc" id="L62">  private enum BatchLogKey implements BatchLogger.Key {</span>
+<span class="nc" id="L63">    SEND_REQUEST_EXCEPTION</span>
+  }
+
+  static class PendingOrderedRequest extends PendingClientRequest
+      implements SlidingWindow.ClientSideRequest&lt;RaftClientReply&gt; {
+    private final long callId;
+    private final long seqNum;
+    private final AtomicReference&lt;Function&lt;SlidingWindowEntry, RaftClientRequest&gt;&gt; requestConstructor;
+<span class="nc" id="L71">    private volatile boolean isFirst = false;</span>
+
+    PendingOrderedRequest(long callId, long seqNum,
+<span class="nc" id="L74">        Function&lt;SlidingWindowEntry, RaftClientRequest&gt; requestConstructor) {</span>
+<span class="nc" id="L75">      this.callId = callId;</span>
+<span class="nc" id="L76">      this.seqNum = seqNum;</span>
+<span class="nc" id="L77">      this.requestConstructor = new AtomicReference&lt;&gt;(requestConstructor);</span>
+<span class="nc" id="L78">    }</span>
+
+    @Override
+    public RaftClientRequest newRequestImpl() {
+<span class="nc" id="L82">      return Optional.ofNullable(requestConstructor.get())</span>
+<span class="nc" id="L83">          .map(f -&gt; f.apply(ProtoUtils.toSlidingWindowEntry(seqNum, isFirst)))</span>
+<span class="nc" id="L84">          .orElse(null);</span>
+    }
+
+    @Override
+    public void setFirstRequest() {
+<span class="nc" id="L89">      isFirst = true;</span>
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public long getSeqNum() {
+<span class="nc" id="L94">      return seqNum;</span>
+    }
+
+    @Override
+    public boolean hasReply() {
+<span class="nc" id="L99">      return getReplyFuture().isDone();</span>
+    }
+
+    @Override
+    public void setReply(RaftClientReply reply) {
+<span class="nc" id="L104">      requestConstructor.set(null);</span>
+<span class="nc" id="L105">      getReplyFuture().complete(reply);</span>
+<span class="nc" id="L106">    }</span>
+
+    @Override
+    public void fail(Throwable e) {
+<span class="nc" id="L110">      requestConstructor.set(null);</span>
+<span class="nc" id="L111">      getReplyFuture().completeExceptionally(e);</span>
+<span class="nc" id="L112">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L116">      return &quot;[cid=&quot; + callId + &quot;, seq=&quot; + getSeqNum() + &quot;]&quot;;</span>
+    }
+  }
+
+  static OrderedAsync newInstance(RaftClientImpl client, RaftProperties properties) {
+<span class="nc" id="L121">    final OrderedAsync ordered = new OrderedAsync(client, properties);</span>
+    // send a dummy watch request to establish the connection
+    // TODO: this is a work around, it is better to fix the underlying RPC implementation
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (RaftClientConfigKeys.Async.Experimental.sendDummyRequest(properties)) {</span>
+<span class="nc" id="L125">      ordered.send(RaftClientRequest.watchRequestType(), null, null);</span>
+    }
+<span class="nc" id="L127">    return ordered;</span>
+  }
+
+  private final RaftClientImpl client;
+  /** Map: id -&gt; {@link SlidingWindow}, in order to support async calls to the Raft service or individual servers. */
+<span class="nc" id="L132">  private final ConcurrentMap&lt;String, SlidingWindow.Client&lt;PendingOrderedRequest, RaftClientReply&gt;&gt; slidingWindows</span>
+      = new ConcurrentHashMap&lt;&gt;();
+  private final Semaphore requestSemaphore;
+
+<span class="nc" id="L136">  private OrderedAsync(RaftClientImpl client, RaftProperties properties) {</span>
+<span class="nc" id="L137">    this.client = Objects.requireNonNull(client, &quot;client == null&quot;);</span>
+<span class="nc" id="L138">    this.requestSemaphore = new Semaphore(RaftClientConfigKeys.Async.outstandingRequestsMax(properties));</span>
+<span class="nc" id="L139">  }</span>
+
+  private void resetSlidingWindow(RaftClientRequest request) {
+<span class="nc" id="L142">    getSlidingWindow(request).resetFirstSeqNum();</span>
+<span class="nc" id="L143">  }</span>
+
+  private SlidingWindow.Client&lt;PendingOrderedRequest, RaftClientReply&gt; getSlidingWindow(RaftClientRequest request) {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    return getSlidingWindow(request.isToLeader()? null: request.getServerId());</span>
+  }
+
+  private SlidingWindow.Client&lt;PendingOrderedRequest, RaftClientReply&gt; getSlidingWindow(RaftPeerId target) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    final String id = target != null ? target.toString() : &quot;RAFT&quot;;</span>
+<span class="nc" id="L151">    return slidingWindows.computeIfAbsent(id, key -&gt; new SlidingWindow.Client&lt;&gt;(client.getId() + &quot;-&gt;&quot; + key));</span>
+  }
+
+  private void failAllAsyncRequests(RaftClientRequest request, Throwable t) {
+<span class="nc" id="L155">    getSlidingWindow(request).fail(request.getSlidingWindowEntry().getSeqNum(), t);</span>
+<span class="nc" id="L156">  }</span>
+
+  CompletableFuture&lt;RaftClientReply&gt; send(RaftClientRequest.Type type, Message message, RaftPeerId server) {
+<span class="nc bnc" id="L159" title="All 4 branches missed.">    if (!type.is(TypeCase.WATCH) &amp;&amp; !type.is(TypeCase.MESSAGESTREAM)) {</span>
+<span class="nc" id="L160">      Objects.requireNonNull(message, &quot;message == null&quot;);</span>
+    }
+    try {
+<span class="nc" id="L163">      requestSemaphore.acquire();</span>
+<span class="nc" id="L164">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L165">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L166">      return JavaUtils.completeExceptionally(IOUtils.toInterruptedIOException(</span>
+          &quot;Interrupted when sending &quot; + type + &quot;, message=&quot; + message, e));
+<span class="nc" id="L168">    }</span>
+
+<span class="nc" id="L170">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L171">    final LongFunction&lt;PendingOrderedRequest&gt; constructor = seqNum -&gt; new PendingOrderedRequest(callId, seqNum,</span>
+<span class="nc" id="L172">        slidingWindowEntry -&gt; client.newRaftClientRequest(server, callId, message, type, slidingWindowEntry));</span>
+<span class="nc" id="L173">    return getSlidingWindow(server).submitNewRequest(constructor, this::sendRequestWithRetry</span>
+<span class="nc" id="L174">    ).getReplyFuture(</span>
+<span class="nc" id="L175">    ).thenApply(reply -&gt; RaftClientImpl.handleRaftException(reply, CompletionException::new)</span>
+<span class="nc" id="L176">    ).whenComplete((r, e) -&gt; {</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">      if (e != null) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (e.getCause() instanceof AlreadyClosedException) {</span>
+<span class="nc" id="L179">          LOG.error(&quot;Failed to send request, message=&quot; + message + &quot; due to &quot; + e);</span>
+        } else {
+<span class="nc" id="L181">          LOG.error(&quot;Failed to send request, message=&quot; + message, e);</span>
+        }
+      }
+<span class="nc" id="L184">      requestSemaphore.release();</span>
+<span class="nc" id="L185">    });</span>
+  }
+
+  private void sendRequestWithRetry(PendingOrderedRequest pending) {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">    if (pending == null) {</span>
+<span class="nc" id="L190">      return;</span>
+    }
+<span class="nc bnc" id="L192" title="All 2 branches missed.">    if (pending.getReplyFuture().isDone()) {</span>
+<span class="nc" id="L193">      return;</span>
+    }
+
+<span class="nc" id="L196">    final RaftClientRequest request = pending.newRequest();</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">    if (request == null) { // already done</span>
+<span class="nc" id="L198">      LOG.debug(&quot;{} newRequest returns null&quot;, pending);</span>
+<span class="nc" id="L199">      return;</span>
+    }
+
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    if (getSlidingWindow((RaftPeerId) null).isFirst(pending.getSeqNum())) {</span>
+<span class="nc" id="L203">      pending.setFirstRequest();</span>
+    }
+<span class="nc" id="L205">    LOG.debug(&quot;{}: send* {}&quot;, client.getId(), request);</span>
+<span class="nc" id="L206">    client.getClientRpc().sendRequestAsync(request).thenAccept(reply -&gt; {</span>
+<span class="nc" id="L207">      LOG.debug(&quot;{}: receive* {}&quot;, client.getId(), reply);</span>
+<span class="nc" id="L208">      Objects.requireNonNull(reply, &quot;reply == null&quot;);</span>
+<span class="nc" id="L209">      client.handleReply(request, reply);</span>
+<span class="nc" id="L210">      getSlidingWindow(request).receiveReply(</span>
+<span class="nc" id="L211">          request.getSlidingWindowEntry().getSeqNum(), reply, this::sendRequestWithRetry);</span>
+<span class="nc" id="L212">    }).exceptionally(e -&gt; {</span>
+<span class="nc" id="L213">      final Throwable exception = e;</span>
+<span class="nc" id="L214">      final String key = client.getId() + &quot;-&quot; + request.getCallId() + &quot;-&quot; + exception;</span>
+<span class="nc" id="L215">      final Consumer&lt;String&gt; op = suffix -&gt; LOG.error(&quot;{} {}: Failed* {}&quot;, suffix, client.getId(), request, exception);</span>
+<span class="nc" id="L216">      BatchLogger.print(BatchLogKey.SEND_REQUEST_EXCEPTION, key, op);</span>
+<span class="nc" id="L217">      handleException(pending, request, e);</span>
+<span class="nc" id="L218">      return null;</span>
+    });
+<span class="nc" id="L220">  }</span>
+
+  private void handleException(PendingOrderedRequest pending, RaftClientRequest request, Throwable e) {
+<span class="nc" id="L223">    final RetryPolicy retryPolicy = client.getRetryPolicy();</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">    if (client.isClosed()) {</span>
+<span class="nc" id="L225">      failAllAsyncRequests(request, new AlreadyClosedException(client + &quot; is closed.&quot;));</span>
+<span class="nc" id="L226">      return;</span>
+    }
+
+<span class="nc" id="L229">    e = JavaUtils.unwrapCompletionException(e);</span>
+<span class="nc bnc" id="L230" title="All 4 branches missed.">    if (!(e instanceof IOException) || e instanceof GroupMismatchException) {</span>
+      // non-retryable exceptions
+<span class="nc" id="L232">      failAllAsyncRequests(request, e);</span>
+<span class="nc" id="L233">      return;</span>
+    }
+
+<span class="nc" id="L236">    final ClientRetryEvent event = pending.newClientRetryEvent(request, e);</span>
+<span class="nc" id="L237">    final RetryPolicy.Action action = retryPolicy.handleAttemptFailure(event);</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">    if (!action.shouldRetry()) {</span>
+<span class="nc" id="L239">      failAllAsyncRequests(request, client.noMoreRetries(event));</span>
+<span class="nc" id="L240">      return;</span>
+    }
+
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    if (e instanceof NotLeaderException) {</span>
+<span class="nc" id="L244">      client.handleNotLeaderException(request, (NotLeaderException) e, this::resetSlidingWindow);</span>
+    } else {
+<span class="nc" id="L246">      client.handleIOException(request, (IOException) e, null, this::resetSlidingWindow);</span>
+    }
+<span class="nc" id="L248">    final TimeDuration sleepTime = client.getEffectiveSleepTime(e, action.getSleepTime());</span>
+<span class="nc" id="L249">    LOG.debug(&quot;schedule* retry with sleep {} for attempt #{} of {}, {}&quot;,</span>
+<span class="nc" id="L250">        sleepTime, event.getAttemptCount(), request, retryPolicy);</span>
+<span class="nc" id="L251">    final SlidingWindow.Client&lt;PendingOrderedRequest, RaftClientReply&gt; slidingWindow = getSlidingWindow(request);</span>
+<span class="nc" id="L252">    client.getScheduler().onTimeout(sleepTime,</span>
+<span class="nc" id="L253">        () -&gt; slidingWindow.retry(pending, this::sendRequestWithRetry),</span>
+<span class="nc" id="L254">        LOG, () -&gt; &quot;Failed* to retry &quot; + pending);</span>
+<span class="nc" id="L255">  }</span>
+
+  void assertRequestSemaphore(int expectedAvailablePermits, int expectedQueueLength) {
+<span class="nc" id="L258">    Preconditions.assertSame(expectedAvailablePermits, requestSemaphore.availablePermits(), &quot;availablePermits&quot;);</span>
+<span class="nc" id="L259">    Preconditions.assertSame(expectedQueueLength, requestSemaphore.getQueueLength(), &quot;queueLength&quot;);</span>
+<span class="nc" id="L260">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogAppenderBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">LogAppenderBase.java</span></div><h1>LogAppenderBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLog.EntryWithData;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.util.AwaitForSignal;
+import org.apache.ratis.util.DataQueue;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongUnaryOperator;
+
+/**
+ * An abstract implementation of {@link LogAppender}.
+ */
+public abstract class LogAppenderBase implements LogAppender {
+  /** For buffering log entries to create an {@link EntryList}. */
+  private static class EntryBuffer {
+    /** A queue for limiting the byte size, number of elements and poll time. */
+    private final DataQueue&lt;EntryWithData&gt; queue;
+    /** A map for releasing {@link ReferenceCountedObject}s. */
+<span class="nc" id="L59">    private final Map&lt;Long, ReferenceCountedObject&lt;EntryWithData&gt;&gt; references = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L61">    EntryBuffer(Object name, RaftProperties properties) {</span>
+<span class="nc" id="L62">      final SizeInBytes bufferByteLimit = RaftServerConfigKeys.Log.Appender.bufferByteLimit(properties);</span>
+<span class="nc" id="L63">      final int bufferElementLimit = RaftServerConfigKeys.Log.Appender.bufferElementLimit(properties);</span>
+<span class="nc" id="L64">      this.queue = new DataQueue&lt;&gt;(name, bufferByteLimit, bufferElementLimit, EntryWithData::getSerializedSize);</span>
+<span class="nc" id="L65">    }</span>
+
+    boolean putNew(long index, ReferenceCountedObject&lt;EntryWithData&gt; retained) {
+<span class="nc bnc" id="L68" title="All 2 branches missed.">      if (!queue.offer(retained.get())) {</span>
+<span class="nc" id="L69">        retained.release();</span>
+<span class="nc" id="L70">        return false;</span>
+      }
+<span class="nc" id="L72">      final ReferenceCountedObject&lt;EntryWithData&gt; previous = references.put(index, retained);</span>
+<span class="nc" id="L73">      Preconditions.assertNull(previous, () -&gt; &quot;previous with index &quot; + index);</span>
+<span class="nc" id="L74">      return true;</span>
+    }
+
+    void releaseAllAndClear() {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">      for (ReferenceCountedObject&lt;EntryWithData&gt; ref : references.values()) {</span>
+<span class="nc" id="L79">        ref.release();</span>
+<span class="nc" id="L80">      }</span>
+<span class="nc" id="L81">      references.clear();</span>
+<span class="nc" id="L82">      queue.clear();</span>
+<span class="nc" id="L83">    }</span>
+
+    EntryList pollList(long heartbeatWaitTimeMs) throws RaftLogIOException {
+      final List&lt;LogEntryProto&gt; protos;
+      try {
+<span class="nc" id="L88">        protos = queue.pollList(heartbeatWaitTimeMs, EntryWithData::getEntry, null);</span>
+<span class="nc" id="L89">      } catch (Exception e) {</span>
+<span class="nc" id="L90">        releaseAllAndClear();</span>
+<span class="nc" id="L91">        throw e;</span>
+      } finally {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (EntryWithData entry : queue) {</span>
+          // Remove and release remaining entries.
+<span class="nc" id="L95">          final ReferenceCountedObject&lt;EntryWithData&gt; removed = references.remove(entry.getIndex());</span>
+<span class="nc" id="L96">          Objects.requireNonNull(removed, &quot;removed == null&quot;);</span>
+<span class="nc" id="L97">          removed.release();</span>
+<span class="nc" id="L98">        }</span>
+<span class="nc" id="L99">        queue.clear();</span>
+      }
+<span class="nc" id="L101">      return new EntryList(protos, references);</span>
+    }
+  }
+
+  /** Storing log entries and their references. */
+  private static class EntryList {
+    private final List&lt;LogEntryProto&gt; protos;
+    private final Collection&lt;ReferenceCountedObject&lt;EntryWithData&gt;&gt; references;
+
+<span class="nc" id="L110">    EntryList(List&lt;LogEntryProto&gt; protos, Map&lt;Long, ReferenceCountedObject&lt;EntryWithData&gt;&gt; references) {</span>
+<span class="nc" id="L111">      Preconditions.assertSame(references.size(), protos.size(), &quot;#entries&quot;);</span>
+<span class="nc" id="L112">      this.protos = Collections.unmodifiableList(protos);</span>
+<span class="nc" id="L113">      this.references = Collections.unmodifiableCollection(references.values());</span>
+<span class="nc" id="L114">    }</span>
+
+    List&lt;LogEntryProto&gt; getProtos() {
+<span class="nc" id="L117">      return protos;</span>
+    }
+
+    void retain() {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">      for (ReferenceCountedObject&lt;EntryWithData&gt; ref : references) {</span>
+<span class="nc" id="L122">        ref.retain();</span>
+<span class="nc" id="L123">      }</span>
+<span class="nc" id="L124">    }</span>
+
+    void release() {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">      for (ReferenceCountedObject&lt;EntryWithData&gt; ref : references) {</span>
+<span class="nc" id="L128">        ref.release();</span>
+<span class="nc" id="L129">      }</span>
+<span class="nc" id="L130">    }</span>
+  }
+
+  private final String name;
+  private final RaftServer.Division server;
+  private final LeaderState leaderState;
+  private final FollowerInfo follower;
+
+  private final int snapshotChunkMaxSize;
+
+  private final LogAppenderDaemon daemon;
+  private final AwaitForSignal eventAwaitForSignal;
+
+<span class="nc" id="L143">  private final AtomicBoolean heartbeatTrigger = new AtomicBoolean();</span>
+  private final TimeDuration waitTimeMin;
+
+<span class="nc" id="L146">  protected LogAppenderBase(RaftServer.Division server, LeaderState leaderState, FollowerInfo f) {</span>
+<span class="nc" id="L147">    this.follower = f;</span>
+<span class="nc" id="L148">    this.name = follower.getName() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L149">    this.server = server;</span>
+<span class="nc" id="L150">    this.leaderState = leaderState;</span>
+
+<span class="nc" id="L152">    final RaftProperties properties = server.getRaftServer().getProperties();</span>
+<span class="nc" id="L153">    this.snapshotChunkMaxSize = RaftServerConfigKeys.Log.Appender.snapshotChunkSizeMax(properties).getSizeInt();</span>
+
+<span class="nc" id="L155">    this.daemon = new LogAppenderDaemon(this);</span>
+<span class="nc" id="L156">    this.eventAwaitForSignal = new AwaitForSignal(name);</span>
+
+<span class="nc" id="L158">    this.waitTimeMin = RaftServerConfigKeys.Log.Appender.waitTimeMin(properties);</span>
+<span class="nc" id="L159">  }</span>
+
+  @Override
+  public void triggerHeartbeat() {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">    if (heartbeatTrigger.compareAndSet(false, true)) {</span>
+<span class="nc" id="L164">      notifyLogAppender();</span>
+    }
+<span class="nc" id="L166">  }</span>
+
+  protected void resetHeartbeatTrigger() {
+<span class="nc" id="L169">    heartbeatTrigger.set(false);</span>
+<span class="nc" id="L170">  }</span>
+
+  @Override
+  public boolean shouldSendAppendEntries() {
+<span class="nc bnc" id="L174" title="All 4 branches missed.">    return heartbeatTrigger.get() || LogAppender.super.shouldSendAppendEntries();</span>
+  }
+
+  @Override
+  public long getHeartbeatWaitTimeMs() {
+<span class="nc bnc" id="L179" title="All 2 branches missed.">    return heartbeatTrigger.get() ? 0 :</span>
+<span class="nc" id="L180">        LogAppender.super.getHeartbeatWaitTimeMs();</span>
+  }
+
+  @Override
+  public AwaitForSignal getEventAwaitForSignal() {
+<span class="nc" id="L185">    return eventAwaitForSignal;</span>
+  }
+
+  @Override
+  public final RaftServer.Division getServer() {
+<span class="nc" id="L190">    return server;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L195">    return name;</span>
+  }
+
+  @Override
+  public void start() {
+<span class="nc" id="L200">    daemon.tryToStart();</span>
+<span class="nc" id="L201">  }</span>
+
+  @Override
+  public boolean isRunning() {
+<span class="nc bnc" id="L205" title="All 4 branches missed.">    return daemon.isWorking() &amp;&amp; server.getInfo().isLeader();</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;LifeCycle.State&gt; stopAsync() {
+<span class="nc" id="L210">    return daemon.tryToClose();</span>
+  }
+
+  void restart() {
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    if (!server.getInfo().isAlive()) {</span>
+<span class="nc" id="L215">      LOG.warn(&quot;Failed to restart {}: server {} is not alive&quot;, this, server.getMemberId());</span>
+<span class="nc" id="L216">      return;</span>
+    }
+<span class="nc" id="L218">    getLeaderState().restart(this);</span>
+<span class="nc" id="L219">  }</span>
+
+  protected TimeDuration getWaitTimeMin() {
+<span class="nc" id="L222">    return waitTimeMin;</span>
+  }
+
+  protected TimeDuration getRemainingWaitTime() {
+<span class="nc" id="L226">    return waitTimeMin.add(getFollower().getLastRpcSendTime().elapsedTime().negate());</span>
+  }
+
+  @Override
+  public final FollowerInfo getFollower() {
+<span class="nc" id="L231">    return follower;</span>
+  }
+
+  @Override
+  public final LeaderState getLeaderState() {
+<span class="nc" id="L236">    return leaderState;</span>
+  }
+
+  public boolean hasPendingDataRequests() {
+<span class="nc" id="L240">    return false;</span>
+  }
+
+  private TermIndex getPrevious(long nextIndex) {
+<span class="nc bnc" id="L244" title="All 2 branches missed.">    if (nextIndex == RaftLog.LEAST_VALID_LOG_INDEX) {</span>
+<span class="nc" id="L245">      return null;</span>
+    }
+
+<span class="nc" id="L248">    final long previousIndex = nextIndex - 1;</span>
+<span class="nc" id="L249">    final TermIndex previous = getRaftLog().getTermIndex(previousIndex);</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    if (previous != null) {</span>
+<span class="nc" id="L251">      return previous;</span>
+    }
+
+<span class="nc" id="L254">    final SnapshotInfo snapshot = server.getStateMachine().getLatestSnapshot();</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">    if (snapshot != null) {</span>
+<span class="nc" id="L256">      final TermIndex snapshotTermIndex = snapshot.getTermIndex();</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">      if (snapshotTermIndex.getIndex() == previousIndex) {</span>
+<span class="nc" id="L258">        return snapshotTermIndex;</span>
+      }
+    }
+
+<span class="nc" id="L262">    return null;</span>
+  }
+
+  protected long getNextIndexForInconsistency(long requestFirstIndex, long replyNextIndex) {
+<span class="nc" id="L266">    long next = replyNextIndex;</span>
+<span class="nc" id="L267">    final long i = getFollower().getMatchIndex() + 1;</span>
+<span class="nc bnc" id="L268" title="All 4 branches missed.">    if (i &gt; next &amp;&amp; i != requestFirstIndex) {</span>
+      // Ideally, we should set nextIndex to a value greater than matchIndex.
+      // However, we must not resend the same first entry due to some special cases (e.g. the log is empty).
+      // Otherwise, the follower will reply INCONSISTENCY again.
+<span class="nc" id="L272">      next = i;</span>
+    }
+<span class="nc bnc" id="L274" title="All 4 branches missed.">    if (next == requestFirstIndex &amp;&amp; next &gt; RaftLog.LEAST_VALID_LOG_INDEX) {</span>
+      // Avoid resending the same first entry.
+<span class="nc" id="L276">      next--;</span>
+    }
+<span class="nc" id="L278">    return next;</span>
+  }
+
+  protected LongUnaryOperator getNextIndexForError(long newNextIndex) {
+<span class="nc" id="L282">    return oldNextIndex -&gt; {</span>
+<span class="nc" id="L283">      final long m = getFollower().getMatchIndex() + 1;</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">      final long n = oldNextIndex &lt;= 0L ? oldNextIndex : Math.min(oldNextIndex - 1, newNextIndex);</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">      if (m &gt; n) {</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (m &gt; newNextIndex) {</span>
+<span class="nc" id="L287">          LOG.info(&quot;{}: Set nextIndex to matchIndex + 1 (= {})&quot;, name, m);</span>
+        }
+<span class="nc" id="L289">        return m;</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">      } else if (oldNextIndex &lt;= 0L) {</span>
+<span class="nc" id="L291">        return oldNextIndex; // no change.</span>
+      } else {
+<span class="nc" id="L293">        LOG.info(&quot;{}: Decrease nextIndex to {}&quot;, name, n);</span>
+<span class="nc" id="L294">        return n;</span>
+      }
+    };
+  }
+
+  @Override
+  public AppendEntriesRequestProto newAppendEntriesRequest(long callId, boolean heartbeat) {
+<span class="nc" id="L301">    throw new UnsupportedOperationException(&quot;Use nextAppendEntriesRequest(&quot; + callId + &quot;, &quot; + heartbeat +&quot;) instead.&quot;);</span>
+  }
+
+  /**
+   * Create a {@link AppendEntriesRequestProto} object using the {@link FollowerInfo} of this {@link LogAppender}.
+   * The {@link AppendEntriesRequestProto} object may contain zero or more log entries.
+   * When there is zero log entries, the {@link AppendEntriesRequestProto} object is a heartbeat.
+   *
+   * @param callId The call id of the returned request.
+   * @param heartbeat the returned request must be a heartbeat.
+   *
+   * @return a retained reference of {@link AppendEntriesRequestProto} object.
+   *         Since the returned reference is retained,
+   *         the caller must call {@link ReferenceCountedObject#release()}} after use.
+   */
+  protected ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; nextAppendEntriesRequest(long callId, boolean heartbeat)
+      throws RaftLogIOException {
+<span class="nc" id="L318">    final long heartbeatWaitTimeMs = getHeartbeatWaitTimeMs();</span>
+<span class="nc" id="L319">    final TermIndex previous = getPrevious(follower.getNextIndex());</span>
+<span class="nc bnc" id="L320" title="All 4 branches missed.">    if (heartbeatWaitTimeMs &lt;= 0L || heartbeat) {</span>
+      // heartbeat
+<span class="nc" id="L322">      AppendEntriesRequestProto heartbeatRequest =</span>
+<span class="nc" id="L323">          leaderState.newAppendEntriesRequestProto(follower, Collections.emptyList(),</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">              hasPendingDataRequests() ? null : previous, callId);</span>
+<span class="nc" id="L325">      ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; ref = ReferenceCountedObject.wrap(heartbeatRequest);</span>
+<span class="nc" id="L326">      ref.retain();</span>
+<span class="nc" id="L327">      return ref;</span>
+    }
+
+<span class="nc" id="L330">    final long snapshotIndex = follower.getSnapshotIndex();</span>
+<span class="nc" id="L331">    final long followerNext = follower.getNextIndex();</span>
+<span class="nc" id="L332">    final EntryBuffer entryBuffer = readLogEntries(followerNext, heartbeatWaitTimeMs);</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">    if (entryBuffer == null) {</span>
+<span class="nc" id="L334">      return null;</span>
+    }
+
+<span class="nc" id="L337">    final EntryList entryList = entryBuffer.pollList(heartbeatWaitTimeMs);</span>
+<span class="nc" id="L338">    final List&lt;LogEntryProto&gt; protos = entryList.getProtos();</span>
+<span class="nc" id="L339">    assertProtos(protos, followerNext, previous, snapshotIndex);</span>
+<span class="nc" id="L340">    AppendEntriesRequestProto appendEntriesProto =</span>
+<span class="nc" id="L341">        leaderState.newAppendEntriesRequestProto(follower, protos, previous, callId);</span>
+<span class="nc" id="L342">    final ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; ref = ReferenceCountedObject.wrap(</span>
+        appendEntriesProto, entryList::retain, entryList::release);
+<span class="nc" id="L344">    ref.retain();</span>
+<span class="nc" id="L345">    entryList.release();</span>
+<span class="nc" id="L346">    return ref;</span>
+  }
+
+  private void assertProtos(List&lt;LogEntryProto&gt; protos, long nextIndex, TermIndex previous, long snapshotIndex) {
+<span class="nc bnc" id="L350" title="All 2 branches missed.">    if (protos.isEmpty()) {</span>
+<span class="nc" id="L351">      return;</span>
+    }
+<span class="nc" id="L353">    final long firstIndex = protos.get(0).getIndex();</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">    Preconditions.assertTrue(firstIndex == nextIndex,</span>
+<span class="nc" id="L355">        () -&gt; follower.getName() + &quot;: firstIndex = &quot; + firstIndex + &quot; != nextIndex = &quot; + nextIndex);</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">    if (firstIndex &gt; RaftLog.LEAST_VALID_LOG_INDEX) {</span>
+      // Check if nextIndex is 1 greater than the snapshotIndex. If yes, then
+      // we do not have to check for the existence of previous.
+<span class="nc bnc" id="L359" title="All 2 branches missed.">      if (nextIndex != snapshotIndex + 1) {</span>
+<span class="nc" id="L360">        Objects.requireNonNull(previous,</span>
+<span class="nc" id="L361">            () -&gt; follower.getName() + &quot;: Previous TermIndex not found for firstIndex = &quot; + firstIndex);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">        Preconditions.assertTrue(previous.getIndex() == firstIndex - 1,</span>
+<span class="nc" id="L363">            () -&gt; follower.getName() + &quot;: Previous = &quot; + previous + &quot; but firstIndex = &quot; + firstIndex);</span>
+      }
+    }
+<span class="nc" id="L366">  }</span>
+
+  private EntryBuffer readLogEntries(long followerNext, long heartbeatWaitTimeMs) throws RaftLogIOException {
+<span class="nc" id="L369">    final RaftLog raftLog = getRaftLog();</span>
+<span class="nc" id="L370">    final long leaderNext = raftLog.getNextIndex();</span>
+<span class="nc" id="L371">    final long halfMs = heartbeatWaitTimeMs/2;</span>
+<span class="nc" id="L372">    EntryBuffer entryBuffer = null;</span>
+<span class="nc bnc" id="L373" title="All 4 branches missed.">    for (long next = followerNext; leaderNext &gt; next &amp;&amp; getHeartbeatWaitTimeMs() - halfMs &gt; 0; next++) {</span>
+      final ReferenceCountedObject&lt;EntryWithData&gt; retained;
+      try {
+<span class="nc" id="L376">        retained = raftLog.retainEntryWithData(next);</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">        if (entryBuffer == null) {</span>
+<span class="nc" id="L378">          entryBuffer = new EntryBuffer(name, server.getRaftServer().getProperties());</span>
+        }
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (!entryBuffer.putNew(next, retained)) {</span>
+<span class="nc" id="L381">          break;</span>
+        }
+<span class="nc" id="L383">      } catch (Exception e) {</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">        if (entryBuffer != null) {</span>
+<span class="nc" id="L385">          entryBuffer.releaseAllAndClear();</span>
+        }
+<span class="nc" id="L387">        throw e;</span>
+<span class="nc" id="L388">      }</span>
+    }
+<span class="nc" id="L390">    return entryBuffer;</span>
+  }
+
+  @Override
+  public InstallSnapshotRequestProto newInstallSnapshotNotificationRequest(TermIndex firstAvailableLogTermIndex) {
+<span class="nc bnc" id="L395" title="All 2 branches missed.">    Preconditions.assertTrue(firstAvailableLogTermIndex.getIndex() &gt;= 0);</span>
+<span class="nc" id="L396">    synchronized (server) {</span>
+<span class="nc" id="L397">      return LeaderProtoUtils.toInstallSnapshotRequestProto(server, getFollowerId(), firstAvailableLogTermIndex);</span>
+    }
+  }
+
+  @Override
+  public Iterable&lt;InstallSnapshotRequestProto&gt; newInstallSnapshotRequests(String requestId, SnapshotInfo snapshot) {
+<span class="nc" id="L403">    return new InstallSnapshotRequests(server, getFollowerId(), requestId, snapshot, snapshotChunkMaxSize);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

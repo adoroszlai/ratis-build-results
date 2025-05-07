@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">SnapshotManager.java</span></div><h1>SnapshotManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import org.apache.ratis.io.CorruptedFileException;
+import org.apache.ratis.io.MD5Hash;
+import org.apache.ratis.proto.RaftProtos.FileChunkProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.StateMachineStorage;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.MD5FileUtil;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/**
+ * Manage snapshots of a raft peer.
+ * TODO: snapshot should be treated as compaction log thus can be merged into
+ *       RaftLog. In this way we can have a unified getLastTermIndex interface.
+ */
+public class SnapshotManager {
+<span class="nc" id="L55">  private static final Logger LOG = LoggerFactory.getLogger(SnapshotManager.class);</span>
+
+  private static final String CORRUPT = &quot;.corrupt&quot;;
+  private static final String TMP = &quot;.tmp&quot;;
+
+  private final RaftPeerId selfId;
+
+  private final Supplier&lt;File&gt; snapshotDir;
+  private final Supplier&lt;File&gt; snapshotTmpDir;
+  private final Function&lt;FileChunkProto, String&gt; getRelativePath;
+  private MessageDigest digester;
+
+<span class="nc" id="L67">  SnapshotManager(RaftPeerId selfId, Supplier&lt;RaftStorageDirectory&gt; dir, StateMachineStorage smStorage) {</span>
+<span class="nc" id="L68">    this.selfId = selfId;</span>
+<span class="nc" id="L69">    this.snapshotDir = MemoizedSupplier.valueOf(</span>
+<span class="nc" id="L70">        () -&gt; Optional.ofNullable(smStorage.getSnapshotDir()).orElseGet(() -&gt; dir.get().getStateMachineDir()));</span>
+<span class="nc" id="L71">    this.snapshotTmpDir = MemoizedSupplier.valueOf(</span>
+<span class="nc" id="L72">        () -&gt; Optional.ofNullable(smStorage.getTmpDir()).orElseGet(() -&gt; dir.get().getTmpDir()));</span>
+
+<span class="nc" id="L74">    final Supplier&lt;Path&gt; smDir = MemoizedSupplier.valueOf(() -&gt; dir.get().getStateMachineDir().toPath());</span>
+<span class="nc" id="L75">    this.getRelativePath = c -&gt; smDir.get().relativize(</span>
+<span class="nc" id="L76">        new File(dir.get().getRoot(), c.getFilename()).toPath()).toString();</span>
+<span class="nc" id="L77">  }</span>
+
+  @SuppressWarnings({&quot;squid:S2095&quot;}) // Suppress closeable  warning
+  private FileChannel open(FileChunkProto chunk, File tmpSnapshotFile) throws IOException {
+    final FileChannel out;
+<span class="nc" id="L82">    final boolean exists = tmpSnapshotFile.exists();</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    if (chunk.getOffset() == 0) {</span>
+      // if offset is 0, delete any existing temp snapshot file if it has the same last index.
+<span class="nc bnc" id="L85" title="All 2 branches missed.">      if (exists) {</span>
+<span class="nc" id="L86">        FileUtils.deleteFully(tmpSnapshotFile);</span>
+      }
+      // create the temp snapshot file and put padding inside
+<span class="nc" id="L89">      out = FileUtils.newFileChannel(tmpSnapshotFile, StandardOpenOption.WRITE, StandardOpenOption.CREATE);</span>
+<span class="nc" id="L90">      digester = MD5Hash.newDigester();</span>
+    } else {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      if (!exists) {</span>
+<span class="nc" id="L93">        throw new FileNotFoundException(&quot;Chunk offset is non-zero but file is not found: &quot; + tmpSnapshotFile</span>
+            + &quot;, chunk=&quot; + chunk);
+      }
+<span class="nc" id="L96">      out = FileUtils.newFileChannel(tmpSnapshotFile, StandardOpenOption.WRITE)</span>
+<span class="nc" id="L97">          .position(chunk.getOffset());</span>
+    }
+<span class="nc" id="L99">    return out;</span>
+  }
+
+  public void installSnapshot(InstallSnapshotRequestProto request, StateMachine stateMachine) throws IOException {
+<span class="nc" id="L103">    final InstallSnapshotRequestProto.SnapshotChunkProto snapshotChunkRequest = request.getSnapshotChunk();</span>
+<span class="nc" id="L104">    final long lastIncludedIndex = snapshotChunkRequest.getTermIndex().getIndex();</span>
+
+    // create a unique temporary directory
+<span class="nc" id="L107">    final File tmpDir =  new File(this.snapshotTmpDir.get(), &quot;snapshot-&quot; + snapshotChunkRequest.getRequestId());</span>
+<span class="nc" id="L108">    FileUtils.createDirectories(tmpDir);</span>
+<span class="nc" id="L109">    tmpDir.deleteOnExit();</span>
+
+<span class="nc" id="L111">    LOG.info(&quot;Installing snapshot:{}, to tmp dir:{}&quot;,</span>
+<span class="nc" id="L112">        ServerStringUtils.toInstallSnapshotRequestString(request), tmpDir);</span>
+
+    // TODO: Make sure that subsequent requests for the same installSnapshot are coming in order,
+    // and are not lost when whole request cycle is done. Check requestId and requestIndex here
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    for (FileChunkProto chunk : snapshotChunkRequest.getFileChunksList()) {</span>
+<span class="nc" id="L117">      SnapshotInfo pi = stateMachine.getLatestSnapshot();</span>
+<span class="nc bnc" id="L118" title="All 4 branches missed.">      if (pi != null &amp;&amp; pi.getTermIndex().getIndex() &gt;= lastIncludedIndex) {</span>
+<span class="nc" id="L119">        throw new IOException(&quot;There exists snapshot file &quot;</span>
+<span class="nc" id="L120">            + pi.getFiles() + &quot; in &quot; + selfId</span>
+            + &quot; with endIndex &gt;= lastIncludedIndex &quot; + lastIncludedIndex);
+      }
+
+<span class="nc" id="L124">      final File tmpSnapshotFile = new File(tmpDir, getRelativePath.apply(chunk));</span>
+<span class="nc" id="L125">      FileUtils.createDirectoriesDeleteExistingNonDirectory(tmpSnapshotFile.getParentFile());</span>
+
+<span class="nc" id="L127">      try (FileChannel out = open(chunk, tmpSnapshotFile)) {</span>
+<span class="nc" id="L128">        final ByteBuffer data = chunk.getData().asReadOnlyByteBuffer();</span>
+<span class="nc" id="L129">        digester.update(data.duplicate());</span>
+
+<span class="nc" id="L131">        int written = 0;</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        for(; data.remaining() &gt; 0; ) {</span>
+<span class="nc" id="L133">          written += out.write(data);</span>
+        }
+<span class="nc" id="L135">        Preconditions.assertSame(chunk.getData().size(), written, &quot;written&quot;);</span>
+      }
+
+      // rename the temp snapshot file if this is the last chunk. also verify
+      // the md5 digest and create the md5 meta-file.
+<span class="nc bnc" id="L140" title="All 2 branches missed.">      if (chunk.getDone()) {</span>
+<span class="nc" id="L141">        final MD5Hash expectedDigest =</span>
+<span class="nc" id="L142">            new MD5Hash(chunk.getFileDigest().toByteArray());</span>
+        // calculate the checksum of the snapshot file and compare it with the
+        // file digest in the request
+<span class="nc" id="L145">        final MD5Hash digest = new MD5Hash(digester.digest());</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (!digest.equals(expectedDigest)) {</span>
+<span class="nc" id="L147">          LOG.warn(&quot;The snapshot md5 digest {} does not match expected {}&quot;,</span>
+              digest, expectedDigest);
+          // rename the temp snapshot file to .corrupt
+          String renameMessage;
+          try {
+<span class="nc" id="L152">            final File corruptedFile = FileUtils.move(tmpSnapshotFile, CORRUPT + StringUtils.currentDateTime());</span>
+<span class="nc" id="L153">            renameMessage = &quot;Renamed temporary snapshot file &quot; + tmpSnapshotFile + &quot; to &quot; + corruptedFile;</span>
+<span class="nc" id="L154">          } catch (IOException e) {</span>
+<span class="nc" id="L155">            renameMessage = &quot;Tried but failed to rename temporary snapshot file &quot; + tmpSnapshotFile</span>
+                + &quot; to a &quot; + CORRUPT + &quot; file&quot;;
+<span class="nc" id="L157">            LOG.warn(renameMessage, e);</span>
+<span class="nc" id="L158">            renameMessage += &quot;: &quot; + e;</span>
+<span class="nc" id="L159">          }</span>
+<span class="nc" id="L160">          throw new CorruptedFileException(tmpSnapshotFile,</span>
+              &quot;MD5 mismatch for snapshot-&quot; + lastIncludedIndex + &quot; installation.  &quot; + renameMessage);
+        } else {
+<span class="nc" id="L163">          MD5FileUtil.saveMD5File(tmpSnapshotFile, digest);</span>
+        }
+      }
+<span class="nc" id="L166">    }</span>
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">    if (snapshotChunkRequest.getDone()) {</span>
+<span class="nc" id="L169">      rename(tmpDir, snapshotDir.get());</span>
+    }
+<span class="nc" id="L171">  }</span>
+
+  private static void rename(File tmpDir, File stateMachineDir) throws IOException {
+<span class="nc" id="L174">    LOG.info(&quot;Installed snapshot, renaming temporary dir {} to {}&quot;, tmpDir, stateMachineDir);</span>
+
+    // rename stateMachineDir to tmp, if it exists.
+    final File existingDir;
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    if (stateMachineDir.exists()) {</span>
+<span class="nc" id="L179">      File moved = null;</span>
+      try {
+<span class="nc" id="L181">        moved = FileUtils.move(stateMachineDir, TMP + StringUtils.currentDateTime());</span>
+<span class="nc" id="L182">      } catch(IOException e) {</span>
+<span class="nc" id="L183">        LOG.warn(&quot;Failed to rename state machine directory &quot; + stateMachineDir.getAbsolutePath()</span>
+            + &quot; to a &quot; + TMP + &quot; directory.  Try deleting it directly.&quot;, e);
+<span class="nc" id="L185">        FileUtils.deleteFully(stateMachineDir);</span>
+<span class="nc" id="L186">      }</span>
+<span class="nc" id="L187">      existingDir = moved;</span>
+<span class="nc" id="L188">    } else {</span>
+<span class="nc" id="L189">      existingDir = null;</span>
+    }
+
+    // rename tmpDir to stateMachineDir
+    try {
+<span class="nc" id="L194">      FileUtils.move(tmpDir, stateMachineDir);</span>
+<span class="nc" id="L195">    } catch (IOException e) {</span>
+<span class="nc" id="L196">      throw new IOException(&quot;Failed to rename temporary director &quot; + tmpDir.getAbsolutePath()</span>
+<span class="nc" id="L197">          + &quot; to &quot; + stateMachineDir.getAbsolutePath(), e);</span>
+<span class="nc" id="L198">    }</span>
+
+    // delete existing dir
+<span class="nc bnc" id="L201" title="All 2 branches missed.">    if (existingDir != null) {</span>
+      try {
+<span class="nc" id="L203">        FileUtils.deleteFully(existingDir);</span>
+<span class="nc" id="L204">      } catch (IOException e) {</span>
+<span class="nc" id="L205">        LOG.warn(&quot;Failed to delete existing directory &quot; + existingDir.getAbsolutePath(), e);</span>
+<span class="nc" id="L206">      }</span>
+    }
+<span class="nc" id="L208">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

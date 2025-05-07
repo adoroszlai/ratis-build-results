@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogSegmentPath.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">LogSegmentPath.java</span></div><h1>LogSegmentPath.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.regex.Matcher;
+
+/**
+ * {@link LogSegmentStartEnd} with a {@link Path}.
+ *
+ * This is a value-based class.
+ */
+public final class LogSegmentPath {
+<span class="nc" id="L42">  static final Logger LOG = LoggerFactory.getLogger(LogSegmentPath.class);</span>
+
+<span class="nc" id="L44">  private static final Comparator&lt;LogSegmentPath&gt; COMPARATOR =</span>
+<span class="nc" id="L45">      Comparator.comparing(LogSegmentPath::getStartEnd);</span>
+
+  private final Path path;
+  private final LogSegmentStartEnd startEnd;
+
+<span class="nc" id="L50">  private LogSegmentPath(Path path, long startIndex, Long endIndex) {</span>
+<span class="nc" id="L51">    this.path = path;</span>
+<span class="nc" id="L52">    this.startEnd = LogSegmentStartEnd.valueOf(startIndex, endIndex);</span>
+<span class="nc" id="L53">  }</span>
+
+  public Path getPath() {
+<span class="nc" id="L56">    return path;</span>
+  }
+
+  public LogSegmentStartEnd getStartEnd() {
+<span class="nc" id="L60">    return startEnd;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L65">    return path+ &quot;(&quot; + startEnd + &quot;)&quot;;</span>
+  }
+
+  /**
+   * Get a list of {@link LogSegmentPath} from the given storage.
+   *
+   * @return a list of log segment paths sorted by the indices.
+   */
+  public static List&lt;LogSegmentPath&gt; getLogSegmentPaths(RaftStorage storage) throws IOException {
+<span class="nc" id="L74">    return getLogSegmentPaths(storage.getStorageDir().getCurrentDir().toPath());</span>
+  }
+
+  private static List&lt;LogSegmentPath&gt; getLogSegmentPaths(Path dir) throws IOException {
+<span class="nc" id="L78">    final List&lt;LogSegmentPath&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L79">    try (DirectoryStream&lt;Path&gt; stream = Files.newDirectoryStream(dir)) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">      for (Path path : stream) {</span>
+<span class="nc" id="L81">        Optional.ofNullable(matchLogSegment(path)).ifPresent(list::add);</span>
+<span class="nc" id="L82">      }</span>
+    }
+<span class="nc" id="L84">    list.sort(COMPARATOR);</span>
+<span class="nc" id="L85">    return list;</span>
+  }
+
+  /**
+   * Match the given path with the {@link LogSegmentStartEnd#getClosedSegmentPattern()}
+   * or the {@link LogSegmentStartEnd#getOpenSegmentPattern()}.
+   *
+   * Note that if the path is a zero size open segment, this method will try to delete it.
+   *
+   * @return the log segment file matching the given path.
+   */
+  public static LogSegmentPath matchLogSegment(Path path) {
+<span class="nc" id="L97">    return Optional.ofNullable(matchCloseSegment(path)).orElseGet(() -&gt; matchOpenSegment(path));</span>
+  }
+
+  private static LogSegmentPath matchCloseSegment(Path path) {
+<span class="nc" id="L101">    final String fileName = String.valueOf(Objects.requireNonNull(path).getFileName());</span>
+<span class="nc" id="L102">    final Matcher matcher = LogSegmentStartEnd.getClosedSegmentPattern().matcher(fileName);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (matcher.matches()) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      Preconditions.assertTrue(matcher.groupCount() == 2);</span>
+<span class="nc" id="L105">      return newInstance(path, matcher.group(1), matcher.group(2));</span>
+    }
+<span class="nc" id="L107">    return null;</span>
+  }
+
+  private static LogSegmentPath matchOpenSegment(Path path) {
+<span class="nc" id="L111">    final String fileName = String.valueOf(Objects.requireNonNull(path).getFileName());</span>
+<span class="nc" id="L112">    final Matcher matcher = LogSegmentStartEnd.getOpenSegmentPattern().matcher(fileName);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (matcher.matches()) {</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">      if (path.toFile().length() &gt; 0L) {</span>
+<span class="nc" id="L115">        return newInstance(path, matcher.group(1), null);</span>
+      }
+
+<span class="nc" id="L118">      LOG.info(&quot;Found zero size open segment file &quot; + path);</span>
+      try {
+<span class="nc" id="L120">        Files.delete(path);</span>
+<span class="nc" id="L121">        LOG.info(&quot;Deleted zero size open segment file &quot; + path);</span>
+<span class="nc" id="L122">      } catch (IOException e) {</span>
+<span class="nc" id="L123">        LOG.warn(&quot;Failed to delete zero size open segment file &quot; + path + &quot;: &quot; + e);</span>
+<span class="nc" id="L124">      }</span>
+    }
+<span class="nc" id="L126">    return null;</span>
+  }
+
+  private static LogSegmentPath newInstance(Path path, String startIndexString, String endIndexString) {
+<span class="nc" id="L130">    final long startIndex = Long.parseLong(startIndexString);</span>
+<span class="nc" id="L131">    final Long endIndex = Optional.ofNullable(endIndexString).map(Long::parseLong).orElse(null);</span>
+<span class="nc" id="L132">    return new LogSegmentPath(path, startIndex, endIndex);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

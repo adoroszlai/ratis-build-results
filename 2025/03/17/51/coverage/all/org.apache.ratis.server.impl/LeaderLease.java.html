@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaderLease.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">LeaderLease.java</span></div><h1>LeaderLease.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.leader.FollowerInfo;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.Timestamp;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+class LeaderLease {
+
+  private final AtomicBoolean enabled;
+  private final long leaseTimeoutMs;
+<span class="nc" id="L40">  private final AtomicReference&lt;Timestamp&gt; lease = new AtomicReference&lt;&gt;(Timestamp.currentTime());</span>
+
+<span class="nc" id="L42">  LeaderLease(RaftProperties properties) {</span>
+<span class="nc" id="L43">    this.enabled = new AtomicBoolean(RaftServerConfigKeys.Read.leaderLeaseEnabled(properties));</span>
+<span class="nc" id="L44">    final double leaseRatio = RaftServerConfigKeys.Read.leaderLeaseTimeoutRatio(properties);</span>
+<span class="nc bnc" id="L45" title="All 4 branches missed.">    Preconditions.assertTrue(leaseRatio &gt; 0.0 &amp;&amp; leaseRatio &lt;= 1.0,</span>
+        &quot;leader ratio should sit in (0,1], now is &quot; + leaseRatio);
+<span class="nc" id="L47">    this.leaseTimeoutMs = RaftServerConfigKeys.Rpc.timeoutMin(properties)</span>
+<span class="nc" id="L48">        .multiply(leaseRatio)</span>
+<span class="nc" id="L49">        .toIntExact(TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L50">  }</span>
+
+  boolean getAndSetEnabled(boolean newValue) {
+<span class="nc" id="L53">    return enabled.getAndSet(newValue);</span>
+  }
+
+  boolean isEnabled() {
+<span class="nc" id="L57">    return enabled.get();</span>
+  }
+
+  boolean isValid() {
+<span class="nc bnc" id="L61" title="All 4 branches missed.">    return isEnabled() &amp;&amp; lease.get().elapsedTimeMs() &lt; leaseTimeoutMs;</span>
+  }
+
+  /**
+   * try extending the lease based on group heartbeats
+   * @param old nullable
+   */
+  void extend(List&lt;FollowerInfo&gt; current, List&lt;FollowerInfo&gt; old, Predicate&lt;List&lt;RaftPeerId&gt;&gt; hasMajority) {
+<span class="nc" id="L69">    final List&lt;RaftPeerId&gt; activePeers =</span>
+        // check the latest heartbeats of all peers (including those in transitional)
+<span class="nc" id="L71">        Stream.concat(current.stream(), Optional.ofNullable(old).map(List::stream).orElse(Stream.empty()))</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">            .filter(f -&gt; f.getLastRespondedAppendEntriesSendTime().elapsedTimeMs() &lt; leaseTimeoutMs)</span>
+<span class="nc" id="L73">            .map(FollowerInfo::getId)</span>
+<span class="nc" id="L74">            .collect(Collectors.toList());</span>
+
+<span class="nc bnc" id="L76" title="All 2 branches missed.">    if (!hasMajority.test(activePeers)) {</span>
+<span class="nc" id="L77">      return;</span>
+    }
+
+    // update the new lease
+<span class="nc" id="L81">    final Timestamp newLease =</span>
+<span class="nc" id="L82">        Timestamp.earliest(getMaxTimestampWithMajorityAck(current), getMaxTimestampWithMajorityAck(old));</span>
+<span class="nc" id="L83">    lease.set(newLease);</span>
+<span class="nc" id="L84">  }</span>
+
+  /**
+   * return maximum timestamp at when the majority of followers are known to be active
+   * return {@link Timestamp#currentTime()} if peers are empty
+   */
+  private Timestamp getMaxTimestampWithMajorityAck(List&lt;FollowerInfo&gt; followers) {
+<span class="nc bnc" id="L91" title="All 4 branches missed.">    if (followers == null || followers.isEmpty()) {</span>
+<span class="nc" id="L92">      return Timestamp.currentTime();</span>
+    }
+
+<span class="nc" id="L95">    final long mid = followers.size() / 2;</span>
+<span class="nc" id="L96">    return followers.stream()</span>
+<span class="nc" id="L97">        .map(FollowerInfo::getLastRespondedAppendEntriesSendTime)</span>
+<span class="nc" id="L98">        .sorted()</span>
+<span class="nc" id="L99">        .limit(mid+1)</span>
+<span class="nc" id="L100">        .skip(mid)</span>
+<span class="nc" id="L101">        .iterator()</span>
+<span class="nc" id="L102">        .next();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

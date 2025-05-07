@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Parameters.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.conf</a> &gt; <span class="el_source">Parameters.java</span></div><h1>Parameters.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.conf;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * A generic parameter map.
+ * The difference between this class and {@link RaftProperties} is that
+ * {@link RaftProperties} is {@link String} based, i.e. properties are strings,
+ * while this class is {@link Object} based, i.e. parameters can be any objects.
+ *
+ * Null keys or null values are not supported.
+ *
+ * This class is thread safe.
+ */
+<span class="nc" id="L34">public class Parameters {</span>
+<span class="nc" id="L35">  private final Map&lt;String, Object&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+
+  /** Put the key-value pair to the map. */
+  public &lt;T&gt; T put(String key, T value, Class&lt;T&gt; valueClass) {
+<span class="nc" id="L39">    return valueClass.cast(map.put(</span>
+<span class="nc" id="L40">        Objects.requireNonNull(key, &quot;key is null&quot;),</span>
+<span class="nc" id="L41">        Objects.requireNonNull(value, () -&gt; &quot;value is null, key=&quot; + key)));</span>
+  }
+
+  /**
+   * @param &lt;T&gt; The value type.
+   * @return The value mapped to the given key;
+   *         or return null if the key does not map to any value.
+   * @throws IllegalArgumentException if the mapped value is not an instance of the given class.
+   */
+  public &lt;T&gt; T get(String key, Class&lt;T&gt; valueClass) {
+<span class="nc" id="L51">    final Object value = map.get(Objects.requireNonNull(key, &quot;key is null&quot;));</span>
+<span class="nc" id="L52">    return valueClass.cast(value);</span>
+  }
+
+  /**
+   * The same as {@link #get(String, Class)} except that this method throws
+   * a {@link NullPointerException} if the key does not map to any value.
+   */
+  public &lt;T&gt; T getNonNull(String key, Class&lt;T&gt; valueClass) {
+<span class="nc" id="L60">    final T value = get(key, valueClass);</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">    if (value != null) {</span>
+<span class="nc" id="L62">      return value;</span>
+    }
+<span class="nc" id="L64">    throw new NullPointerException(&quot;The key &quot; + key + &quot; does not map to any value.&quot;);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

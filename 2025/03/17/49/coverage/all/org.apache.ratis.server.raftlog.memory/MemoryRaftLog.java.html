@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemoryRaftLog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.memory</a> &gt; <span class="el_source">MemoryRaftLog.java</span></div><h1>MemoryRaftLog.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.memory;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.server.metrics.RaftLogMetricsBase;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLogBase;
+import org.apache.ratis.server.raftlog.LogEntryHeader;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.storage.RaftStorageMetadata;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.util.AutoCloseableLock;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
+
+/**
+ * A simple RaftLog implementation in memory. Used only for testing.
+ */
+public class MemoryRaftLog extends RaftLogBase {
+<span class="nc" id="L47">  static class EntryList {</span>
+<span class="nc" id="L48">    private final List&lt;LogEntryProto&gt; entries = new ArrayList&lt;&gt;();</span>
+
+    LogEntryProto get(int i) {
+<span class="nc bnc" id="L51" title="All 4 branches missed.">      return i &gt;= 0 &amp;&amp; i &lt; entries.size() ? entries.get(i) : null;</span>
+    }
+
+    TermIndex getTermIndex(int i) {
+<span class="nc" id="L55">      return TermIndex.valueOf(get(i));</span>
+    }
+
+    private LogEntryHeader getLogEntryHeader(int i) {
+<span class="nc" id="L59">      return LogEntryHeader.valueOf(get(i));</span>
+    }
+
+    int size() {
+<span class="nc" id="L63">      return entries.size();</span>
+    }
+
+    void truncate(int index) {
+<span class="nc bnc" id="L67" title="All 2 branches missed.">      if (entries.size() &gt; index) {</span>
+<span class="nc" id="L68">        clear(index, entries.size());</span>
+      }
+<span class="nc" id="L70">    }</span>
+
+    void purge(int index) {
+<span class="nc bnc" id="L73" title="All 2 branches missed.">      if (entries.size() &gt; index) {</span>
+<span class="nc" id="L74">        clear(0, index);</span>
+      }
+<span class="nc" id="L76">    }</span>
+
+    void clear(int from, int to) {
+<span class="nc" id="L79">      entries.subList(from, to).clear();</span>
+<span class="nc" id="L80">    }</span>
+
+    void add(LogEntryProto entryRef) {
+<span class="nc" id="L83">      entries.add(entryRef);</span>
+<span class="nc" id="L84">    }</span>
+  }
+
+<span class="nc" id="L87">  private final EntryList entries = new EntryList();</span>
+<span class="nc" id="L88">  private final AtomicReference&lt;RaftStorageMetadata&gt; metadata = new AtomicReference&lt;&gt;(RaftStorageMetadata.getDefault());</span>
+  private final RaftLogMetricsBase metrics;
+
+  public MemoryRaftLog(RaftGroupMemberId memberId,
+                       LongSupplier commitIndexSupplier,
+                       RaftProperties properties) {
+<span class="nc" id="L94">    super(memberId, commitIndexSupplier, properties);</span>
+<span class="nc" id="L95">    this.metrics = new RaftLogMetricsBase(memberId);</span>
+<span class="nc" id="L96">  }</span>
+
+  @Override
+  public void close() throws IOException {
+<span class="nc" id="L100">    super.close();</span>
+<span class="nc" id="L101">    metrics.unregister();</span>
+<span class="nc" id="L102">  }</span>
+
+  @Override
+  public RaftLogMetricsBase getRaftLogMetrics() {
+<span class="nc" id="L106">    return metrics;</span>
+  }
+
+  @Override
+  public LogEntryProto get(long index) throws RaftLogIOException {
+<span class="nc" id="L111">    final ReferenceCountedObject&lt;LogEntryProto&gt; ref = retainLog(index);</span>
+    try {
+<span class="nc" id="L113">      return LogProtoUtils.copy(ref.get());</span>
+    } finally {
+<span class="nc" id="L115">      ref.release();</span>
+    }
+  }
+
+  @Override
+  public ReferenceCountedObject&lt;LogEntryProto&gt; retainLog(long index) {
+<span class="nc" id="L121">    checkLogState();</span>
+<span class="nc" id="L122">    try (AutoCloseableLock readLock = readLock()) {</span>
+<span class="nc" id="L123">      final LogEntryProto entry = entries.get(Math.toIntExact(index));</span>
+<span class="nc" id="L124">      final ReferenceCountedObject&lt;LogEntryProto&gt; ref = ReferenceCountedObject.wrap(entry);</span>
+<span class="nc" id="L125">      ref.retain();</span>
+<span class="nc" id="L126">      return ref;</span>
+    }
+  }
+
+  @Override
+  public EntryWithData getEntryWithData(long index) throws RaftLogIOException {
+<span class="nc" id="L132">    throw new UnsupportedOperationException(&quot;Use retainEntryWithData(&quot; + index + &quot;) instead.&quot;);</span>
+  }
+
+  @Override
+  public ReferenceCountedObject&lt;EntryWithData&gt; retainEntryWithData(long index) {
+<span class="nc" id="L137">    final ReferenceCountedObject&lt;LogEntryProto&gt; ref = retainLog(index);</span>
+<span class="nc" id="L138">    return newEntryWithData(ref);</span>
+  }
+
+  @Override
+  public TermIndex getTermIndex(long index) {
+<span class="nc" id="L143">    checkLogState();</span>
+<span class="nc" id="L144">    try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="nc" id="L145">      return entries.getTermIndex(Math.toIntExact(index));</span>
+    }
+  }
+
+  @Override
+  public LogEntryHeader[] getEntries(long startIndex, long endIndex) {
+<span class="nc" id="L151">    checkLogState();</span>
+<span class="nc" id="L152">    try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">      if (startIndex &gt;= entries.size()) {</span>
+<span class="nc" id="L154">        return null;</span>
+      }
+<span class="nc" id="L156">      final int from = Math.toIntExact(startIndex);</span>
+<span class="nc" id="L157">      final int to = Math.toIntExact(Math.min(entries.size(), endIndex));</span>
+<span class="nc" id="L158">      final LogEntryHeader[] headers = new LogEntryHeader[to - from];</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">      for (int i = 0; i &lt; headers.length; i++) {</span>
+<span class="nc" id="L160">        headers[i] = entries.getLogEntryHeader(i);</span>
+      }
+<span class="nc" id="L162">      return headers;</span>
+    }
+  }
+
+  @Override
+  protected CompletableFuture&lt;Long&gt; truncateImpl(long index) {
+<span class="nc" id="L168">    checkLogState();</span>
+<span class="nc" id="L169">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">      Preconditions.assertTrue(index &gt;= 0);</span>
+<span class="nc" id="L171">      entries.truncate(Math.toIntExact(index));</span>
+    }
+<span class="nc" id="L173">    return CompletableFuture.completedFuture(index);</span>
+  }
+
+
+  @Override
+  protected CompletableFuture&lt;Long&gt; purgeImpl(long index) {
+<span class="nc" id="L179">    try (AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">      Preconditions.assertTrue(index &gt;= 0);</span>
+<span class="nc" id="L181">      entries.purge(Math.toIntExact(index));</span>
+    }
+<span class="nc" id="L183">    return CompletableFuture.completedFuture(index);</span>
+  }
+
+  @Override
+  public TermIndex getLastEntryTermIndex() {
+<span class="nc" id="L188">    checkLogState();</span>
+<span class="nc" id="L189">    try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="nc" id="L190">      return entries.getTermIndex(entries.size() - 1);</span>
+    }
+  }
+
+  @Override
+  protected CompletableFuture&lt;Long&gt; appendEntryImpl(ReferenceCountedObject&lt;LogEntryProto&gt; entryRef,
+      TransactionContext context) {
+<span class="nc" id="L197">    checkLogState();</span>
+<span class="nc" id="L198">    LogEntryProto entry = entryRef.retain();</span>
+<span class="nc" id="L199">    try (AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L200">      validateLogEntry(entry);</span>
+<span class="nc" id="L201">      entries.add(entry);</span>
+    } finally {
+<span class="nc" id="L203">      entryRef.release();</span>
+    }
+<span class="nc" id="L205">    return CompletableFuture.completedFuture(entry.getIndex());</span>
+  }
+
+  @Override
+  public long getStartIndex() {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">    return entries.size() == 0? INVALID_LOG_INDEX: entries.getTermIndex(0).getIndex();</span>
+  }
+
+  @Override
+  public List&lt;CompletableFuture&lt;Long&gt;&gt; appendImpl(ReferenceCountedObject&lt;List&lt;LogEntryProto&gt;&gt; entriesRef) {
+<span class="nc" id="L215">    checkLogState();</span>
+<span class="nc" id="L216">    final List&lt;LogEntryProto&gt; logEntryProtos = entriesRef.retain();</span>
+<span class="nc bnc" id="L217" title="All 4 branches missed.">    if (logEntryProtos == null || logEntryProtos.isEmpty()) {</span>
+<span class="nc" id="L218">      entriesRef.release();</span>
+<span class="nc" id="L219">      return Collections.emptyList();</span>
+    }
+<span class="nc" id="L221">    try (AutoCloseableLock writeLock = writeLock()) {</span>
+      // Before truncating the entries, we first need to check if some
+      // entries are duplicated. If the leader sends entry 6, entry 7, then
+      // entry 6 again, without this check the follower may truncate entry 7
+      // when receiving entry 6 again. Then before the leader detects this
+      // truncation in the next appendEntries RPC, leader may think entry 7 has
+      // been committed but in the system the entry has not been committed to
+      // the quorum of peers' disks.
+<span class="nc" id="L229">      boolean toTruncate = false;</span>
+<span class="nc" id="L230">      int truncateIndex = (int) logEntryProtos.get(0).getIndex();</span>
+<span class="nc" id="L231">      int index = 0;</span>
+<span class="nc bnc" id="L232" title="All 4 branches missed.">      for (; truncateIndex &lt; getNextIndex() &amp;&amp; index &lt; logEntryProtos.size();</span>
+<span class="nc" id="L233">           index++, truncateIndex++) {</span>
+<span class="nc" id="L234">        if (this.entries.get(truncateIndex).getTerm() !=</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">            logEntryProtos.get(index).getTerm()) {</span>
+<span class="nc" id="L236">          toTruncate = true;</span>
+<span class="nc" id="L237">          break;</span>
+        }
+      }
+      final List&lt;CompletableFuture&lt;Long&gt;&gt; futures;
+<span class="nc bnc" id="L241" title="All 2 branches missed.">      if (toTruncate) {</span>
+<span class="nc" id="L242">        futures = new ArrayList&lt;&gt;(logEntryProtos.size() - index + 1);</span>
+<span class="nc" id="L243">        futures.add(truncate(truncateIndex));</span>
+      } else {
+<span class="nc" id="L245">        futures = new ArrayList&lt;&gt;(logEntryProtos.size() - index);</span>
+      }
+<span class="nc bnc" id="L247" title="All 2 branches missed.">      for (int i = index; i &lt; logEntryProtos.size(); i++) {</span>
+<span class="nc" id="L248">        LogEntryProto logEntryProto = logEntryProtos.get(i);</span>
+<span class="nc" id="L249">        entries.add(LogProtoUtils.copy(logEntryProto));</span>
+<span class="nc" id="L250">        futures.add(CompletableFuture.completedFuture(logEntryProto.getIndex()));</span>
+      }
+<span class="nc" id="L252">      return futures;</span>
+    } finally {
+<span class="nc" id="L254">      entriesRef.release();</span>
+    }
+  }
+
+  public String getEntryString() {
+<span class="nc" id="L259">    return &quot;entries=&quot; + entries;</span>
+  }
+
+  @Override
+  public long getFlushIndex() {
+<span class="nc" id="L264">    return getNextIndex() - 1;</span>
+  }
+
+  @Override
+  public void persistMetadata(RaftStorageMetadata newMetadata) {
+<span class="nc" id="L269">    metadata.set(newMetadata);</span>
+<span class="nc" id="L270">  }</span>
+
+  @Override
+  public RaftStorageMetadata loadMetadata() {
+<span class="nc" id="L274">    return metadata.get();</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;Long&gt; onSnapshotInstalled(long lastSnapshotIndex) {
+<span class="nc" id="L279">    return CompletableFuture.completedFuture(lastSnapshotIndex);</span>
+    // do nothing
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

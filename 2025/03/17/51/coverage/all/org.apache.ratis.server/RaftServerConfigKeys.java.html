@@ -1,0 +1,962 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerConfigKeys.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server</a> &gt; <span class="el_source">RaftServerConfigKeys.java</span></div><h1>RaftServerConfigKeys.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+import static org.apache.ratis.conf.ConfUtils.*;
+
+public interface RaftServerConfigKeys {
+<span class="nc" id="L38">  Logger LOG = LoggerFactory.getLogger(RaftServerConfigKeys.class);</span>
+  static Consumer&lt;String&gt; getDefaultLog() {
+<span class="nc" id="L40">    return LOG::info;</span>
+  }
+
+  String PREFIX = &quot;raft.server&quot;;
+
+  String STORAGE_DIR_KEY = PREFIX + &quot;.storage.dir&quot;;
+<span class="nc" id="L46">  List&lt;File&gt; STORAGE_DIR_DEFAULT = Collections.singletonList(new File(&quot;/tmp/raft-server/&quot;));</span>
+  static List&lt;File&gt; storageDir(RaftProperties properties) {
+<span class="nc" id="L48">    return getFiles(properties::getFiles, STORAGE_DIR_KEY, STORAGE_DIR_DEFAULT, getDefaultLog());</span>
+  }
+  static void setStorageDir(RaftProperties properties, List&lt;File&gt; storageDir) {
+<span class="nc" id="L51">    setFiles(properties::setFiles, STORAGE_DIR_KEY, storageDir);</span>
+<span class="nc" id="L52">  }</span>
+
+  String STORAGE_FREE_SPACE_MIN_KEY = PREFIX + &quot;.storage.free-space.min&quot;;
+<span class="nc" id="L55">  SizeInBytes STORAGE_FREE_SPACE_MIN_DEFAULT = SizeInBytes.valueOf(&quot;0MB&quot;);</span>
+  static SizeInBytes storageFreeSpaceMin(RaftProperties properties) {
+<span class="nc" id="L57">    return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L58">        STORAGE_FREE_SPACE_MIN_KEY, STORAGE_FREE_SPACE_MIN_DEFAULT, getDefaultLog());</span>
+  }
+  static void setStorageFreeSpaceMin(RaftProperties properties, SizeInBytes storageFreeSpaceMin) {
+<span class="nc" id="L61">    setSizeInBytes(properties::set, STORAGE_FREE_SPACE_MIN_KEY, storageFreeSpaceMin);</span>
+<span class="nc" id="L62">  }</span>
+
+  String REMOVED_GROUPS_DIR_KEY = PREFIX + &quot;.removed.groups.dir&quot;;
+<span class="nc" id="L65">  File REMOVED_GROUPS_DIR_DEFAULT = new File(&quot;/tmp/raft-server/removed-groups/&quot;);</span>
+  static File removedGroupsDir(RaftProperties properties) {
+<span class="nc" id="L67">    return getFile(properties::getFile, REMOVED_GROUPS_DIR_KEY,</span>
+<span class="nc" id="L68">        REMOVED_GROUPS_DIR_DEFAULT, getDefaultLog());</span>
+  }
+  static void setRemovedGroupsDir(RaftProperties properties, File removedGroupsStorageDir) {
+<span class="nc" id="L71">    setFile(properties::setFile, REMOVED_GROUPS_DIR_KEY, removedGroupsStorageDir);</span>
+<span class="nc" id="L72">  }</span>
+
+  String SLEEP_DEVIATION_THRESHOLD_KEY = PREFIX + &quot;.sleep.deviation.threshold&quot;;
+<span class="nc" id="L75">  TimeDuration SLEEP_DEVIATION_THRESHOLD_DEFAULT = TimeDuration.valueOf(300, TimeUnit.MILLISECONDS);</span>
+  static TimeDuration sleepDeviationThreshold(RaftProperties properties) {
+<span class="nc" id="L77">    return getTimeDuration(properties.getTimeDuration(SLEEP_DEVIATION_THRESHOLD_DEFAULT.getUnit()),</span>
+<span class="nc" id="L78">        SLEEP_DEVIATION_THRESHOLD_KEY, SLEEP_DEVIATION_THRESHOLD_DEFAULT, getDefaultLog());</span>
+  }
+  /** @deprecated use {@link #setSleepDeviationThreshold(RaftProperties, TimeDuration)}. */
+  @Deprecated
+  static void setSleepDeviationThreshold(RaftProperties properties, int thresholdMs) {
+<span class="nc" id="L83">    setInt(properties::setInt, SLEEP_DEVIATION_THRESHOLD_KEY, thresholdMs);</span>
+<span class="nc" id="L84">  }</span>
+  static void setSleepDeviationThreshold(RaftProperties properties, TimeDuration threshold) {
+<span class="nc" id="L86">    setTimeDuration(properties::setTimeDuration, SLEEP_DEVIATION_THRESHOLD_KEY, threshold);</span>
+<span class="nc" id="L87">  }</span>
+
+  String CLOSE_THRESHOLD_KEY = PREFIX + &quot;.close.threshold&quot;;
+<span class="nc" id="L90">  TimeDuration CLOSE_THRESHOLD_DEFAULT = TimeDuration.valueOf(60, TimeUnit.SECONDS);</span>
+  static TimeDuration closeThreshold(RaftProperties properties) {
+<span class="nc" id="L92">    return getTimeDuration(properties.getTimeDuration(CLOSE_THRESHOLD_DEFAULT.getUnit()),</span>
+<span class="nc" id="L93">        CLOSE_THRESHOLD_KEY, CLOSE_THRESHOLD_DEFAULT, getDefaultLog());</span>
+  }
+  /** @deprecated use {@link #setCloseThreshold(RaftProperties, TimeDuration)}. */
+  @Deprecated
+  static void setCloseThreshold(RaftProperties properties, int thresholdSec) {
+<span class="nc" id="L98">    setInt(properties::setInt, CLOSE_THRESHOLD_KEY, thresholdSec);</span>
+<span class="nc" id="L99">  }</span>
+  static void setCloseThreshold(RaftProperties properties, TimeDuration threshold) {
+<span class="nc" id="L101">    setTimeDuration(properties::setTimeDuration, CLOSE_THRESHOLD_KEY, threshold);</span>
+<span class="nc" id="L102">  }</span>
+
+  /**
+   * When bootstrapping a new peer, If the gap between the match index of the
+   * peer and the leader's latest committed index is less than this gap, we
+   * treat the peer as caught-up.
+   */
+  String STAGING_CATCHUP_GAP_KEY = PREFIX + &quot;.staging.catchup.gap&quot;;
+  int STAGING_CATCHUP_GAP_DEFAULT = 1000; // increase this number when write throughput is high
+  static int stagingCatchupGap(RaftProperties properties) {
+<span class="nc" id="L112">    return getInt(properties::getInt,</span>
+<span class="nc" id="L113">        STAGING_CATCHUP_GAP_KEY, STAGING_CATCHUP_GAP_DEFAULT, getDefaultLog(), requireMin(0));</span>
+  }
+  static void setStagingCatchupGap(RaftProperties properties, int stagingCatchupGap) {
+<span class="nc" id="L116">    setInt(properties::setInt, STAGING_CATCHUP_GAP_KEY, stagingCatchupGap);</span>
+<span class="nc" id="L117">  }</span>
+
+  String STAGING_TIMEOUT_KEY = PREFIX + &quot;.staging.timeout&quot;;
+
+<span class="nc" id="L121">  TimeDuration STAGING_TIMEOUT_DEFAULT = null;</span>
+
+  static TimeDuration stagingTimeout(RaftProperties properties) {
+<span class="nc" id="L124">    final TimeDuration fallbackStagingTimeout = Rpc.timeoutMax(properties, null).multiply(3);</span>
+<span class="nc" id="L125">    return getTimeDuration(properties.getTimeDuration(fallbackStagingTimeout.getUnit()),</span>
+        STAGING_TIMEOUT_KEY, STAGING_TIMEOUT_DEFAULT,
+<span class="nc" id="L127">        Rpc.TIMEOUT_MAX_KEY, fallbackStagingTimeout, getDefaultLog());</span>
+  }
+  static void setStagingTimeout(RaftProperties properties, TimeDuration stagingTimeout) {
+<span class="nc" id="L130">    setTimeDuration(properties::setTimeDuration, STAGING_TIMEOUT_KEY, stagingTimeout);</span>
+<span class="nc" id="L131">  }</span>
+
+
+  interface ThreadPool {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.threadpool&quot;;
+
+    String PROXY_CACHED_KEY = PREFIX + &quot;.proxy.cached&quot;;
+    boolean PROXY_CACHED_DEFAULT = true;
+    static boolean proxyCached(RaftProperties properties) {
+<span class="nc" id="L140">      return getBoolean(properties::getBoolean, PROXY_CACHED_KEY, PROXY_CACHED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setProxyCached(RaftProperties properties, boolean useCached) {
+<span class="nc" id="L143">      setBoolean(properties::setBoolean, PROXY_CACHED_KEY, useCached);</span>
+<span class="nc" id="L144">    }</span>
+
+    String PROXY_SIZE_KEY = PREFIX + &quot;.proxy.size&quot;;
+    int PROXY_SIZE_DEFAULT = 0;
+    static int proxySize(RaftProperties properties) {
+<span class="nc" id="L149">      return getInt(properties::getInt, PROXY_SIZE_KEY, PROXY_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L150">          requireMin(0), requireMax(65536));</span>
+    }
+    static void setProxySize(RaftProperties properties, int size) {
+<span class="nc" id="L153">      setInt(properties::setInt, PROXY_SIZE_KEY, size);</span>
+<span class="nc" id="L154">    }</span>
+
+    String SERVER_CACHED_KEY = PREFIX + &quot;.server.cached&quot;;
+    boolean SERVER_CACHED_DEFAULT = true;
+    static boolean serverCached(RaftProperties properties) {
+<span class="nc" id="L159">      return getBoolean(properties::getBoolean, SERVER_CACHED_KEY, SERVER_CACHED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setServerCached(RaftProperties properties, boolean useCached) {
+<span class="nc" id="L162">      setBoolean(properties::setBoolean, SERVER_CACHED_KEY, useCached);</span>
+<span class="nc" id="L163">    }</span>
+
+    String SERVER_SIZE_KEY = PREFIX + &quot;.server.size&quot;;
+    int SERVER_SIZE_DEFAULT = 0;
+    static int serverSize(RaftProperties properties) {
+<span class="nc" id="L168">      return getInt(properties::getInt, SERVER_SIZE_KEY, SERVER_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L169">          requireMin(0), requireMax(65536));</span>
+    }
+    static void setServerSize(RaftProperties properties, int size) {
+<span class="nc" id="L172">      setInt(properties::setInt, SERVER_SIZE_KEY, size);</span>
+<span class="nc" id="L173">    }</span>
+
+    String CLIENT_CACHED_KEY = PREFIX + &quot;.client.cached&quot;;
+    boolean CLIENT_CACHED_DEFAULT = true;
+    static boolean clientCached(RaftProperties properties) {
+<span class="nc" id="L178">      return getBoolean(properties::getBoolean, CLIENT_CACHED_KEY, CLIENT_CACHED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setClientCached(RaftProperties properties, boolean useCached) {
+<span class="nc" id="L181">      setBoolean(properties::setBoolean, CLIENT_CACHED_KEY, useCached);</span>
+<span class="nc" id="L182">    }</span>
+
+    String CLIENT_SIZE_KEY = PREFIX + &quot;.client.size&quot;;
+    int CLIENT_SIZE_DEFAULT = 0;
+    static int clientSize(RaftProperties properties) {
+<span class="nc" id="L187">      return getInt(properties::getInt, CLIENT_SIZE_KEY, CLIENT_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L188">          requireMin(0), requireMax(65536));</span>
+    }
+    static void setClientSize(RaftProperties properties, int size) {
+<span class="nc" id="L191">      setInt(properties::setInt, CLIENT_SIZE_KEY, size);</span>
+<span class="nc" id="L192">    }</span>
+  }
+
+  interface Read {
+<span class="nc" id="L196">    String PREFIX = RaftServerConfigKeys.PREFIX</span>
+<span class="nc" id="L197">        + &quot;.&quot; + JavaUtils.getClassSimpleName(Read.class).toLowerCase();</span>
+
+<span class="nc" id="L199">    String TIMEOUT_KEY = PREFIX + &quot;.timeout&quot;;</span>
+<span class="nc" id="L200">    TimeDuration TIMEOUT_DEFAULT = TimeDuration.valueOf(10, TimeUnit.SECONDS);</span>
+    static TimeDuration timeout(RaftProperties properties) {
+<span class="nc" id="L202">      return getTimeDuration(properties.getTimeDuration(TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L203">          TIMEOUT_KEY, TIMEOUT_DEFAULT, getDefaultLog(), requirePositive());</span>
+    }
+    static void setTimeout(RaftProperties properties, TimeDuration readOnlyTimeout) {
+<span class="nc" id="L206">      setTimeDuration(properties::setTimeDuration, TIMEOUT_KEY, readOnlyTimeout);</span>
+<span class="nc" id="L207">    }</span>
+
+<span class="nc" id="L209">    enum Option {</span>
+      /** Directly query statemachine. Efficient but may undermine linearizability */
+<span class="nc" id="L211">      DEFAULT,</span>
+
+      /** Use ReadIndex (see Raft Paper section 6.4). Maintains linearizability */
+<span class="nc" id="L214">      LINEARIZABLE</span>
+    }
+
+<span class="nc" id="L217">    String OPTION_KEY = PREFIX + &quot;.option&quot;;</span>
+<span class="nc" id="L218">    Option OPTION_DEFAULT = Option.DEFAULT;</span>
+    static Option option(RaftProperties properties) {
+<span class="nc" id="L220">      Option option =  get(properties::getEnum, OPTION_KEY, OPTION_DEFAULT, getDefaultLog());</span>
+<span class="nc bnc" id="L221" title="All 4 branches missed.">      if (option != Option.DEFAULT &amp;&amp; option != Option.LINEARIZABLE) {</span>
+<span class="nc" id="L222">        throw new IllegalArgumentException(&quot;Unexpected read option: &quot; + option);</span>
+      }
+<span class="nc" id="L224">      return option;</span>
+    }
+    static void setOption(RaftProperties properties, Option option) {
+<span class="nc" id="L227">      set(properties::setEnum, OPTION_KEY, option);</span>
+<span class="nc" id="L228">    }</span>
+
+<span class="nc" id="L230">    String LEADER_LEASE_ENABLED_KEY = PREFIX + &quot;.leader.lease.enabled&quot;;</span>
+    boolean LEADER_LEASE_ENABLED_DEFAULT = false;
+    static boolean leaderLeaseEnabled(RaftProperties properties) {
+<span class="nc" id="L233">      return getBoolean(properties::getBoolean, LEADER_LEASE_ENABLED_KEY,</span>
+<span class="nc" id="L234">          LEADER_LEASE_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setLeaderLeaseEnabled(RaftProperties properties, boolean enabled) {
+<span class="nc" id="L237">      setBoolean(properties::setBoolean, LEADER_LEASE_ENABLED_KEY, enabled);</span>
+<span class="nc" id="L238">    }</span>
+
+<span class="nc" id="L240">    String LEADER_LEASE_TIMEOUT_RATIO_KEY = PREFIX + &quot;.leader.lease.timeout.ratio&quot;;</span>
+    double LEADER_LEASE_TIMEOUT_RATIO_DEFAULT = 0.9;
+    static double leaderLeaseTimeoutRatio(RaftProperties properties) {
+<span class="nc" id="L243">      return getDouble(properties::getDouble, LEADER_LEASE_TIMEOUT_RATIO_KEY,</span>
+<span class="nc" id="L244">          LEADER_LEASE_TIMEOUT_RATIO_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L245">          requireMin(0.0), requireMax(1.0));</span>
+    }
+
+    static void setLeaderLeaseTimeoutRatio(RaftProperties properties, double ratio) {
+<span class="nc" id="L249">      setDouble(properties::setDouble, LEADER_LEASE_TIMEOUT_RATIO_KEY, ratio);</span>
+<span class="nc" id="L250">    }</span>
+
+    interface ReadAfterWriteConsistent {
+<span class="nc" id="L253">      String PREFIX = Read.PREFIX + &quot;.read-after-write-consistent&quot;;</span>
+
+<span class="nc" id="L255">      String WRITE_INDEX_CACHE_EXPIRY_TIME_KEY = PREFIX + &quot;.write-index-cache.expiry-time&quot;;</span>
+      /** Must be larger than {@link Read#TIMEOUT_DEFAULT}. */
+<span class="nc" id="L257">      TimeDuration WRITE_INDEX_CACHE_EXPIRY_TIME_DEFAULT = TimeDuration.valueOf(60, TimeUnit.SECONDS);</span>
+
+      static TimeDuration writeIndexCacheExpiryTime(RaftProperties properties) {
+<span class="nc" id="L260">        return getTimeDuration(properties.getTimeDuration(WRITE_INDEX_CACHE_EXPIRY_TIME_DEFAULT.getUnit()),</span>
+<span class="nc" id="L261">            WRITE_INDEX_CACHE_EXPIRY_TIME_KEY, WRITE_INDEX_CACHE_EXPIRY_TIME_DEFAULT, getDefaultLog());</span>
+      }
+
+      static void setWriteIndexCacheExpiryTime(RaftProperties properties, TimeDuration expiryTime) {
+<span class="nc" id="L265">        setTimeDuration(properties::setTimeDuration, WRITE_INDEX_CACHE_EXPIRY_TIME_KEY, expiryTime);</span>
+<span class="nc" id="L266">      }</span>
+    }
+  }
+
+  interface Write {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.write&quot;;
+
+    String ELEMENT_LIMIT_KEY = PREFIX + &quot;.element-limit&quot;;
+    int ELEMENT_LIMIT_DEFAULT = 4096;
+
+    static int elementLimit(RaftProperties properties) {
+<span class="nc" id="L277">      return getInt(properties::getInt, ELEMENT_LIMIT_KEY, ELEMENT_LIMIT_DEFAULT, getDefaultLog(), requireMin(1));</span>
+    }
+    static void setElementLimit(RaftProperties properties, int limit) {
+<span class="nc" id="L280">      setInt(properties::setInt, ELEMENT_LIMIT_KEY, limit, requireMin(1));</span>
+<span class="nc" id="L281">    }</span>
+
+    String BYTE_LIMIT_KEY = PREFIX + &quot;.byte-limit&quot;;
+<span class="nc" id="L284">    SizeInBytes BYTE_LIMIT_DEFAULT = SizeInBytes.valueOf(&quot;64MB&quot;);</span>
+    static SizeInBytes byteLimit(RaftProperties properties) {
+<span class="nc" id="L286">      return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L287">          BYTE_LIMIT_KEY, BYTE_LIMIT_DEFAULT, getDefaultLog(), requireMinSizeInByte(SizeInBytes.ONE_MB));</span>
+    }
+    static void setByteLimit(RaftProperties properties, SizeInBytes byteLimit) {
+<span class="nc" id="L290">      setSizeInBytes(properties::set, BYTE_LIMIT_KEY, byteLimit, requireMin(1L));</span>
+<span class="nc" id="L291">    }</span>
+
+    String FOLLOWER_GAP_RATIO_MAX_KEY = PREFIX + &quot;.follower.gap.ratio.max&quot;;
+    // The valid range is [1, 0) and -1, -1 means disable this feature
+    double FOLLOWER_GAP_RATIO_MAX_DEFAULT = -1d;
+
+    static double followerGapRatioMax(RaftProperties properties) {
+<span class="nc" id="L298">      return getDouble(properties::getDouble, FOLLOWER_GAP_RATIO_MAX_KEY,</span>
+<span class="nc" id="L299">          FOLLOWER_GAP_RATIO_MAX_DEFAULT, getDefaultLog(), requireMax(1d));</span>
+    }
+    static void setFollowerGapRatioMax(RaftProperties properties, float ratio) {
+<span class="nc" id="L302">      setDouble(properties::setDouble, FOLLOWER_GAP_RATIO_MAX_KEY, ratio, requireMax(1d));</span>
+<span class="nc" id="L303">    }</span>
+  }
+
+  interface Watch {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.watch&quot;;
+
+    String ELEMENT_LIMIT_KEY = PREFIX + &quot;.element-limit&quot;;
+    int ELEMENT_LIMIT_DEFAULT = 65536;
+    static int elementLimit(RaftProperties properties) {
+<span class="nc" id="L312">      return getInt(properties::getInt, ELEMENT_LIMIT_KEY, ELEMENT_LIMIT_DEFAULT, getDefaultLog(), requireMin(1));</span>
+    }
+    static void setElementLimit(RaftProperties properties, int limit) {
+<span class="nc" id="L315">      setInt(properties::setInt, ELEMENT_LIMIT_KEY, limit, requireMin(1));</span>
+<span class="nc" id="L316">    }</span>
+
+    String TIMEOUT_DENOMINATION_KEY = PREFIX + &quot;.timeout.denomination&quot;;
+<span class="nc" id="L319">    TimeDuration TIMEOUT_DENOMINATION_DEFAULT = TimeDuration.valueOf(1, TimeUnit.SECONDS);</span>
+    static TimeDuration timeoutDenomination(RaftProperties properties) {
+<span class="nc" id="L321">      return getTimeDuration(properties.getTimeDuration(TIMEOUT_DENOMINATION_DEFAULT.getUnit()),</span>
+<span class="nc" id="L322">          TIMEOUT_DENOMINATION_KEY, TIMEOUT_DENOMINATION_DEFAULT, getDefaultLog(), requirePositive());</span>
+    }
+    static void setTimeoutDenomination(RaftProperties properties, TimeDuration watchTimeout) {
+<span class="nc" id="L325">      setTimeDuration(properties::setTimeDuration, TIMEOUT_DENOMINATION_KEY, watchTimeout);</span>
+<span class="nc" id="L326">    }</span>
+
+    /** Timeout for watch requests. */
+    String TIMEOUT_KEY = PREFIX + &quot;.timeout&quot;;
+<span class="nc" id="L330">    TimeDuration TIMEOUT_DEFAULT = TimeDuration.valueOf(10, TimeUnit.SECONDS);</span>
+    static TimeDuration timeout(RaftProperties properties) {
+<span class="nc" id="L332">      return getTimeDuration(properties.getTimeDuration(TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L333">          TIMEOUT_KEY, TIMEOUT_DEFAULT, getDefaultLog(), requirePositive());</span>
+    }
+    static void setTimeout(RaftProperties properties, TimeDuration watchTimeout) {
+<span class="nc" id="L336">      setTimeDuration(properties::setTimeDuration, TIMEOUT_KEY, watchTimeout);</span>
+<span class="nc" id="L337">    }</span>
+  }
+
+  interface Log {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.log&quot;;
+
+    String USE_MEMORY_KEY = PREFIX + &quot;.use.memory&quot;;
+    boolean USE_MEMORY_DEFAULT = false;
+    static boolean useMemory(RaftProperties properties) {
+<span class="nc" id="L346">      return getBoolean(properties::getBoolean, USE_MEMORY_KEY, USE_MEMORY_DEFAULT, getDefaultLog());</span>
+    }
+    static void setUseMemory(RaftProperties properties, boolean useMemory) {
+<span class="nc" id="L349">      setBoolean(properties::setBoolean, USE_MEMORY_KEY, useMemory);</span>
+<span class="nc" id="L350">    }</span>
+
+    String QUEUE_ELEMENT_LIMIT_KEY = PREFIX + &quot;.queue.element-limit&quot;;
+    int QUEUE_ELEMENT_LIMIT_DEFAULT = 4096;
+    static int queueElementLimit(RaftProperties properties) {
+<span class="nc" id="L355">      return getInt(properties::getInt, QUEUE_ELEMENT_LIMIT_KEY, QUEUE_ELEMENT_LIMIT_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L356">          requireMin(1));</span>
+    }
+    static void setQueueElementLimit(RaftProperties properties, int queueSize) {
+<span class="nc" id="L359">      setInt(properties::setInt, QUEUE_ELEMENT_LIMIT_KEY, queueSize, requireMin(1));</span>
+<span class="nc" id="L360">    }</span>
+
+    String QUEUE_BYTE_LIMIT_KEY = PREFIX + &quot;.queue.byte-limit&quot;;
+<span class="nc" id="L363">    SizeInBytes QUEUE_BYTE_LIMIT_DEFAULT = SizeInBytes.valueOf(&quot;64MB&quot;);</span>
+    static SizeInBytes queueByteLimit(RaftProperties properties) {
+<span class="nc" id="L365">      return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L366">          QUEUE_BYTE_LIMIT_KEY, QUEUE_BYTE_LIMIT_DEFAULT, getDefaultLog());</span>
+    }
+
+    @Deprecated
+    static void setQueueByteLimit(RaftProperties properties, int queueSize) {
+<span class="nc" id="L371">      setInt(properties::setInt, QUEUE_BYTE_LIMIT_KEY, queueSize, requireMin(1));</span>
+<span class="nc" id="L372">    }</span>
+    static void setQueueByteLimit(RaftProperties properties, SizeInBytes byteLimit) {
+<span class="nc" id="L374">      setSizeInBytes(properties::set, QUEUE_BYTE_LIMIT_KEY, byteLimit, requireMin(1L));</span>
+<span class="nc" id="L375">    }</span>
+
+    String PURGE_GAP_KEY = PREFIX + &quot;.purge.gap&quot;;
+    int PURGE_GAP_DEFAULT = 1024;
+    static int purgeGap(RaftProperties properties) {
+<span class="nc" id="L380">      return getInt(properties::getInt, PURGE_GAP_KEY, PURGE_GAP_DEFAULT, getDefaultLog(), requireMin(1));</span>
+    }
+    static void setPurgeGap(RaftProperties properties, int purgeGap) {
+<span class="nc" id="L383">      setInt(properties::setInt, PURGE_GAP_KEY, purgeGap, requireMin(1));</span>
+<span class="nc" id="L384">    }</span>
+
+    // Config to allow purging up to the snapshot index even if some other
+    // peers are behind in their commit index.
+    String PURGE_UPTO_SNAPSHOT_INDEX_KEY = PREFIX + &quot;.purge.upto.snapshot.index&quot;;
+    boolean PURGE_UPTO_SNAPSHOT_INDEX_DEFAULT = false;
+    static boolean purgeUptoSnapshotIndex(RaftProperties properties) {
+<span class="nc" id="L391">      return getBoolean(properties::getBoolean, PURGE_UPTO_SNAPSHOT_INDEX_KEY,</span>
+<span class="nc" id="L392">          PURGE_UPTO_SNAPSHOT_INDEX_DEFAULT, getDefaultLog());</span>
+    }
+    static void setPurgeUptoSnapshotIndex(RaftProperties properties, boolean shouldPurgeUptoSnapshotIndex) {
+<span class="nc" id="L395">      setBoolean(properties::setBoolean, PURGE_UPTO_SNAPSHOT_INDEX_KEY, shouldPurgeUptoSnapshotIndex);</span>
+<span class="nc" id="L396">    }</span>
+
+    String PURGE_PRESERVATION_LOG_NUM_KEY = PREFIX + &quot;.purge.preservation.log.num&quot;;
+    long PURGE_PRESERVATION_LOG_NUM_DEFAULT = 0L;
+    static long purgePreservationLogNum(RaftProperties properties) {
+<span class="nc" id="L401">      return getLong(properties::getLong, PURGE_PRESERVATION_LOG_NUM_KEY,</span>
+<span class="nc" id="L402">              PURGE_PRESERVATION_LOG_NUM_DEFAULT, getDefaultLog());</span>
+    }
+    static void setPurgePreservationLogNum(RaftProperties properties, long purgePreserveLogNum) {
+<span class="nc" id="L405">      setLong(properties::setLong, PURGE_PRESERVATION_LOG_NUM_KEY, purgePreserveLogNum);</span>
+<span class="nc" id="L406">    }</span>
+
+    String SEGMENT_SIZE_MAX_KEY = PREFIX + &quot;.segment.size.max&quot;;
+<span class="nc" id="L409">    SizeInBytes SEGMENT_SIZE_MAX_DEFAULT = SizeInBytes.valueOf(&quot;32MB&quot;);</span>
+    static SizeInBytes segmentSizeMax(RaftProperties properties) {
+<span class="nc" id="L411">      return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L412">          SEGMENT_SIZE_MAX_KEY, SEGMENT_SIZE_MAX_DEFAULT, getDefaultLog());</span>
+    }
+    static void setSegmentSizeMax(RaftProperties properties, SizeInBytes segmentSizeMax) {
+<span class="nc" id="L415">      setSizeInBytes(properties::set, SEGMENT_SIZE_MAX_KEY, segmentSizeMax);</span>
+<span class="nc" id="L416">    }</span>
+
+    /**
+     * Besides the open segment, the max number of segments caching log entries.
+     */
+    String SEGMENT_CACHE_NUM_MAX_KEY = PREFIX + &quot;.segment.cache.num.max&quot;;
+    int SEGMENT_CACHE_NUM_MAX_DEFAULT = 6;
+    static int segmentCacheNumMax(RaftProperties properties) {
+<span class="nc" id="L424">      return getInt(properties::getInt, SEGMENT_CACHE_NUM_MAX_KEY,</span>
+<span class="nc" id="L425">          SEGMENT_CACHE_NUM_MAX_DEFAULT, getDefaultLog(), requireMin(0));</span>
+    }
+    static void setSegmentCacheNumMax(RaftProperties properties, int maxCachedSegmentNum) {
+<span class="nc" id="L428">      setInt(properties::setInt, SEGMENT_CACHE_NUM_MAX_KEY, maxCachedSegmentNum);</span>
+<span class="nc" id="L429">    }</span>
+
+    String SEGMENT_CACHE_SIZE_MAX_KEY = PREFIX + &quot;.segment.cache.size.max&quot;;
+<span class="nc" id="L432">    SizeInBytes SEGMENT_CACHE_SIZE_MAX_DEFAULT = SizeInBytes.valueOf(&quot;200MB&quot;);</span>
+    static SizeInBytes segmentCacheSizeMax(RaftProperties properties) {
+<span class="nc" id="L434">      return getSizeInBytes(properties::getSizeInBytes, SEGMENT_CACHE_SIZE_MAX_KEY,</span>
+<span class="nc" id="L435">          SEGMENT_CACHE_SIZE_MAX_DEFAULT, getDefaultLog());</span>
+    }
+    static void setSegmentCacheSizeMax(RaftProperties properties, SizeInBytes maxCachedSegmentSize) {
+<span class="nc" id="L438">      setSizeInBytes(properties::set, SEGMENT_CACHE_SIZE_MAX_KEY, maxCachedSegmentSize);</span>
+<span class="nc" id="L439">    }</span>
+
+    String PREALLOCATED_SIZE_KEY = PREFIX + &quot;.preallocated.size&quot;;
+<span class="nc" id="L442">    SizeInBytes PREALLOCATED_SIZE_DEFAULT = SizeInBytes.valueOf(&quot;4MB&quot;);</span>
+    static SizeInBytes preallocatedSize(RaftProperties properties) {
+<span class="nc" id="L444">      return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L445">          PREALLOCATED_SIZE_KEY, PREALLOCATED_SIZE_DEFAULT, getDefaultLog());</span>
+    }
+    static void setPreallocatedSize(RaftProperties properties, SizeInBytes preallocatedSize) {
+<span class="nc" id="L448">      setSizeInBytes(properties::set, PREALLOCATED_SIZE_KEY, preallocatedSize);</span>
+<span class="nc" id="L449">    }</span>
+
+    String WRITE_BUFFER_SIZE_KEY = PREFIX + &quot;.write.buffer.size&quot;;
+<span class="nc" id="L452">    SizeInBytes WRITE_BUFFER_SIZE_DEFAULT = SizeInBytes.valueOf(&quot;8MB&quot;);</span>
+    static SizeInBytes writeBufferSize(RaftProperties properties) {
+<span class="nc" id="L454">      return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L455">          WRITE_BUFFER_SIZE_KEY, WRITE_BUFFER_SIZE_DEFAULT, getDefaultLog());</span>
+    }
+    static void setWriteBufferSize(RaftProperties properties, SizeInBytes writeBufferSize) {
+<span class="nc" id="L458">      setSizeInBytes(properties::set, WRITE_BUFFER_SIZE_KEY, writeBufferSize);</span>
+<span class="nc" id="L459">    }</span>
+
+    String FORCE_SYNC_NUM_KEY = PREFIX + &quot;.force.sync.num&quot;;
+    int FORCE_SYNC_NUM_DEFAULT = 128;
+    static int forceSyncNum(RaftProperties properties) {
+<span class="nc" id="L464">      return getInt(properties::getInt,</span>
+<span class="nc" id="L465">          FORCE_SYNC_NUM_KEY, FORCE_SYNC_NUM_DEFAULT, getDefaultLog(), requireMin(0));</span>
+    }
+    static void setForceSyncNum(RaftProperties properties, int forceSyncNum) {
+<span class="nc" id="L468">      setInt(properties::setInt, FORCE_SYNC_NUM_KEY, forceSyncNum);</span>
+<span class="nc" id="L469">    }</span>
+
+    /** Unsafe-flush allow increasing flush index without waiting the actual flush to complete. */
+    String UNSAFE_FLUSH_ENABLED_KEY = PREFIX + &quot;.unsafe-flush.enabled&quot;;
+    boolean UNSAFE_FLUSH_ENABLED_DEFAULT = false;
+    static boolean unsafeFlushEnabled(RaftProperties properties) {
+<span class="nc" id="L475">      return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L476">              UNSAFE_FLUSH_ENABLED_KEY, UNSAFE_FLUSH_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setUnsafeFlushEnabled(RaftProperties properties, boolean unsafeFlush) {
+<span class="nc" id="L479">      setBoolean(properties::setBoolean, UNSAFE_FLUSH_ENABLED_KEY, unsafeFlush);</span>
+<span class="nc" id="L480">    }</span>
+
+    /** Async-flush will increase flush index until the actual flush has completed. */
+    String ASYNC_FLUSH_ENABLED_KEY = PREFIX + &quot;.async-flush.enabled&quot;;
+    boolean ASYNC_FLUSH_ENABLED_DEFAULT = false;
+    static boolean asyncFlushEnabled(RaftProperties properties) {
+<span class="nc" id="L486">      return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L487">          ASYNC_FLUSH_ENABLED_KEY, ASYNC_FLUSH_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setAsyncFlushEnabled(RaftProperties properties, boolean asyncFlush) {
+<span class="nc" id="L490">      setBoolean(properties::setBoolean, ASYNC_FLUSH_ENABLED_KEY, asyncFlush);</span>
+<span class="nc" id="L491">    }</span>
+
+    /** Log metadata can guarantee that a server can recover commit index and state machine
+     * even if a majority of servers are dead by consuming a little extra space. */
+    String LOG_METADATA_ENABLED_KEY = PREFIX + &quot;.log-metadata.enabled&quot;;
+    boolean LOG_METADATA_ENABLED_DEFAULT = true;
+    static boolean logMetadataEnabled(RaftProperties properties) {
+<span class="nc" id="L498">      return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L499">          LOG_METADATA_ENABLED_KEY, LOG_METADATA_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setLogMetadataEnabled(RaftProperties properties, boolean logMetadata) {
+<span class="nc" id="L502">      setBoolean(properties::setBoolean, LOG_METADATA_ENABLED_KEY, logMetadata);</span>
+<span class="nc" id="L503">    }</span>
+
+    /** The policy to handle corrupted raft log. */
+<span class="nc" id="L506">    enum CorruptionPolicy {</span>
+      /** Rethrow the exception. */
+<span class="nc" id="L508">      EXCEPTION,</span>
+      /** Print a warn log message and return all uncorrupted log entries up to the corruption. */
+<span class="nc" id="L510">      WARN_AND_RETURN;</span>
+
+      public static CorruptionPolicy getDefault() {
+<span class="nc" id="L513">        return EXCEPTION;</span>
+      }
+
+      public static &lt;T&gt; CorruptionPolicy get(T supplier, Function&lt;T, CorruptionPolicy&gt; getMethod) {
+<span class="nc" id="L517">        return Optional.ofNullable(supplier).map(getMethod).orElse(getDefault());</span>
+      }
+    }
+
+    String CORRUPTION_POLICY_KEY = PREFIX + &quot;.corruption.policy&quot;;
+<span class="nc" id="L522">    CorruptionPolicy CORRUPTION_POLICY_DEFAULT = CorruptionPolicy.getDefault();</span>
+    static CorruptionPolicy corruptionPolicy(RaftProperties properties) {
+<span class="nc" id="L524">      return get(properties::getEnum,</span>
+<span class="nc" id="L525">          CORRUPTION_POLICY_KEY, CORRUPTION_POLICY_DEFAULT, getDefaultLog());</span>
+    }
+    static void setCorruptionPolicy(RaftProperties properties, CorruptionPolicy corruptionPolicy) {
+<span class="nc" id="L528">      set(properties::setEnum, CORRUPTION_POLICY_KEY, corruptionPolicy);</span>
+<span class="nc" id="L529">    }</span>
+
+    interface StateMachineData {
+      String PREFIX = Log.PREFIX + &quot;.statemachine.data&quot;;
+
+      String SYNC_KEY = PREFIX + &quot;.sync&quot;;
+      boolean SYNC_DEFAULT = true;
+      static boolean sync(RaftProperties properties) {
+<span class="nc" id="L537">        return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L538">            SYNC_KEY, SYNC_DEFAULT, getDefaultLog());</span>
+      }
+      static void setSync(RaftProperties properties, boolean sync) {
+<span class="nc" id="L541">        setBoolean(properties::setBoolean, SYNC_KEY, sync);</span>
+<span class="nc" id="L542">      }</span>
+      String CACHING_ENABLED_KEY = PREFIX + &quot;.caching.enabled&quot;;
+      boolean CACHING_ENABLED_DEFAULT = false;
+      static boolean cachingEnabled(RaftProperties properties) {
+<span class="nc" id="L546">        return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L547">            CACHING_ENABLED_KEY, CACHING_ENABLED_DEFAULT, getDefaultLog());</span>
+      }
+      static void setCachingEnabled(RaftProperties properties, boolean enable) {
+<span class="nc" id="L550">        setBoolean(properties::setBoolean, CACHING_ENABLED_KEY, enable);</span>
+<span class="nc" id="L551">      }</span>
+
+      String SYNC_TIMEOUT_KEY = PREFIX + &quot;.sync.timeout&quot;;
+<span class="nc" id="L554">      TimeDuration SYNC_TIMEOUT_DEFAULT = TimeDuration.valueOf(10, TimeUnit.SECONDS);</span>
+      static TimeDuration syncTimeout(RaftProperties properties) {
+<span class="nc" id="L556">        return getTimeDuration(properties.getTimeDuration(SYNC_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L557">            SYNC_TIMEOUT_KEY, SYNC_TIMEOUT_DEFAULT, getDefaultLog());</span>
+      }
+      static void setSyncTimeout(RaftProperties properties, TimeDuration syncTimeout) {
+<span class="nc" id="L560">        setTimeDuration(properties::setTimeDuration, SYNC_TIMEOUT_KEY, syncTimeout);</span>
+<span class="nc" id="L561">      }</span>
+
+      /**
+       * -1: retry indefinitely
+       *  0: no retry
+       * &gt;0: the number of retries
+       */
+      String SYNC_TIMEOUT_RETRY_KEY = PREFIX + &quot;.sync.timeout.retry&quot;;
+      int SYNC_TIMEOUT_RETRY_DEFAULT = -1;
+      static int syncTimeoutRetry(RaftProperties properties) {
+<span class="nc" id="L571">        return getInt(properties::getInt, SYNC_TIMEOUT_RETRY_KEY, SYNC_TIMEOUT_RETRY_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L572">            requireMin(-1));</span>
+      }
+      static void setSyncTimeoutRetry(RaftProperties properties, int syncTimeoutRetry) {
+<span class="nc" id="L575">        setInt(properties::setInt, SYNC_TIMEOUT_RETRY_KEY, syncTimeoutRetry, requireMin(-1));</span>
+<span class="nc" id="L576">      }</span>
+
+      String READ_TIMEOUT_KEY = PREFIX + &quot;.read.timeout&quot;;
+<span class="nc" id="L579">      TimeDuration READ_TIMEOUT_DEFAULT = TimeDuration.valueOf(1000, TimeUnit.MILLISECONDS);</span>
+      static TimeDuration readTimeout(RaftProperties properties) {
+<span class="nc" id="L581">        return getTimeDuration(properties.getTimeDuration(READ_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L582">            READ_TIMEOUT_KEY, READ_TIMEOUT_DEFAULT, getDefaultLog());</span>
+      }
+      static void setReadTimeout(RaftProperties properties, TimeDuration readTimeout) {
+<span class="nc" id="L585">        setTimeDuration(properties::setTimeDuration, READ_TIMEOUT_KEY, readTimeout);</span>
+<span class="nc" id="L586">      }</span>
+    }
+
+    interface Appender {
+      String PREFIX = Log.PREFIX + &quot;.appender&quot;;
+
+      String BUFFER_ELEMENT_LIMIT_KEY = PREFIX + &quot;.buffer.element-limit&quot;;
+      /** 0 means no limit. */
+      int BUFFER_ELEMENT_LIMIT_DEFAULT = 0;
+      static int bufferElementLimit(RaftProperties properties) {
+<span class="nc" id="L596">        return getInt(properties::getInt,</span>
+<span class="nc" id="L597">            BUFFER_ELEMENT_LIMIT_KEY, BUFFER_ELEMENT_LIMIT_DEFAULT, getDefaultLog(), requireMin(0));</span>
+      }
+      static void setBufferElementLimit(RaftProperties properties, int bufferElementLimit) {
+<span class="nc" id="L600">        setInt(properties::setInt, BUFFER_ELEMENT_LIMIT_KEY, bufferElementLimit);</span>
+<span class="nc" id="L601">      }</span>
+
+      String BUFFER_BYTE_LIMIT_KEY = PREFIX + &quot;.buffer.byte-limit&quot;;
+<span class="nc" id="L604">      SizeInBytes BUFFER_BYTE_LIMIT_DEFAULT = SizeInBytes.valueOf(&quot;4MB&quot;);</span>
+      static SizeInBytes bufferByteLimit(RaftProperties properties) {
+<span class="nc" id="L606">        return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L607">            BUFFER_BYTE_LIMIT_KEY, BUFFER_BYTE_LIMIT_DEFAULT, getDefaultLog());</span>
+      }
+      static void setBufferByteLimit(RaftProperties properties, SizeInBytes bufferByteLimit) {
+<span class="nc" id="L610">        setSizeInBytes(properties::set, BUFFER_BYTE_LIMIT_KEY, bufferByteLimit);</span>
+<span class="nc" id="L611">      }</span>
+
+      String SNAPSHOT_CHUNK_SIZE_MAX_KEY = PREFIX + &quot;.snapshot.chunk.size.max&quot;;
+<span class="nc" id="L614">      SizeInBytes SNAPSHOT_CHUNK_SIZE_MAX_DEFAULT =SizeInBytes.valueOf(&quot;16MB&quot;);</span>
+      static SizeInBytes snapshotChunkSizeMax(RaftProperties properties) {
+<span class="nc" id="L616">        return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L617">            SNAPSHOT_CHUNK_SIZE_MAX_KEY, SNAPSHOT_CHUNK_SIZE_MAX_DEFAULT, getDefaultLog());</span>
+      }
+      static void setSnapshotChunkSizeMax(RaftProperties properties, SizeInBytes maxChunkSize) {
+<span class="nc" id="L620">        setSizeInBytes(properties::set, SNAPSHOT_CHUNK_SIZE_MAX_KEY, maxChunkSize);</span>
+<span class="nc" id="L621">      }</span>
+
+      String INSTALL_SNAPSHOT_ENABLED_KEY = PREFIX + &quot;.install.snapshot.enabled&quot;;
+      boolean INSTALL_SNAPSHOT_ENABLED_DEFAULT = true;
+      static boolean installSnapshotEnabled(RaftProperties properties) {
+<span class="nc" id="L626">        return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L627">            INSTALL_SNAPSHOT_ENABLED_KEY, INSTALL_SNAPSHOT_ENABLED_DEFAULT, getDefaultLog());</span>
+      }
+      static void setInstallSnapshotEnabled(RaftProperties properties, boolean shouldInstallSnapshot) {
+<span class="nc" id="L630">        setBoolean(properties::setBoolean, INSTALL_SNAPSHOT_ENABLED_KEY, shouldInstallSnapshot);</span>
+<span class="nc" id="L631">      }</span>
+
+      String WAIT_TIME_MIN_KEY = PREFIX + &quot;.wait-time.min&quot;;
+<span class="nc" id="L634">      TimeDuration WAIT_TIME_MIN_DEFAULT = TimeDuration.ONE_MILLISECOND;</span>
+      static TimeDuration waitTimeMin(RaftProperties properties) {
+<span class="nc" id="L636">        return getTimeDuration(properties.getTimeDuration(WAIT_TIME_MIN_DEFAULT.getUnit()),</span>
+<span class="nc" id="L637">            WAIT_TIME_MIN_KEY, WAIT_TIME_MIN_DEFAULT, getDefaultLog());</span>
+      }
+      static void setWaitTimeMin(RaftProperties properties, TimeDuration minDuration) {
+<span class="nc" id="L640">        setTimeDuration(properties::setTimeDuration, WAIT_TIME_MIN_KEY, minDuration);</span>
+<span class="nc" id="L641">      }</span>
+
+      String RETRY_POLICY_KEY = PREFIX + &quot;.retry.policy&quot;;
+      /**
+       * The min wait time as 1ms (0 is not allowed) for first 10,
+       * (5 iteration with 2 times grpc client retry)
+       * next wait 1sec for next 20 retry (10 iteration with 2 times grpc client)
+       * further wait for 5sec for max times ((5sec*980)/2 times ~= 40min)
+       */
+      String RETRY_POLICY_DEFAULT = &quot;1ms,10, 1s,20, 5s,1000&quot;;
+      static String retryPolicy(RaftProperties properties) {
+<span class="nc" id="L652">        return properties.get(RETRY_POLICY_KEY, RETRY_POLICY_DEFAULT);</span>
+      }
+      static void setRetryPolicy(RaftProperties properties, String retryPolicy) {
+<span class="nc" id="L655">        properties.set(RETRY_POLICY_KEY, retryPolicy);</span>
+<span class="nc" id="L656">      }</span>
+    }
+  }
+
+  interface Snapshot {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.snapshot&quot;;
+
+    /** whether trigger snapshot when log size exceeds limit */
+    String AUTO_TRIGGER_ENABLED_KEY = PREFIX + &quot;.auto.trigger.enabled&quot;;
+    /** by default let the state machine to decide when to do checkpoint */
+    boolean AUTO_TRIGGER_ENABLED_DEFAULT = false;
+    static boolean autoTriggerEnabled(RaftProperties properties) {
+<span class="nc" id="L668">      return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L669">          AUTO_TRIGGER_ENABLED_KEY, AUTO_TRIGGER_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setAutoTriggerEnabled(RaftProperties properties, boolean autoTriggerEnabled) {
+<span class="nc" id="L672">      setBoolean(properties::setBoolean, AUTO_TRIGGER_ENABLED_KEY, autoTriggerEnabled);</span>
+<span class="nc" id="L673">    }</span>
+
+    /** whether trigger snapshot when stop raft server */
+    String TRIGGER_WHEN_STOP_ENABLED_KEY = PREFIX + &quot;.trigger-when-stop.enabled&quot;;
+    /** by default let the state machine to trigger snapshot when stop */
+    boolean TRIGGER_WHEN_STOP_ENABLED_DEFAULT = true;
+    static boolean triggerWhenStopEnabled(RaftProperties properties) {
+<span class="nc" id="L680">      return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L681">          TRIGGER_WHEN_STOP_ENABLED_KEY, TRIGGER_WHEN_STOP_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setTriggerWhenStopEnabled(RaftProperties properties, boolean triggerWhenStopEnabled) {
+<span class="nc" id="L684">      setBoolean(properties::setBoolean, TRIGGER_WHEN_STOP_ENABLED_KEY, triggerWhenStopEnabled);</span>
+<span class="nc" id="L685">    }</span>
+
+    /** whether trigger snapshot when remove raft server */
+    String TRIGGER_WHEN_REMOVE_ENABLED_KEY = PREFIX + &quot;.trigger-when-remove.enabled&quot;;
+    /** by default let the state machine to trigger snapshot when remove */
+    boolean TRIGGER_WHEN_REMOVE_ENABLED_DEFAULT = true;
+    static boolean triggerWhenRemoveEnabled(RaftProperties properties) {
+<span class="nc" id="L692">      return getBoolean(properties::getBoolean,</span>
+<span class="nc" id="L693">          TRIGGER_WHEN_REMOVE_ENABLED_KEY, TRIGGER_WHEN_REMOVE_ENABLED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setTriggerWhenRemoveEnabled(RaftProperties properties, boolean triggerWhenRemoveEnabled) {
+<span class="nc" id="L696">      setBoolean(properties::setBoolean, TRIGGER_WHEN_REMOVE_ENABLED_KEY, triggerWhenRemoveEnabled);</span>
+<span class="nc" id="L697">    }</span>
+
+    /** The log index gap between to two snapshot creations. */
+    String CREATION_GAP_KEY = PREFIX + &quot;.creation.gap&quot;;
+    long CREATION_GAP_DEFAULT = 1024;
+    static long creationGap(RaftProperties properties) {
+<span class="nc" id="L703">      return getLong(</span>
+          properties::getLong, CREATION_GAP_KEY, CREATION_GAP_DEFAULT,
+<span class="nc" id="L705">          getDefaultLog(), requireMin(1L));</span>
+    }
+    static void setCreationGap(RaftProperties properties, long creationGap) {
+<span class="nc" id="L708">      setLong(properties::setLong, CREATION_GAP_KEY, creationGap);</span>
+<span class="nc" id="L709">    }</span>
+
+    /** log size limit (in number of log entries) that triggers the snapshot */
+    String AUTO_TRIGGER_THRESHOLD_KEY = PREFIX + &quot;.auto.trigger.threshold&quot;;
+    long AUTO_TRIGGER_THRESHOLD_DEFAULT = 400000L;
+    static long autoTriggerThreshold(RaftProperties properties) {
+<span class="nc" id="L715">      return getLong(properties::getLong,</span>
+<span class="nc" id="L716">          AUTO_TRIGGER_THRESHOLD_KEY, AUTO_TRIGGER_THRESHOLD_DEFAULT, getDefaultLog(), requireMin(0L));</span>
+    }
+    static void setAutoTriggerThreshold(RaftProperties properties, long autoTriggerThreshold) {
+<span class="nc" id="L719">      setLong(properties::setLong, AUTO_TRIGGER_THRESHOLD_KEY, autoTriggerThreshold);</span>
+<span class="nc" id="L720">    }</span>
+
+    String RETENTION_FILE_NUM_KEY = PREFIX + &quot;.retention.file.num&quot;;
+    int RETENTION_FILE_NUM_DEFAULT = -1;
+    static int retentionFileNum(RaftProperties raftProperties) {
+<span class="nc" id="L725">      return getInt(raftProperties::getInt, RETENTION_FILE_NUM_KEY, RETENTION_FILE_NUM_DEFAULT, getDefaultLog());</span>
+    }
+    static void setRetentionFileNum(RaftProperties properties, int numSnapshotFilesRetained) {
+<span class="nc" id="L728">      setInt(properties::setInt, RETENTION_FILE_NUM_KEY, numSnapshotFilesRetained);</span>
+<span class="nc" id="L729">    }</span>
+  }
+
+  interface DataStream {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.data-stream&quot;;
+
+    String ASYNC_REQUEST_THREAD_POOL_CACHED_KEY = PREFIX + &quot;.async.request.thread.pool.cached&quot;;
+    boolean ASYNC_REQUEST_THREAD_POOL_CACHED_DEFAULT = false;
+
+    static boolean asyncRequestThreadPoolCached(RaftProperties properties) {
+<span class="nc" id="L739">      return getBoolean(properties::getBoolean, ASYNC_REQUEST_THREAD_POOL_CACHED_KEY,</span>
+<span class="nc" id="L740">          ASYNC_REQUEST_THREAD_POOL_CACHED_DEFAULT, getDefaultLog());</span>
+    }
+
+    static void setAsyncRequestThreadPoolCached(RaftProperties properties, boolean useCached) {
+<span class="nc" id="L744">      setBoolean(properties::setBoolean, ASYNC_REQUEST_THREAD_POOL_CACHED_KEY, useCached);</span>
+<span class="nc" id="L745">    }</span>
+
+    String ASYNC_REQUEST_THREAD_POOL_SIZE_KEY = PREFIX + &quot;.async.request.thread.pool.size&quot;;
+    int ASYNC_REQUEST_THREAD_POOL_SIZE_DEFAULT = 32;
+
+    static int asyncRequestThreadPoolSize(RaftProperties properties) {
+<span class="nc" id="L751">      return getInt(properties::getInt, ASYNC_REQUEST_THREAD_POOL_SIZE_KEY,</span>
+<span class="nc" id="L752">          ASYNC_REQUEST_THREAD_POOL_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L753">          requireMin(0), requireMax(65536));</span>
+    }
+
+    static void setAsyncRequestThreadPoolSize(RaftProperties properties, int size) {
+<span class="nc" id="L757">      setInt(properties::setInt, ASYNC_REQUEST_THREAD_POOL_SIZE_KEY, size);</span>
+<span class="nc" id="L758">    }</span>
+
+    String ASYNC_WRITE_THREAD_POOL_SIZE_KEY = PREFIX + &quot;.async.write.thread.pool.size&quot;;
+    int ASYNC_WRITE_THREAD_POOL_SIZE_DEFAULT = 16;
+
+    static int asyncWriteThreadPoolSize(RaftProperties properties) {
+<span class="nc" id="L764">      return getInt(properties::getInt, ASYNC_WRITE_THREAD_POOL_SIZE_KEY,</span>
+<span class="nc" id="L765">          ASYNC_WRITE_THREAD_POOL_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L766">          requireMin(0), requireMax(65536));</span>
+    }
+
+    static void setAsyncWriteThreadPoolSize(RaftProperties properties, int size) {
+<span class="nc" id="L770">      setInt(properties::setInt, ASYNC_WRITE_THREAD_POOL_SIZE_KEY, size);</span>
+<span class="nc" id="L771">    }</span>
+
+    String CLIENT_POOL_SIZE_KEY = PREFIX + &quot;.client.pool.size&quot;;
+    int CLIENT_POOL_SIZE_DEFAULT = 10;
+
+    static int clientPoolSize(RaftProperties properties) {
+<span class="nc" id="L777">      return getInt(properties::getInt, CLIENT_POOL_SIZE_KEY,</span>
+<span class="nc" id="L778">          CLIENT_POOL_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="nc" id="L779">          requireMin(0), requireMax(65536));</span>
+    }
+
+    static void setClientPoolSize(RaftProperties properties, int num) {
+<span class="nc" id="L783">      setInt(properties::setInt, CLIENT_POOL_SIZE_KEY, num);</span>
+<span class="nc" id="L784">    }</span>
+  }
+
+  /** server rpc timeout related */
+  interface Rpc {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.rpc&quot;;
+
+    String TIMEOUT_MIN_KEY = PREFIX + &quot;.timeout.min&quot;;
+<span class="nc" id="L792">    TimeDuration TIMEOUT_MIN_DEFAULT = TimeDuration.valueOf(150, TimeUnit.MILLISECONDS);</span>
+    static TimeDuration timeoutMin(RaftProperties properties, Consumer&lt;String&gt; logger) {
+<span class="nc" id="L794">      return getTimeDuration(properties.getTimeDuration(TIMEOUT_MIN_DEFAULT.getUnit()),</span>
+          TIMEOUT_MIN_KEY, TIMEOUT_MIN_DEFAULT, logger);
+    }
+    static TimeDuration timeoutMin(RaftProperties properties) {
+<span class="nc" id="L798">      return timeoutMin(properties, getDefaultLog());</span>
+    }
+    static void setTimeoutMin(RaftProperties properties, TimeDuration minDuration) {
+<span class="nc" id="L801">      setTimeDuration(properties::setTimeDuration, TIMEOUT_MIN_KEY, minDuration);</span>
+<span class="nc" id="L802">    }</span>
+
+    String TIMEOUT_MAX_KEY = PREFIX + &quot;.timeout.max&quot;;
+<span class="nc" id="L805">    TimeDuration TIMEOUT_MAX_DEFAULT = TimeDuration.valueOf(300, TimeUnit.MILLISECONDS);</span>
+    static TimeDuration timeoutMax(RaftProperties properties, Consumer&lt;String&gt; logger) {
+<span class="nc" id="L807">      return getTimeDuration(properties.getTimeDuration(TIMEOUT_MAX_DEFAULT.getUnit()),</span>
+          TIMEOUT_MAX_KEY, TIMEOUT_MAX_DEFAULT, logger);
+    }
+    static TimeDuration timeoutMax(RaftProperties properties) {
+<span class="nc" id="L811">      return timeoutMax(properties, getDefaultLog());</span>
+    }
+    static void setTimeoutMax(RaftProperties properties, TimeDuration maxDuration) {
+<span class="nc" id="L814">      setTimeDuration(properties::setTimeDuration, TIMEOUT_MAX_KEY, maxDuration);</span>
+<span class="nc" id="L815">    }</span>
+
+    /** separate first timeout so that the startup unavailable time can be reduced */
+    String FIRST_ELECTION_TIMEOUT_MIN_KEY = PREFIX + &quot;.first-election.timeout.min&quot;;
+<span class="nc" id="L819">    TimeDuration FIRST_ELECTION_TIMEOUT_MIN_DEFAULT = null;</span>
+    static TimeDuration firstElectionTimeoutMin(RaftProperties properties) {
+<span class="nc" id="L821">      final TimeDuration fallbackFirstElectionTimeoutMin = Rpc.timeoutMin(properties, null);</span>
+<span class="nc" id="L822">      return getTimeDuration(properties.getTimeDuration(fallbackFirstElectionTimeoutMin.getUnit()),</span>
+          FIRST_ELECTION_TIMEOUT_MIN_KEY, FIRST_ELECTION_TIMEOUT_MIN_DEFAULT,
+<span class="nc" id="L824">          Rpc.TIMEOUT_MIN_KEY, fallbackFirstElectionTimeoutMin, getDefaultLog());</span>
+    }
+    static void setFirstElectionTimeoutMin(RaftProperties properties, TimeDuration firstMinDuration) {
+<span class="nc" id="L827">      setTimeDuration(properties::setTimeDuration, FIRST_ELECTION_TIMEOUT_MIN_KEY, firstMinDuration);</span>
+<span class="nc" id="L828">    }</span>
+
+    String FIRST_ELECTION_TIMEOUT_MAX_KEY = PREFIX + &quot;.first-election.timeout.max&quot;;
+<span class="nc" id="L831">    TimeDuration FIRST_ELECTION_TIMEOUT_MAX_DEFAULT = null;</span>
+    static TimeDuration firstElectionTimeoutMax(RaftProperties properties) {
+<span class="nc" id="L833">      final TimeDuration fallbackFirstElectionTimeoutMax = Rpc.timeoutMax(properties, null);</span>
+<span class="nc" id="L834">      return getTimeDuration(properties.getTimeDuration(fallbackFirstElectionTimeoutMax.getUnit()),</span>
+          FIRST_ELECTION_TIMEOUT_MAX_KEY, FIRST_ELECTION_TIMEOUT_MAX_DEFAULT,
+<span class="nc" id="L836">          Rpc.TIMEOUT_MAX_KEY, fallbackFirstElectionTimeoutMax, getDefaultLog());</span>
+    }
+    static void setFirstElectionTimeoutMax(RaftProperties properties, TimeDuration firstMaxDuration) {
+<span class="nc" id="L839">      setTimeDuration(properties::setTimeDuration, FIRST_ELECTION_TIMEOUT_MAX_KEY, firstMaxDuration);</span>
+<span class="nc" id="L840">    }</span>
+
+    String REQUEST_TIMEOUT_KEY = PREFIX + &quot;.request.timeout&quot;;
+<span class="nc" id="L843">    TimeDuration REQUEST_TIMEOUT_DEFAULT = TimeDuration.valueOf(3000, TimeUnit.MILLISECONDS);</span>
+    static TimeDuration requestTimeout(RaftProperties properties) {
+<span class="nc" id="L845">      return getTimeDuration(properties.getTimeDuration(REQUEST_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L846">          REQUEST_TIMEOUT_KEY, REQUEST_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setRequestTimeout(RaftProperties properties, TimeDuration timeoutDuration) {
+<span class="nc" id="L849">      setTimeDuration(properties::setTimeDuration, REQUEST_TIMEOUT_KEY, timeoutDuration);</span>
+<span class="nc" id="L850">    }</span>
+
+    String SLEEP_TIME_KEY = PREFIX + &quot;.sleep.time&quot;;
+<span class="nc" id="L853">    TimeDuration SLEEP_TIME_DEFAULT = TimeDuration.valueOf(25, TimeUnit.MILLISECONDS);</span>
+    static TimeDuration sleepTime(RaftProperties properties) {
+<span class="nc" id="L855">      return getTimeDuration(properties.getTimeDuration(SLEEP_TIME_DEFAULT.getUnit()),</span>
+<span class="nc" id="L856">          SLEEP_TIME_KEY, SLEEP_TIME_DEFAULT, getDefaultLog());</span>
+    }
+    static void setSleepTime(RaftProperties properties, TimeDuration sleepTime) {
+<span class="nc" id="L859">      setTimeDuration(properties::setTimeDuration, SLEEP_TIME_KEY, sleepTime);</span>
+<span class="nc" id="L860">    }</span>
+
+    String SLOWNESS_TIMEOUT_KEY = PREFIX + &quot;.slowness.timeout&quot;;
+<span class="nc" id="L863">    TimeDuration SLOWNESS_TIMEOUT_DEFAULT = TimeDuration.valueOf(60, TimeUnit.SECONDS);</span>
+    static TimeDuration slownessTimeout(RaftProperties properties) {
+<span class="nc" id="L865">      return getTimeDuration(properties.getTimeDuration(SLOWNESS_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L866">          SLOWNESS_TIMEOUT_KEY, SLOWNESS_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setSlownessTimeout(RaftProperties properties, TimeDuration expiryTime) {
+<span class="nc" id="L869">      setTimeDuration(properties::setTimeDuration, SLOWNESS_TIMEOUT_KEY, expiryTime);</span>
+<span class="nc" id="L870">    }</span>
+  }
+
+  /** server retry cache related */
+  interface RetryCache {
+    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.retrycache&quot;;
+
+    /** We should set expiry time longer than total client retry to guarantee exactly-once semantic */
+    String EXPIRY_TIME_KEY = PREFIX + &quot;.expirytime&quot;;
+<span class="nc" id="L879">    TimeDuration EXPIRY_TIME_DEFAULT = TimeDuration.valueOf(60, TimeUnit.SECONDS);</span>
+    static TimeDuration expiryTime(RaftProperties properties) {
+<span class="nc" id="L881">      return getTimeDuration(properties.getTimeDuration(EXPIRY_TIME_DEFAULT.getUnit()),</span>
+<span class="nc" id="L882">          EXPIRY_TIME_KEY, EXPIRY_TIME_DEFAULT, getDefaultLog());</span>
+    }
+    static void setExpiryTime(RaftProperties properties, TimeDuration expiryTime) {
+<span class="nc" id="L885">      setTimeDuration(properties::setTimeDuration, EXPIRY_TIME_KEY, expiryTime);</span>
+<span class="nc" id="L886">    }</span>
+
+    String STATISTICS_EXPIRY_TIME_KEY = PREFIX + &quot;.statistics.expirytime&quot;;
+<span class="nc" id="L889">    TimeDuration STATISTICS_EXPIRY_TIME_DEFAULT = TimeDuration.valueOf(100, TimeUnit.MILLISECONDS);</span>
+    static TimeDuration statisticsExpiryTime(RaftProperties properties) {
+<span class="nc" id="L891">      return getTimeDuration(properties.getTimeDuration(STATISTICS_EXPIRY_TIME_DEFAULT.getUnit()),</span>
+<span class="nc" id="L892">          STATISTICS_EXPIRY_TIME_KEY, STATISTICS_EXPIRY_TIME_DEFAULT, getDefaultLog());</span>
+    }
+    static void setStatisticsExpiryTime(RaftProperties properties, TimeDuration expiryTime) {
+<span class="nc" id="L895">      setTimeDuration(properties::setTimeDuration, STATISTICS_EXPIRY_TIME_KEY, expiryTime);</span>
+<span class="nc" id="L896">    }</span>
+  }
+
+  interface Notification {
+<span class="nc" id="L900">    String PREFIX = RaftServerConfigKeys.PREFIX + &quot;.&quot; + JavaUtils.getClassSimpleName(Notification.class).toLowerCase();</span>
+
+    /** Timeout value to notify the state machine when there is no leader. */
+<span class="nc" id="L903">    String NO_LEADER_TIMEOUT_KEY = PREFIX + &quot;.no-leader.timeout&quot;;</span>
+<span class="nc" id="L904">    TimeDuration NO_LEADER_TIMEOUT_DEFAULT = TimeDuration.valueOf(60, TimeUnit.SECONDS);</span>
+    static TimeDuration noLeaderTimeout(RaftProperties properties) {
+<span class="nc" id="L906">      return getTimeDuration(properties.getTimeDuration(NO_LEADER_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L907">          NO_LEADER_TIMEOUT_KEY, NO_LEADER_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setNoLeaderTimeout(RaftProperties properties, TimeDuration noLeaderTimeout) {
+<span class="nc" id="L910">      setTimeDuration(properties::setTimeDuration, NO_LEADER_TIMEOUT_KEY, noLeaderTimeout);</span>
+<span class="nc" id="L911">    }</span>
+  }
+
+  interface LeaderElection {
+<span class="nc" id="L915">    String PREFIX = RaftServerConfigKeys.PREFIX</span>
+<span class="nc" id="L916">        + &quot;.&quot; + JavaUtils.getClassSimpleName(LeaderElection.class).toLowerCase();</span>
+
+<span class="nc" id="L918">    String LEADER_STEP_DOWN_WAIT_TIME_KEY = PREFIX + &quot;.leader.step-down.wait-time&quot;;</span>
+<span class="nc" id="L919">    TimeDuration LEADER_STEP_DOWN_WAIT_TIME_DEFAULT = TimeDuration.valueOf(10, TimeUnit.SECONDS);</span>
+    static TimeDuration leaderStepDownWaitTime(RaftProperties properties) {
+<span class="nc" id="L921">      return getTimeDuration(properties.getTimeDuration(LEADER_STEP_DOWN_WAIT_TIME_DEFAULT.getUnit()),</span>
+<span class="nc" id="L922">          LEADER_STEP_DOWN_WAIT_TIME_KEY, LEADER_STEP_DOWN_WAIT_TIME_DEFAULT, getDefaultLog());</span>
+    }
+    static void setLeaderStepDownWaitTime(RaftProperties properties, TimeDuration leaderStepDownWaitTime) {
+<span class="nc" id="L925">      setTimeDuration(properties::setTimeDuration, LEADER_STEP_DOWN_WAIT_TIME_KEY, leaderStepDownWaitTime);</span>
+<span class="nc" id="L926">    }</span>
+
+<span class="nc" id="L928">    String PRE_VOTE_KEY = PREFIX + &quot;.pre-vote&quot;;</span>
+    boolean PRE_VOTE_DEFAULT = true;
+    static boolean preVote(RaftProperties properties) {
+<span class="nc" id="L931">      return getBoolean(properties::getBoolean, PRE_VOTE_KEY, PRE_VOTE_DEFAULT, getDefaultLog());</span>
+    }
+    static void setPreVote(RaftProperties properties, boolean enablePreVote) {
+<span class="nc" id="L934">      setBoolean(properties::setBoolean, PRE_VOTE_KEY, enablePreVote);</span>
+<span class="nc" id="L935">    }</span>
+
+    /**
+     * Does it allow majority-add, i.e. adding a majority of members in a single setConf?
+     * &lt;p&gt;
+     * Note that, when a single setConf removes and adds members at the same time,
+     * the majority is counted after the removal.
+     * For examples, setConf to a 3-member group by adding 2 new members is NOT a majority-add.
+     * However, setConf to a 3-member group by removing 2 of members and adding 2 new members is a majority-add.
+     * &lt;p&gt;
+     * Note also that adding 1 new member to an 1-member group is always allowed,
+     * although it is a majority-add.
+     */
+<span class="nc" id="L948">    String MEMBER_MAJORITY_ADD_KEY = PREFIX + &quot;.member.majority-add&quot;;</span>
+    boolean MEMBER_MAJORITY_ADD_DEFAULT = false;
+    static boolean memberMajorityAdd(RaftProperties properties) {
+<span class="nc" id="L951">      return getBoolean(properties::getBoolean, MEMBER_MAJORITY_ADD_KEY, MEMBER_MAJORITY_ADD_DEFAULT, getDefaultLog());</span>
+    }
+    static void setMemberMajorityAdd(RaftProperties properties, boolean enableMemberMajorityAdd) {
+<span class="nc" id="L954">      setBoolean(properties::setBoolean, MEMBER_MAJORITY_ADD_KEY, enableMemberMajorityAdd);</span>
+<span class="nc" id="L955">    }</span>
+  }
+
+  static void main(String[] args) {
+<span class="nc" id="L959">    printAll(RaftServerConfigKeys.class);</span>
+<span class="nc" id="L960">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

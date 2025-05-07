@@ -1,0 +1,685 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerProxy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">RaftServerProxy.java</span></div><h1>RaftServerProxy.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.RaftConfigKeys;
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.datastream.SupportedDataStreamType;
+import org.apache.ratis.proto.RaftProtos.ReadIndexRequestProto;
+import org.apache.ratis.proto.RaftProtos.ReadIndexReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotReplyProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.RaftProtos.RequestVoteReplyProto;
+import org.apache.ratis.proto.RaftProtos.RequestVoteRequestProto;
+import org.apache.ratis.proto.RaftProtos.StartLeaderElectionReplyProto;
+import org.apache.ratis.proto.RaftProtos.StartLeaderElectionRequestProto;
+import org.apache.ratis.protocol.*;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.AlreadyExistsException;
+import org.apache.ratis.protocol.exceptions.GroupMismatchException;
+import org.apache.ratis.rpc.RpcType;
+import org.apache.ratis.server.DataStreamServerRpc;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.ServerFactory;
+import org.apache.ratis.server.storage.RaftStorage.StartupOption;
+import org.apache.ratis.util.ConcurrentUtils;
+import org.apache.ratis.util.JvmPauseMonitor;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.RaftServerRpc;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.TimeDuration;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.*;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+class RaftServerProxy implements RaftServer {
+  /**
+   * A map: {@link RaftGroupId} -&gt; {@link RaftServerImpl} futures.
+   * &lt;p&gt;
+   * The map is synchronized for mutations and the bulk {@link #getGroupIds()}/{@link #getAll()} methods
+   * but the (non-bulk) {@link #get(RaftGroupId)} and {@link #containsGroup(RaftGroupId)} methods are not.
+   * The thread safety and atomicity guarantees for the non-bulk methods are provided by {@link ConcurrentMap}.
+   */
+<span class="nc" id="L84">  class ImplMap implements Closeable {</span>
+<span class="nc" id="L85">    private final ConcurrentMap&lt;RaftGroupId, CompletableFuture&lt;RaftServerImpl&gt;&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="nc" id="L86">    private boolean isClosed = false;</span>
+
+    synchronized CompletableFuture&lt;RaftServerImpl&gt; addNew(RaftGroup group, StartupOption option) {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">      if (isClosed) {</span>
+<span class="nc" id="L90">        return JavaUtils.completeExceptionally(new AlreadyClosedException(</span>
+<span class="nc" id="L91">            getId() + &quot;: Failed to add &quot; + group + &quot; since the server is already closed&quot;));</span>
+      }
+<span class="nc bnc" id="L93" title="All 2 branches missed.">      if (containsGroup(group.getGroupId())) {</span>
+<span class="nc" id="L94">        return JavaUtils.completeExceptionally(new AlreadyExistsException(</span>
+<span class="nc" id="L95">            getId() + &quot;: Failed to add &quot; + group + &quot; since the group already exists in the map.&quot;));</span>
+      }
+<span class="nc" id="L97">      final RaftGroupId groupId = group.getGroupId();</span>
+<span class="nc" id="L98">      final CompletableFuture&lt;RaftServerImpl&gt; newImpl = newRaftServerImpl(group, option);</span>
+<span class="nc" id="L99">      final CompletableFuture&lt;RaftServerImpl&gt; previous = map.put(groupId, newImpl);</span>
+<span class="nc" id="L100">      Preconditions.assertNull(previous, &quot;previous&quot;);</span>
+<span class="nc" id="L101">      LOG.info(&quot;{}: addNew {} returns {}&quot;, getId(), group, toString(groupId, newImpl));</span>
+<span class="nc" id="L102">      return newImpl;</span>
+    }
+
+    synchronized CompletableFuture&lt;RaftServerImpl&gt; remove(RaftGroupId groupId) {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (!map.containsKey(groupId)) {</span>
+<span class="nc" id="L107">        LOG.warn(&quot;{}: does not contain group: {}&quot;, getId(), groupId);</span>
+<span class="nc" id="L108">        return null;</span>
+      }
+
+<span class="nc" id="L111">      final CompletableFuture&lt;RaftServerImpl&gt; future = map.remove(groupId);</span>
+<span class="nc" id="L112">      LOG.info(&quot;{}: remove {}&quot;, getId(), toString(groupId, future));</span>
+<span class="nc" id="L113">      return future;</span>
+    }
+
+    @Override
+    public synchronized void close() {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">      if (isClosed) {</span>
+<span class="nc" id="L119">        LOG.info(&quot;{} is already closed.&quot;, getId());</span>
+<span class="nc" id="L120">        return;</span>
+      }
+<span class="nc" id="L122">      isClosed = true;</span>
+<span class="nc" id="L123">      ConcurrentUtils.parallelForEachAsync(map.entrySet(),</span>
+<span class="nc" id="L124">          entry -&gt; close(entry.getKey(), entry.getValue()),</span>
+<span class="nc" id="L125">          executor.get());</span>
+<span class="nc" id="L126">    }</span>
+
+    private void close(RaftGroupId groupId, CompletableFuture&lt;RaftServerImpl&gt; future) {
+      final RaftServerImpl impl;
+      try {
+<span class="nc" id="L131">        impl = future.join();</span>
+<span class="nc" id="L132">      } catch (Throwable t) {</span>
+<span class="nc" id="L133">        LOG.warn(&quot;{}: Failed to join the division for {}&quot;, getId(), groupId, t);</span>
+<span class="nc" id="L134">        return;</span>
+<span class="nc" id="L135">      }</span>
+      try {
+<span class="nc" id="L137">        impl.close();</span>
+<span class="nc" id="L138">      } catch (Throwable t) {</span>
+<span class="nc" id="L139">        LOG.warn(&quot;{}: Failed to close the division for {}&quot;, getId(), groupId, t);</span>
+<span class="nc" id="L140">      }</span>
+<span class="nc" id="L141">      impl.getStateMachine().event().notifyServerShutdown(impl.getRoleInfoProto(), true);</span>
+<span class="nc" id="L142">    }</span>
+
+    synchronized List&lt;RaftGroupId&gt; getGroupIds() {
+<span class="nc" id="L145">      return new ArrayList&lt;&gt;(map.keySet());</span>
+    }
+
+    synchronized List&lt;CompletableFuture&lt;RaftServerImpl&gt;&gt; getAll() {
+<span class="nc" id="L149">      return new ArrayList&lt;&gt;(map.values());</span>
+    }
+
+    CompletableFuture&lt;RaftServerImpl&gt; get(RaftGroupId groupId) {
+<span class="nc" id="L153">      final CompletableFuture&lt;RaftServerImpl&gt; i = map.get(groupId);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">      if (i == null) {</span>
+<span class="nc" id="L155">        return JavaUtils.completeExceptionally(new GroupMismatchException(</span>
+<span class="nc" id="L156">            getId() + &quot;: &quot; + groupId + &quot; not found.&quot;));</span>
+      }
+<span class="nc" id="L158">      return i;</span>
+    }
+
+    boolean containsGroup(RaftGroupId groupId) {
+<span class="nc" id="L162">      return map.containsKey(groupId);</span>
+    }
+
+    @Override
+    public synchronized String toString() {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">      if (map.isEmpty()) {</span>
+<span class="nc" id="L168">        return &quot;&lt;EMPTY&gt;&quot;;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">      } else if (map.size() == 1) {</span>
+<span class="nc" id="L170">        return toString(map.entrySet().iterator().next());</span>
+      }
+<span class="nc" id="L172">      final StringBuilder b = new StringBuilder(&quot;[&quot;);</span>
+<span class="nc" id="L173">      map.entrySet().forEach(e -&gt; b.append(&quot;\n  &quot;).append(toString(e)));</span>
+<span class="nc" id="L174">      return b.append(&quot;] size=&quot;).append(map.size()).toString();</span>
+    }
+
+    String toString(Map.Entry&lt;RaftGroupId, CompletableFuture&lt;RaftServerImpl&gt;&gt; e) {
+<span class="nc" id="L178">      return toString(e.getKey(), e.getValue());</span>
+    }
+
+    String toString(RaftGroupId groupId, CompletableFuture&lt;RaftServerImpl&gt; f) {
+<span class="nc bnc" id="L182" title="All 4 branches missed.">      return &quot;&quot; + (f != null &amp;&amp; f.isDone()? f.join(): groupId + &quot;:&quot; + f);</span>
+    }
+  }
+
+  private final RaftPeerId id;
+<span class="nc" id="L187">  private final Supplier&lt;RaftPeer&gt; peerSupplier = JavaUtils.memoize(this::buildRaftPeer);</span>
+  private final RaftProperties properties;
+  private final StateMachine.Registry stateMachineRegistry;
+  private final LifeCycle lifeCycle;
+
+  private final RaftServerRpc serverRpc;
+  private final ServerFactory factory;
+
+  private final DataStreamServerRpc dataStreamServerRpc;
+
+<span class="nc" id="L197">  private final ImplMap impls = new ImplMap();</span>
+  private final MemoizedSupplier&lt;ExecutorService&gt; implExecutor;
+  private final MemoizedSupplier&lt;ExecutorService&gt; executor;
+
+  private final JvmPauseMonitor pauseMonitor;
+  private final ThreadGroup threadGroup;
+
+  RaftServerProxy(RaftPeerId id, StateMachine.Registry stateMachineRegistry,
+<span class="nc" id="L205">      RaftProperties properties, Parameters parameters, ThreadGroup threadGroup) {</span>
+<span class="nc" id="L206">    this.properties = properties;</span>
+<span class="nc" id="L207">    this.stateMachineRegistry = stateMachineRegistry;</span>
+
+<span class="nc" id="L209">    final RpcType rpcType = RaftConfigKeys.Rpc.type(properties, LOG::info);</span>
+<span class="nc" id="L210">    this.factory = ServerFactory.cast(rpcType.newFactory(parameters));</span>
+
+<span class="nc" id="L212">    this.serverRpc = factory.newRaftServerRpc(this);</span>
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    this.id = id != null? id: RaftPeerId.valueOf(getIdStringFrom(serverRpc));</span>
+<span class="nc" id="L215">    this.lifeCycle = new LifeCycle(this.id + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass()));</span>
+
+<span class="nc" id="L217">    this.dataStreamServerRpc = new DataStreamServerImpl(this, parameters).getServerRpc();</span>
+
+<span class="nc" id="L219">    this.implExecutor = MemoizedSupplier.valueOf(</span>
+<span class="nc" id="L220">        () -&gt; ConcurrentUtils.newSingleThreadExecutor(id + &quot;-groupManagement&quot;));</span>
+<span class="nc" id="L221">    this.executor = MemoizedSupplier.valueOf(() -&gt; ConcurrentUtils.newThreadPoolWithMax(</span>
+<span class="nc" id="L222">        RaftServerConfigKeys.ThreadPool.proxyCached(properties),</span>
+<span class="nc" id="L223">        RaftServerConfigKeys.ThreadPool.proxySize(properties),</span>
+        id + &quot;-impl&quot;));
+
+<span class="nc" id="L226">    final TimeDuration sleepDeviationThreshold = RaftServerConfigKeys.sleepDeviationThreshold(properties);</span>
+<span class="nc" id="L227">    final TimeDuration closeThreshold = RaftServerConfigKeys.closeThreshold(properties);</span>
+<span class="nc" id="L228">    final TimeDuration leaderStepDownWaitTime = RaftServerConfigKeys.LeaderElection.leaderStepDownWaitTime(properties);</span>
+<span class="nc" id="L229">    this.pauseMonitor = JvmPauseMonitor.newBuilder().setName(id)</span>
+<span class="nc" id="L230">        .setSleepDeviationThreshold(sleepDeviationThreshold)</span>
+<span class="nc" id="L231">        .setHandler(extraSleep -&gt; handleJvmPause(extraSleep, closeThreshold, leaderStepDownWaitTime))</span>
+<span class="nc" id="L232">        .build();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">    this.threadGroup = threadGroup == null ? new ThreadGroup(this.id.toString()) : threadGroup;</span>
+<span class="nc" id="L234">  }</span>
+
+  private void handleJvmPause(TimeDuration extraSleep, TimeDuration closeThreshold, TimeDuration stepDownThreshold)
+      throws IOException {
+<span class="nc bnc" id="L238" title="All 2 branches missed.">    if (extraSleep.compareTo(closeThreshold) &gt; 0) {</span>
+<span class="nc" id="L239">      LOG.error(&quot;{}: JVM pause detected {} longer than the close-threshold {}, shutting down ...&quot;,</span>
+<span class="nc" id="L240">          getId(), extraSleep.toString(TimeUnit.SECONDS, 3), closeThreshold.toString(TimeUnit.SECONDS, 3));</span>
+<span class="nc" id="L241">      close();</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    } else if (extraSleep.compareTo(stepDownThreshold) &gt; 0) {</span>
+<span class="nc" id="L243">      LOG.warn(&quot;{}: JVM pause detected {} longer than the step-down-threshold {}&quot;,</span>
+<span class="nc" id="L244">          getId(), extraSleep.toString(TimeUnit.SECONDS, 3), stepDownThreshold.toString(TimeUnit.SECONDS, 3));</span>
+<span class="nc" id="L245">      getImpls().forEach(RaftServerImpl::stepDownOnJvmPause);</span>
+    }
+<span class="nc" id="L247">  }</span>
+
+  /** Check the storage dir and add groups*/
+  void initGroups(RaftGroup group, StartupOption option) {
+<span class="nc" id="L251">    final Optional&lt;RaftGroup&gt; raftGroup = Optional.ofNullable(group);</span>
+<span class="nc" id="L252">    final RaftGroupId raftGroupId = raftGroup.map(RaftGroup::getGroupId).orElse(null);</span>
+<span class="nc bnc" id="L253" title="All 4 branches missed.">    final Predicate&lt;RaftGroupId&gt; shouldAdd = gid -&gt; gid != null &amp;&amp; !gid.equals(raftGroupId);</span>
+
+<span class="nc" id="L255">    ConcurrentUtils.parallelForEachAsync(RaftServerConfigKeys.storageDir(properties),</span>
+<span class="nc" id="L256">        dir -&gt; Optional.ofNullable(dir.listFiles())</span>
+<span class="nc" id="L257">            .map(Arrays::stream).orElse(Stream.empty())</span>
+<span class="nc" id="L258">            .filter(File::isDirectory)</span>
+<span class="nc" id="L259">            .forEach(sub -&gt; initGroupDir(sub, shouldAdd)),</span>
+<span class="nc" id="L260">        executor.get()).join();</span>
+<span class="nc" id="L261">    raftGroup.ifPresent(g -&gt; addGroup(g, option));</span>
+<span class="nc" id="L262">  }</span>
+
+  private void initGroupDir(File sub, Predicate&lt;RaftGroupId&gt; shouldAdd) {
+    try {
+<span class="nc" id="L266">      LOG.info(&quot;{}: found a subdirectory {}&quot;, getId(), sub);</span>
+<span class="nc" id="L267">      RaftGroupId groupId = null;</span>
+      try {
+<span class="nc" id="L269">        groupId = RaftGroupId.valueOf(UUID.fromString(sub.getName()));</span>
+<span class="nc" id="L270">      } catch (Exception e) {</span>
+<span class="nc" id="L271">        LOG.info(&quot;{}: The directory {} is not a group directory;&quot; +</span>
+<span class="nc" id="L272">            &quot; ignoring it. &quot;, getId(), sub.getAbsolutePath());</span>
+<span class="nc" id="L273">      }</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">      if (shouldAdd.test(groupId)) {</span>
+<span class="nc" id="L275">        addGroup(RaftGroup.valueOf(groupId), StartupOption.RECOVER);</span>
+      }
+<span class="nc" id="L277">    } catch (Exception e) {</span>
+<span class="nc" id="L278">      LOG.warn(getId() + &quot;: Failed to initialize the group directory &quot;</span>
+<span class="nc" id="L279">          + sub.getAbsolutePath() + &quot;.  Ignoring it&quot;, e);</span>
+<span class="nc" id="L280">    }</span>
+<span class="nc" id="L281">  }</span>
+
+  void addRaftPeers(Collection&lt;RaftPeer&gt; peers) {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">    final List&lt;RaftPeer&gt; others = peers.stream().filter(p -&gt; !p.getId().equals(getId())).collect(Collectors.toList());</span>
+<span class="nc" id="L285">    getServerRpc().addRaftPeers(others);</span>
+<span class="nc" id="L286">    getDataStreamServerRpc().addRaftPeers(others);</span>
+<span class="nc" id="L287">  }</span>
+
+  private CompletableFuture&lt;RaftServerImpl&gt; newRaftServerImpl(RaftGroup group, StartupOption option) {
+<span class="nc" id="L290">    return CompletableFuture.supplyAsync(() -&gt; {</span>
+      try {
+<span class="nc" id="L292">        addRaftPeers(group.getPeers());</span>
+<span class="nc" id="L293">        return new RaftServerImpl(group, stateMachineRegistry.apply(group.getGroupId()), this, option);</span>
+<span class="nc" id="L294">      } catch(IOException e) {</span>
+<span class="nc" id="L295">        throw new CompletionException(getId() + &quot;: Failed to initialize server for &quot; + group, e);</span>
+      }
+<span class="nc" id="L297">    }, implExecutor.get());</span>
+  }
+
+  private static String getIdStringFrom(RaftServerRpc rpc) {
+<span class="nc" id="L301">    InetSocketAddress address = null;</span>
+    try {
+<span class="nc" id="L303">      address = rpc.getInetSocketAddress();</span>
+<span class="nc" id="L304">    } catch(Exception e) {</span>
+<span class="nc" id="L305">      LOG.warn(&quot;Failed to get InetSocketAddress from &quot; + rpc.getRpcType() + &quot; rpc server&quot;, e);</span>
+<span class="nc" id="L306">    }</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">    return address != null? address.getHostName() + &quot;_&quot; + address.getPort()</span>
+<span class="nc" id="L308">        : rpc.getRpcType() + &quot;-&quot; + UUID.randomUUID();</span>
+  }
+
+  @Override
+  public RaftPeerId getId() {
+<span class="nc" id="L313">    return id;</span>
+  }
+
+  @Override
+  public RaftPeer getPeer() {
+<span class="nc" id="L318">    return peerSupplier.get();</span>
+  }
+
+  private RaftPeer buildRaftPeer() {
+<span class="nc" id="L322">    return RaftPeer.newBuilder()</span>
+<span class="nc" id="L323">        .setId(getId())</span>
+<span class="nc" id="L324">        .setAddress(getServerRpc().getInetSocketAddress())</span>
+<span class="nc" id="L325">        .setDataStreamAddress(getDataStreamServerRpc().getInetSocketAddress())</span>
+<span class="nc" id="L326">        .setClientAddress(getServerRpc().getClientServerAddress())</span>
+<span class="nc" id="L327">        .setAdminAddress(getServerRpc().getAdminServerAddress())</span>
+<span class="nc" id="L328">        .build();</span>
+  }
+
+  @Override
+  public List&lt;RaftGroupId&gt; getGroupIds() {
+<span class="nc" id="L333">    return impls.getGroupIds();</span>
+  }
+
+  @Override
+  public Iterable&lt;RaftGroup&gt; getGroups() throws IOException {
+<span class="nc" id="L338">    return getImpls().stream().map(RaftServerImpl::getGroup).collect(Collectors.toList());</span>
+  }
+
+  @Override
+  public ServerFactory getFactory() {
+<span class="nc" id="L343">    return factory;</span>
+  }
+
+  @Override
+  public RaftProperties getProperties() {
+<span class="nc" id="L348">    return properties;</span>
+  }
+
+  @Override
+  public RaftServerRpc getServerRpc() {
+<span class="nc" id="L353">    return serverRpc;</span>
+  }
+
+  @Override
+  public DataStreamServerRpc getDataStreamServerRpc() {
+<span class="nc" id="L358">    return dataStreamServerRpc;</span>
+  }
+
+  private CompletableFuture&lt;RaftServerImpl&gt; addGroup(RaftGroup group, StartupOption option) {
+<span class="nc" id="L362">    return impls.addNew(group, option);</span>
+  }
+
+  private CompletableFuture&lt;RaftServerImpl&gt; getImplFuture(RaftGroupId groupId) {
+<span class="nc" id="L366">    return impls.get(groupId);</span>
+  }
+
+  private RaftServerImpl getImpl(RaftRpcRequestProto proto) throws IOException {
+<span class="nc" id="L370">    return getImpl(ProtoUtils.toRaftGroupId(proto.getRaftGroupId()));</span>
+  }
+
+  private RaftServerImpl getImpl(RaftGroupId groupId) throws IOException {
+<span class="nc" id="L374">    Objects.requireNonNull(groupId, &quot;groupId == null&quot;);</span>
+<span class="nc" id="L375">    return IOUtils.getFromFuture(getImplFuture(groupId), this::getId);</span>
+  }
+
+  List&lt;RaftServerImpl&gt; getImpls() throws IOException {
+<span class="nc" id="L379">    final List&lt;RaftServerImpl&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">    for(CompletableFuture&lt;RaftServerImpl&gt; f : impls.getAll()) {</span>
+<span class="nc" id="L381">      list.add(IOUtils.getFromFuture(f, this::getId));</span>
+<span class="nc" id="L382">    }</span>
+<span class="nc" id="L383">    return list;</span>
+  }
+
+  @Override
+  public Division getDivision(RaftGroupId groupId) throws IOException {
+<span class="nc" id="L388">    return getImpl(groupId);</span>
+  }
+
+  @Override
+  public LifeCycle.State getLifeCycleState() {
+<span class="nc" id="L393">    return lifeCycle.getCurrentState();</span>
+  }
+
+  ThreadGroup getThreadGroup() {
+<span class="nc" id="L397">    return threadGroup;</span>
+  }
+
+  @Override
+  public void start() throws IOException {
+<span class="nc" id="L402">    lifeCycle.startAndTransition(this::startImpl, IOException.class);</span>
+<span class="nc" id="L403">  }</span>
+
+  private void startImpl() throws IOException {
+<span class="nc" id="L406">    ConcurrentUtils.parallelForEachAsync(getImpls(), RaftServerImpl::start, executor.get()).join();</span>
+
+<span class="nc" id="L408">    LOG.info(&quot;{}: start RPC server&quot;, getId());</span>
+<span class="nc" id="L409">    getServerRpc().start();</span>
+<span class="nc" id="L410">    getDataStreamServerRpc().start();</span>
+
+<span class="nc" id="L412">    pauseMonitor.start();</span>
+<span class="nc" id="L413">  }</span>
+
+  @Override
+  public void close() {
+<span class="nc" id="L417">    lifeCycle.checkStateAndClose(() -&gt; {</span>
+<span class="nc" id="L418">      LOG.info(&quot;{}: close&quot;, getId());</span>
+
+      try {
+<span class="nc" id="L421">        ConcurrentUtils.shutdownAndWait(implExecutor.get());</span>
+<span class="nc" id="L422">      } catch (Exception ignored) {</span>
+<span class="nc" id="L423">        LOG.warn(getId() + &quot;: Failed to shutdown implExecutor&quot;, ignored);</span>
+<span class="nc" id="L424">      }</span>
+
+<span class="nc" id="L426">      impls.close();</span>
+
+      try {
+<span class="nc" id="L429">        getServerRpc().close();</span>
+<span class="nc" id="L430">      } catch(IOException ignored) {</span>
+<span class="nc" id="L431">        LOG.warn(getId() + &quot;: Failed to close &quot; + getRpcType() + &quot; server&quot;, ignored);</span>
+<span class="nc" id="L432">      }</span>
+
+      try {
+<span class="nc" id="L435">        getDataStreamServerRpc().close();</span>
+<span class="nc" id="L436">      } catch (IOException ignored) {</span>
+<span class="nc" id="L437">        LOG.warn(getId() + &quot;: Failed to close &quot; + SupportedDataStreamType.NETTY + &quot; server&quot;, ignored);</span>
+<span class="nc" id="L438">      }</span>
+
+      try {
+<span class="nc" id="L441">        ConcurrentUtils.shutdownAndWait(executor.get());</span>
+<span class="nc" id="L442">      } catch (Exception ignored) {</span>
+<span class="nc" id="L443">        LOG.warn(getId() + &quot;: Failed to shutdown executor&quot;, ignored);</span>
+<span class="nc" id="L444">      }</span>
+<span class="nc" id="L445">    });</span>
+<span class="nc" id="L446">    pauseMonitor.stop();</span>
+<span class="nc" id="L447">  }</span>
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; submitClientRequestAsync(
+      ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L452">    final RaftClientRequest request = requestRef.retain();</span>
+    try {
+<span class="nc" id="L454">      return getImplFuture(request.getRaftGroupId())</span>
+<span class="nc" id="L455">          .thenCompose(impl -&gt; impl.executeSubmitClientRequestAsync(requestRef));</span>
+    } finally {
+<span class="nc" id="L457">      requestRef.release();</span>
+    }
+  }
+
+  @Override
+  public RaftClientReply submitClientRequest(RaftClientRequest request)
+      throws IOException {
+<span class="nc" id="L464">    return getImpl(request.getRaftGroupId()).submitClientRequest(request);</span>
+  }
+
+  @Override
+  public RaftClientReply setConfiguration(SetConfigurationRequest request)
+      throws IOException {
+<span class="nc" id="L470">    return getImpl(request.getRaftGroupId()).setConfiguration(request);</span>
+  }
+
+  @Override
+  public RaftClientReply transferLeadership(TransferLeadershipRequest request)
+      throws IOException {
+<span class="nc" id="L476">    return getImpl(request.getRaftGroupId()).transferLeadership(request);</span>
+  }
+
+  @Override
+  public RaftClientReply groupManagement(GroupManagementRequest request) throws IOException {
+<span class="nc" id="L481">    return RaftServerImpl.waitForReply(getId(), request, groupManagementAsync(request),</span>
+<span class="nc" id="L482">        e -&gt; RaftClientReply.newBuilder()</span>
+<span class="nc" id="L483">            .setRequest(request)</span>
+<span class="nc" id="L484">            .setException(e)</span>
+<span class="nc" id="L485">            .build());</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; groupManagementAsync(GroupManagementRequest request) {
+<span class="nc" id="L490">    final RaftGroupId groupId = request.getRaftGroupId();</span>
+<span class="nc bnc" id="L491" title="All 2 branches missed.">    if (groupId == null) {</span>
+<span class="nc" id="L492">      return JavaUtils.completeExceptionally(new GroupMismatchException(</span>
+<span class="nc" id="L493">          getId() + &quot;: Request group id == null&quot;));</span>
+    }
+<span class="nc" id="L495">    final GroupManagementRequest.Add add = request.getAdd();</span>
+<span class="nc bnc" id="L496" title="All 2 branches missed.">    if (add != null) {</span>
+<span class="nc" id="L497">      return groupAddAsync(request, add.getGroup(), add.isFormat());</span>
+    }
+<span class="nc" id="L499">    final GroupManagementRequest.Remove remove = request.getRemove();</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">    if (remove != null) {</span>
+<span class="nc" id="L501">      return groupRemoveAsync(request, remove.getGroupId(),</span>
+<span class="nc" id="L502">          remove.isDeleteDirectory(), remove.isRenameDirectory());</span>
+    }
+<span class="nc" id="L504">    return JavaUtils.completeExceptionally(new UnsupportedOperationException(</span>
+<span class="nc" id="L505">        getId() + &quot;: Request not supported &quot; + request));</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; groupAddAsync(
+      GroupManagementRequest request, RaftGroup newGroup, boolean format) {
+<span class="nc bnc" id="L510" title="All 2 branches missed.">    if (!request.getRaftGroupId().equals(newGroup.getGroupId())) {</span>
+<span class="nc" id="L511">      return JavaUtils.completeExceptionally(new GroupMismatchException(</span>
+<span class="nc" id="L512">          getId() + &quot;: Request group id (&quot; + request.getRaftGroupId() + &quot;) does not match the new group &quot; + newGroup));</span>
+    }
+<span class="nc bnc" id="L514" title="All 2 branches missed.">    return impls.addNew(newGroup, format? StartupOption.FORMAT: StartupOption.RECOVER)</span>
+<span class="nc" id="L515">        .thenApplyAsync(newImpl -&gt; {</span>
+<span class="nc" id="L516">          LOG.debug(&quot;{}: newImpl = {}&quot;, getId(), newImpl);</span>
+          try {
+<span class="nc" id="L518">            final boolean started = newImpl.start();</span>
+<span class="nc" id="L519">            Preconditions.assertTrue(started, () -&gt; getId()+ &quot;: failed to start a new impl: &quot; + newImpl);</span>
+<span class="nc" id="L520">          } catch (IOException e) {</span>
+<span class="nc" id="L521">            throw new CompletionException(e);</span>
+<span class="nc" id="L522">          }</span>
+<span class="nc" id="L523">          return newImpl.newSuccessReply(request);</span>
+<span class="nc" id="L524">        }, implExecutor.get())</span>
+<span class="nc" id="L525">        .whenComplete((raftClientReply, throwable) -&gt; {</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">          if (throwable != null) {</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">            if (!(throwable.getCause() instanceof AlreadyExistsException)) {</span>
+<span class="nc" id="L528">              impls.remove(newGroup.getGroupId());</span>
+<span class="nc" id="L529">              LOG.warn(getId() + &quot;: Failed groupAdd* &quot; + request, throwable);</span>
+            } else {
+<span class="nc bnc" id="L531" title="All 2 branches missed.">              if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L532">                LOG.debug(getId() + &quot;: Failed groupAdd* &quot; + request, throwable);</span>
+              }
+            }
+          }
+<span class="nc" id="L536">        });</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; groupRemoveAsync(
+      RaftClientRequest request, RaftGroupId groupId, boolean deleteDirectory,
+      boolean renameDirectory) {
+<span class="nc bnc" id="L542" title="All 2 branches missed.">    if (!request.getRaftGroupId().equals(groupId)) {</span>
+<span class="nc" id="L543">      return JavaUtils.completeExceptionally(new GroupMismatchException(</span>
+<span class="nc" id="L544">          getId() + &quot;: Request group id (&quot; + request.getRaftGroupId() + &quot;) does not match the given group id &quot; +</span>
+              groupId));
+    }
+<span class="nc" id="L547">    final CompletableFuture&lt;RaftServerImpl&gt; f = impls.remove(groupId);</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">    if (f == null) {</span>
+<span class="nc" id="L549">      return JavaUtils.completeExceptionally(new GroupMismatchException(</span>
+<span class="nc" id="L550">          getId() + &quot;: Group &quot; + groupId + &quot; not found.&quot;));</span>
+    }
+<span class="nc" id="L552">    return f.thenApply(impl -&gt; {</span>
+<span class="nc" id="L553">      impl.groupRemove(deleteDirectory, renameDirectory);</span>
+<span class="nc" id="L554">      return impl.newSuccessReply(request);</span>
+    });
+  }
+
+  @Override
+  public RaftClientReply snapshotManagement(SnapshotManagementRequest request) throws IOException {
+<span class="nc" id="L560">    return RaftServerImpl.waitForReply(getId(), request, snapshotManagementAsync(request),</span>
+<span class="nc" id="L561">          e -&gt; RaftClientReply.newBuilder()</span>
+<span class="nc" id="L562">                .setRequest(request)</span>
+<span class="nc" id="L563">                .setException(e)</span>
+<span class="nc" id="L564">                .build());</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; snapshotManagementAsync(SnapshotManagementRequest request) {
+<span class="nc" id="L569">    final RaftGroupId groupId = request.getRaftGroupId();</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">    if (groupId == null) {</span>
+<span class="nc" id="L571">      return JavaUtils.completeExceptionally(new GroupMismatchException(</span>
+<span class="nc" id="L572">            getId() + &quot;: Request group id == null&quot;));</span>
+    }
+<span class="nc" id="L574">    final SnapshotManagementRequest.Create create = request.getCreate();</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">    if (create != null) {</span>
+<span class="nc" id="L576">      return createAsync(request);</span>
+    }
+<span class="nc" id="L578">    return JavaUtils.completeExceptionally(new UnsupportedOperationException(</span>
+<span class="nc" id="L579">          getId() + &quot;: Request not supported &quot; + request));</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; createAsync(SnapshotManagementRequest request) {
+<span class="nc" id="L583">    return getImplFuture(request.getRaftGroupId())</span>
+<span class="nc" id="L584">        .thenCompose(impl -&gt; impl.executeSubmitServerRequestAsync(() -&gt; impl.takeSnapshotAsync(request)));</span>
+  }
+
+  @Override
+  public RaftClientReply leaderElectionManagement(LeaderElectionManagementRequest request) throws IOException {
+<span class="nc" id="L589">    return RaftServerImpl.waitForReply(getId(), request, leaderElectionManagementAsync(request),</span>
+<span class="nc" id="L590">        e -&gt; RaftClientReply.newBuilder()</span>
+<span class="nc" id="L591">            .setRequest(request)</span>
+<span class="nc" id="L592">            .setException(e)</span>
+<span class="nc" id="L593">            .build());</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; leaderElectionManagementAsync(
+      LeaderElectionManagementRequest request) {
+<span class="nc" id="L599">    return getImplFuture(request.getRaftGroupId())</span>
+<span class="nc" id="L600">        .thenCompose(impl -&gt; impl.executeSubmitServerRequestAsync(() -&gt; impl.leaderElectionManagementAsync(request)));</span>
+  }
+
+  @Override
+  public GroupListReply getGroupList(GroupListRequest request) {
+<span class="nc" id="L605">    return new GroupListReply(request, getGroupIds());</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;GroupListReply&gt; getGroupListAsync(GroupListRequest request) {
+<span class="nc" id="L610">    return CompletableFuture.completedFuture(getGroupList(request));</span>
+  }
+
+  @Override
+  public GroupInfoReply getGroupInfo(GroupInfoRequest request) throws IOException {
+<span class="nc" id="L615">    return RaftServerImpl.waitForReply(getId(), request, getGroupInfoAsync(request), r -&gt; null);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;GroupInfoReply&gt; getGroupInfoAsync(GroupInfoRequest request) {
+<span class="nc" id="L620">    return getImplFuture(request.getRaftGroupId()).thenApplyAsync(</span>
+<span class="nc" id="L621">        server -&gt; server.getGroupInfo(request));</span>
+  }
+
+  /**
+   * Handle a raft configuration change request from client.
+   */
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; setConfigurationAsync(SetConfigurationRequest request) {
+<span class="nc" id="L629">    return getImplFuture(request.getRaftGroupId())</span>
+<span class="nc" id="L630">        .thenCompose(impl -&gt; impl.executeSubmitServerRequestAsync(() -&gt; impl.setConfigurationAsync(request)));</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; transferLeadershipAsync(TransferLeadershipRequest request) {
+<span class="nc" id="L635">    return getImplFuture(request.getRaftGroupId())</span>
+<span class="nc" id="L636">        .thenCompose(impl -&gt; impl.executeSubmitServerRequestAsync(() -&gt; impl.transferLeadershipAsync(request)));</span>
+  }
+
+  @Override
+  public RequestVoteReplyProto requestVote(RequestVoteRequestProto request) throws IOException {
+<span class="nc" id="L641">    return getImpl(request.getServerRequest()).requestVote(request);</span>
+  }
+
+  @Override
+  public StartLeaderElectionReplyProto startLeaderElection(StartLeaderElectionRequestProto request) throws IOException {
+<span class="nc" id="L646">    return getImpl(request.getServerRequest()).startLeaderElection(request);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;AppendEntriesReplyProto&gt; appendEntriesAsync(
+      ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; requestRef) {
+<span class="nc" id="L652">    AppendEntriesRequestProto request = requestRef.retain();</span>
+    try {
+<span class="nc" id="L654">      final RaftGroupId groupId = ProtoUtils.toRaftGroupId(request.getServerRequest().getRaftGroupId());</span>
+<span class="nc" id="L655">      return getImplFuture(groupId)</span>
+<span class="nc" id="L656">          .thenCompose(impl -&gt; JavaUtils.callAsUnchecked(</span>
+<span class="nc" id="L657">              () -&gt; impl.appendEntriesAsync(requestRef), CompletionException::new));</span>
+    } finally {
+<span class="nc" id="L659">      requestRef.release();</span>
+    }
+  }
+
+  @Override
+  public CompletableFuture&lt;ReadIndexReplyProto&gt; readIndexAsync(ReadIndexRequestProto request) throws IOException {
+<span class="nc" id="L665">    final RaftGroupId groupId = ProtoUtils.toRaftGroupId(request.getServerRequest().getRaftGroupId());</span>
+<span class="nc" id="L666">    return getImplFuture(groupId)</span>
+<span class="nc" id="L667">        .thenCompose(impl -&gt; impl.executeSubmitServerRequestAsync(() -&gt; impl.readIndexAsync(request)));</span>
+  }
+
+  @Override
+  public AppendEntriesReplyProto appendEntries(AppendEntriesRequestProto request) throws IOException {
+<span class="nc" id="L672">    return getImpl(request.getServerRequest()).appendEntries(request);</span>
+  }
+
+  @Override
+  public InstallSnapshotReplyProto installSnapshot(InstallSnapshotRequestProto request) throws IOException {
+<span class="nc" id="L677">    return getImpl(request.getServerRequest()).installSnapshot(request);</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L682">    return getId() + String.format(&quot;:%9s &quot;, lifeCycle.getCurrentState()) + impls;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

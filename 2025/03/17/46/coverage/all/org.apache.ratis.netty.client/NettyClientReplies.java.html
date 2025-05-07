@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyClientReplies.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.client</a> &gt; <span class="el_source">NettyClientReplies.java</span></div><h1>NettyClientReplies.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.netty.client;
+
+import org.apache.ratis.proto.RaftProtos.DataStreamPacketHeaderProto.Type;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.DataStreamPacket;
+import org.apache.ratis.protocol.DataStreamReply;
+import org.apache.ratis.thirdparty.io.netty.util.concurrent.ScheduledFuture;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
+
+<span class="nc" id="L38">public class NettyClientReplies {</span>
+<span class="nc" id="L39">  public static final Logger LOG = LoggerFactory.getLogger(NettyClientReplies.class);</span>
+
+<span class="nc" id="L41">  private final ConcurrentMap&lt;ClientInvocationId, ReplyMap&gt; replies = new ConcurrentHashMap&lt;&gt;();</span>
+
+  ReplyMap getReplyMap(ClientInvocationId clientInvocationId) {
+<span class="nc" id="L44">    final MemoizedSupplier&lt;ReplyMap&gt; q = MemoizedSupplier.valueOf(() -&gt; new ReplyMap(clientInvocationId));</span>
+<span class="nc" id="L45">    return replies.computeIfAbsent(clientInvocationId, key -&gt; q.get());</span>
+  }
+
+  class ReplyMap {
+    private final ClientInvocationId clientInvocationId;
+<span class="nc" id="L50">    private final Map&lt;RequestEntry, ReplyEntry&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="nc" id="L52">    ReplyMap(ClientInvocationId clientInvocationId) {</span>
+<span class="nc" id="L53">      this.clientInvocationId = clientInvocationId;</span>
+<span class="nc" id="L54">    }</span>
+
+    ReplyEntry submitRequest(RequestEntry requestEntry, boolean isClose, CompletableFuture&lt;DataStreamReply&gt; f) {
+<span class="nc" id="L57">      LOG.debug(&quot;put {} to the map for {}&quot;, requestEntry, clientInvocationId);</span>
+      // ConcurrentHashMap.computeIfAbsent javadoc: the function is applied at most once per key.
+<span class="nc" id="L59">      return map.computeIfAbsent(requestEntry, r -&gt; new ReplyEntry(isClose, f));</span>
+    }
+
+    void receiveReply(DataStreamReply reply) {
+<span class="nc" id="L63">      final RequestEntry requestEntry = new RequestEntry(reply);</span>
+<span class="nc" id="L64">      final ReplyEntry replyEntry = map.remove(requestEntry);</span>
+<span class="nc" id="L65">      LOG.debug(&quot;remove: {}; replyEntry: {}; reply: {}&quot;, requestEntry, replyEntry, reply);</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">      if (replyEntry == null) {</span>
+<span class="nc" id="L67">        LOG.debug(&quot;Request not found: {}&quot;, this);</span>
+<span class="nc" id="L68">        return;</span>
+      }
+<span class="nc" id="L70">      replyEntry.complete(reply);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">      if (!reply.isSuccess()) {</span>
+<span class="nc" id="L72">        failAll(&quot;a request failed with &quot; + reply);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">      } else if (replyEntry.isClosed()) {  // stream closed clean up reply map</span>
+<span class="nc" id="L74">        removeThisMap();</span>
+      }
+<span class="nc" id="L76">    }</span>
+
+    private void removeThisMap() {
+<span class="nc" id="L79">      final ReplyMap removed = replies.remove(clientInvocationId);</span>
+<span class="nc" id="L80">      Preconditions.assertSame(removed, this, &quot;removed&quot;);</span>
+<span class="nc" id="L81">    }</span>
+
+    void completeExceptionally(Throwable e) {
+<span class="nc" id="L84">      removeThisMap();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">      for (ReplyEntry entry : map.values()) {</span>
+<span class="nc" id="L86">        entry.completeExceptionally(e);</span>
+<span class="nc" id="L87">      }</span>
+<span class="nc" id="L88">      map.clear();</span>
+<span class="nc" id="L89">    }</span>
+
+    private void failAll(String message) {
+<span class="nc" id="L92">      completeExceptionally(new IllegalStateException(this + &quot;: &quot; + message));</span>
+<span class="nc" id="L93">    }</span>
+
+    void fail(RequestEntry requestEntry) {
+<span class="nc" id="L96">      map.remove(requestEntry);</span>
+<span class="nc" id="L97">      failAll(requestEntry + &quot; failed &quot;);</span>
+<span class="nc" id="L98">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L102">      final StringBuilder builder = new StringBuilder();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">      for (RequestEntry requestEntry : map.keySet()) {</span>
+<span class="nc" id="L104">        builder.append(requestEntry).append(&quot;, &quot;);</span>
+<span class="nc" id="L105">      }</span>
+<span class="nc" id="L106">      return builder.toString();</span>
+    }
+  }
+
+  static class RequestEntry {
+    private final long streamOffset;
+    private final Type type;
+
+<span class="nc" id="L114">    RequestEntry(DataStreamPacket packet) {</span>
+<span class="nc" id="L115">      this.streamOffset = packet.getStreamOffset();</span>
+<span class="nc" id="L116">      this.type = packet.getType();</span>
+<span class="nc" id="L117">    }</span>
+
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">      if (this == o) {</span>
+<span class="nc" id="L122">        return true;</span>
+      }
+<span class="nc bnc" id="L124" title="All 4 branches missed.">      if (o == null || getClass() != o.getClass()) {</span>
+<span class="nc" id="L125">        return false;</span>
+      }
+<span class="nc" id="L127">      final RequestEntry that = (RequestEntry) o;</span>
+<span class="nc bnc" id="L128" title="All 4 branches missed.">      return streamOffset == that.streamOffset</span>
+          &amp;&amp; type == that.type;
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L134">      return Objects.hash(type, streamOffset);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L139">      return &quot;Request{&quot; +</span>
+          &quot;streamOffset=&quot; + streamOffset +
+          &quot;, type=&quot; + type +
+          '}';
+    }
+  }
+
+  static class ReplyEntry {
+    private final boolean isClosed;
+    private final CompletableFuture&lt;DataStreamReply&gt; replyFuture;
+    private ScheduledFuture&lt;?&gt; timeoutFuture; // for reply timeout
+
+<span class="nc" id="L151">    ReplyEntry(boolean isClosed, CompletableFuture&lt;DataStreamReply&gt; replyFuture) {</span>
+<span class="nc" id="L152">      this.isClosed = isClosed;</span>
+<span class="nc" id="L153">      this.replyFuture = replyFuture;</span>
+<span class="nc" id="L154">    }</span>
+
+    boolean isClosed() {
+<span class="nc" id="L157">      return isClosed;</span>
+    }
+
+    synchronized void complete(DataStreamReply reply) {
+<span class="nc" id="L161">      cancel(timeoutFuture);</span>
+<span class="nc" id="L162">      replyFuture.complete(reply);</span>
+<span class="nc" id="L163">    }</span>
+
+    synchronized void completeExceptionally(Throwable t) {
+<span class="nc" id="L166">      cancel(timeoutFuture);</span>
+<span class="nc" id="L167">      replyFuture.completeExceptionally(t);</span>
+<span class="nc" id="L168">    }</span>
+
+    static void cancel(ScheduledFuture&lt;?&gt; future) {
+<span class="nc bnc" id="L171" title="All 2 branches missed.">      if (future != null) {</span>
+<span class="nc" id="L172">        future.cancel(true);</span>
+      }
+<span class="nc" id="L174">    }</span>
+
+    synchronized void scheduleTimeout(Supplier&lt;ScheduledFuture&lt;?&gt;&gt; scheduleMethod) {
+<span class="nc bnc" id="L177" title="All 2 branches missed.">      if (!replyFuture.isDone()) {</span>
+<span class="nc" id="L178">        timeoutFuture = scheduleMethod.get();</span>
+      }
+<span class="nc" id="L180">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

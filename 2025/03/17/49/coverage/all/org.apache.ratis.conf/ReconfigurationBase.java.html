@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReconfigurationBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.conf</a> &gt; <span class="el_source">ReconfigurationBase.java</span></div><h1>ReconfigurationBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.conf;
+
+import org.apache.ratis.conf.ReconfigurationStatus.PropertyChange;
+import org.apache.ratis.util.Daemon;
+import org.apache.ratis.util.Timestamp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Base class for implementing the {@link Reconfigurable} interface.
+ * Subclasses must override
+ * (1) {@link #getReconfigurableProperties()} to return all properties that can be reconfigurable at runtime,
+ * (2) {@link #getNewProperties()} to return the new {@link RaftProperties} to be reconfigured to, and
+ * (3) {@link #reconfigureProperty(String, String)} to change individual properties.
+ */
+public abstract class ReconfigurationBase implements Reconfigurable {
+<span class="nc" id="L41">  private static final Logger LOG = LoggerFactory.getLogger(ReconfigurationBase.class);</span>
+
+  public static Collection&lt;PropertyChange&gt; getChangedProperties(
+      RaftProperties newProperties, RaftProperties oldProperties) {
+<span class="nc" id="L45">    final Map&lt;String, PropertyChange&gt; changes = new HashMap&lt;&gt;();</span>
+
+    // iterate over old properties
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    for (Map.Entry&lt;String, String&gt; oldEntry: oldProperties.entrySet()) {</span>
+<span class="nc" id="L49">      final String prop = oldEntry.getKey();</span>
+<span class="nc" id="L50">      final String oldVal = oldEntry.getValue();</span>
+<span class="nc" id="L51">      final String newVal = newProperties.getRaw(prop);</span>
+
+<span class="nc bnc" id="L53" title="All 2 branches missed.">      if (!Objects.equals(newVal, oldVal)) {</span>
+<span class="nc" id="L54">        changes.put(prop, new PropertyChange(prop, newVal, oldVal));</span>
+      }
+<span class="nc" id="L56">    }</span>
+
+    // now iterate over new properties in order to look for properties not present in old properties
+<span class="nc bnc" id="L59" title="All 2 branches missed.">    for (Map.Entry&lt;String, String&gt; newEntry: newProperties.entrySet()) {</span>
+<span class="nc" id="L60">      final String prop = newEntry.getKey();</span>
+<span class="nc" id="L61">      final String newVal = newEntry.getValue();</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">      if (newVal != null &amp;&amp; oldProperties.get(prop) == null) {</span>
+<span class="nc" id="L63">        changes.put(prop, new PropertyChange(prop, newVal, null));</span>
+      }
+<span class="nc" id="L65">    }</span>
+
+<span class="nc" id="L67">    return changes.values();</span>
+  }
+
+<span class="nc" id="L70">  class Context {</span>
+    /** The current reconfiguration status. */
+<span class="nc" id="L72">    private ReconfigurationStatus status = new ReconfigurationStatus(null, null, null, null);</span>
+    /** Is this context stopped? */
+    private boolean isStopped;
+
+    synchronized ReconfigurationStatus getStatus() {
+<span class="nc" id="L77">      return status;</span>
+    }
+
+    synchronized void start() {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">      if (isStopped) {</span>
+<span class="nc" id="L82">        throw new IllegalStateException(name + &quot; is stopped.&quot;);</span>
+      }
+<span class="nc" id="L84">      final Daemon previous = status.getDaemon();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">      if (previous != null) {</span>
+<span class="nc" id="L86">        throw new IllegalStateException(name + &quot;: a reconfiguration task &quot; + previous + &quot; is already running.&quot;);</span>
+      }
+<span class="nc" id="L88">      final Timestamp startTime = Timestamp.currentTime();</span>
+<span class="nc" id="L89">      final Daemon task = Daemon.newBuilder()</span>
+<span class="nc" id="L90">          .setName(&quot;started@&quot; + startTime)</span>
+<span class="nc" id="L91">          .setRunnable(ReconfigurationBase.this::batchReconfiguration)</span>
+<span class="nc" id="L92">          .build();</span>
+<span class="nc" id="L93">      status = new ReconfigurationStatus(startTime, null, null, task);</span>
+<span class="nc" id="L94">      task.start();</span>
+<span class="nc" id="L95">    }</span>
+
+    synchronized void end(Map&lt;PropertyChange, Throwable&gt; results) {
+<span class="nc" id="L98">      status = new ReconfigurationStatus(status.getStartTime(), Timestamp.currentTime(), results, null);</span>
+<span class="nc" id="L99">    }</span>
+
+    synchronized Daemon stop() {
+<span class="nc" id="L102">      isStopped = true;</span>
+<span class="nc" id="L103">      final Daemon task = status.getDaemon();</span>
+<span class="nc" id="L104">      status = new ReconfigurationStatus(status.getStartTime(), null, null, null);</span>
+<span class="nc" id="L105">      return task;</span>
+    }
+  }
+
+  private final String name;
+  private final RaftProperties properties;
+  private final Context context;
+
+  /**
+   * Construct a ReconfigurableBase with the {@link RaftProperties}
+   * @param properties raft properties.
+   */
+<span class="nc" id="L117">  protected ReconfigurationBase(String name, RaftProperties properties) {</span>
+<span class="nc" id="L118">    this.name = name;</span>
+<span class="nc" id="L119">    this.properties = properties;</span>
+<span class="nc" id="L120">    this.context = new Context();</span>
+<span class="nc" id="L121">  }</span>
+
+  @Override
+  public RaftProperties getProperties() {
+<span class="nc" id="L125">    return properties;</span>
+  }
+
+  /** @return the new {@link RaftProperties} to be reconfigured to. */
+  protected abstract RaftProperties getNewProperties();
+
+  /**
+   * Start a reconfiguration task to reload raft property in background.
+   * @throws IOException raised on errors performing I/O.
+   */
+  public void startReconfiguration() throws IOException {
+<span class="nc" id="L136">    context.start();</span>
+<span class="nc" id="L137">  }</span>
+
+  public ReconfigurationStatus getReconfigurationStatus() {
+<span class="nc" id="L140">    return context.getStatus();</span>
+  }
+
+  public void shutdown() throws InterruptedException {
+<span class="nc" id="L144">    context.stop().join();</span>
+<span class="nc" id="L145">  }</span>
+
+  /**
+   * Run a batch reconfiguration to change the current properties
+   * to the properties returned by {@link #getNewProperties()}.
+   */
+  private void batchReconfiguration() {
+<span class="nc" id="L152">    LOG.info(&quot;{}: Starting batch reconfiguration {}&quot;, name, Thread.currentThread());</span>
+<span class="nc" id="L153">    final Collection&lt;PropertyChange&gt; changes = getChangedProperties(getNewProperties(), properties);</span>
+<span class="nc" id="L154">    final Map&lt;PropertyChange, Throwable&gt; results = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    for (PropertyChange change : changes) {</span>
+<span class="nc" id="L156">      LOG.info(&quot;Change property: &quot; + change);</span>
+      try {
+<span class="nc" id="L158">        singleReconfiguration(change.getProperty(), change.getNewValue());</span>
+<span class="nc" id="L159">        results.put(change, null);</span>
+<span class="nc" id="L160">      } catch (Throwable t) {</span>
+<span class="nc" id="L161">        results.put(change, t);</span>
+<span class="nc" id="L162">      }</span>
+<span class="nc" id="L163">    }</span>
+<span class="nc" id="L164">    context.end(results);</span>
+<span class="nc" id="L165">  }</span>
+
+  /** Run a single reconfiguration to change the given property to the given value. */
+  private void singleReconfiguration(String property, String newValue) throws ReconfigurationException {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    if (!isPropertyReconfigurable(property)) {</span>
+<span class="nc" id="L170">      throw new ReconfigurationException(&quot;Property is not reconfigurable.&quot;,</span>
+<span class="nc" id="L171">          property, newValue, properties.get(property));</span>
+    }
+<span class="nc" id="L173">    final String effective = reconfigureProperty(property, newValue);</span>
+<span class="nc" id="L174">    LOG.info(&quot;{}: changed property {} to {} (effective {})&quot;, name, property, newValue, effective);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (effective != null) {</span>
+<span class="nc" id="L176">      properties.set(property, effective);</span>
+    } else {
+<span class="nc" id="L178">      properties.unset(property);</span>
+    }
+<span class="nc" id="L180">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

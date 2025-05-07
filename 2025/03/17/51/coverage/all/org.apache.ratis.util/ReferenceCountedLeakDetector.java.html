@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReferenceCountedLeakDetector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ReferenceCountedLeakDetector.java</span></div><h1>ReferenceCountedLeakDetector.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/**
+ * A utility to detect leaks from @{@link ReferenceCountedObject}.
+ */
+public final class ReferenceCountedLeakDetector {
+<span class="nc" id="L34">  private static final Logger LOG = LoggerFactory.getLogger(ReferenceCountedLeakDetector.class);</span>
+  // Leak detection is turned off by default.
+
+<span class="nc" id="L37">  private static final AtomicReference&lt;Mode&gt; FACTORY = new AtomicReference&lt;&gt;(Mode.NONE);</span>
+<span class="nc" id="L38">  private static final Supplier&lt;LeakDetector&gt; SUPPLIER</span>
+<span class="nc" id="L39">      = MemoizedSupplier.valueOf(() -&gt; new LeakDetector(FACTORY.get().name()).start());</span>
+
+  static Factory getFactory() {
+<span class="nc" id="L42">    return FACTORY.get();</span>
+  }
+
+  public static LeakDetector getLeakDetector() {
+<span class="nc" id="L46">    return SUPPLIER.get();</span>
+  }
+
+  private ReferenceCountedLeakDetector() {
+  }
+
+  public static synchronized void enable(boolean advanced) {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    FACTORY.set(advanced ? Mode.ADVANCED : Mode.SIMPLE);</span>
+<span class="nc" id="L54">  }</span>
+
+  interface Factory {
+    &lt;V&gt; ReferenceCountedObject&lt;V&gt; create(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod);
+  }
+
+<span class="nc" id="L60">  private enum Mode implements Factory {</span>
+    /** Leak detector is not enable in production to avoid performance impacts. */
+<span class="nc" id="L62">    NONE {</span>
+      @Override
+      public &lt;V&gt; ReferenceCountedObject&lt;V&gt; create(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod) {
+<span class="nc" id="L65">        return new Impl&lt;&gt;(value, retainMethod, releaseMethod);</span>
+      }
+    },
+    /** Leak detector is enabled to detect leaks. This is intended to use in every tests. */
+<span class="nc" id="L69">    SIMPLE {</span>
+      @Override
+      public &lt;V&gt; ReferenceCountedObject&lt;V&gt; create(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod) {
+<span class="nc" id="L72">        return new SimpleTracing&lt;&gt;(value, retainMethod, releaseMethod, getLeakDetector());</span>
+      }
+    },
+    /**
+     * Leak detector is enabled to detect leaks and report object creation stacktrace as well as every retain and
+     * release stacktraces. This has severe impact in performance and only used to debug specific test cases.
+     */
+<span class="nc" id="L79">    ADVANCED {</span>
+      @Override
+      public &lt;V&gt; ReferenceCountedObject&lt;V&gt; create(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod) {
+<span class="nc" id="L82">        return new AdvancedTracing&lt;&gt;(value, retainMethod, releaseMethod, getLeakDetector());</span>
+      }
+    }
+  }
+
+  private static class Impl&lt;V&gt; implements ReferenceCountedObject&lt;V&gt; {
+    private final AtomicInteger count;
+    private final V value;
+    private final Runnable retainMethod;
+    private final Consumer&lt;Boolean&gt; releaseMethod;
+
+<span class="nc" id="L93">    Impl(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod) {</span>
+<span class="nc" id="L94">      this.value = value;</span>
+<span class="nc" id="L95">      this.retainMethod = retainMethod;</span>
+<span class="nc" id="L96">      this.releaseMethod = releaseMethod;</span>
+<span class="nc" id="L97">      count = new AtomicInteger();</span>
+<span class="nc" id="L98">    }</span>
+
+    @Override
+    public V get() {
+<span class="nc" id="L102">      final int previous = count.get();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">      if (previous &lt; 0) {</span>
+<span class="nc" id="L104">        throw new IllegalStateException(&quot;Failed to get: object has already been completely released.&quot;);</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">      } else if (previous == 0) {</span>
+<span class="nc" id="L106">        throw new IllegalStateException(&quot;Failed to get: object has not yet been retained.&quot;);</span>
+      }
+<span class="nc" id="L108">      return value;</span>
+    }
+
+    final int getCount() {
+<span class="nc" id="L112">      return count.get();</span>
+    }
+
+    @Override
+    public V retain() {
+      // n &lt;  0: exception
+      // n &gt;= 0: n++
+<span class="nc bnc" id="L119" title="All 4 branches missed.">      if (count.getAndUpdate(n -&gt; n &lt; 0? n : n + 1) &lt; 0) {</span>
+<span class="nc" id="L120">        throw new IllegalStateException(&quot;Failed to retain: object has already been completely released.&quot;);</span>
+      }
+
+<span class="nc" id="L123">      retainMethod.run();</span>
+<span class="nc" id="L124">      return value;</span>
+    }
+
+    @Override
+    public boolean release() {
+      // n &lt;= 0: exception
+      // n &gt;  1: n--
+      // n == 1: n = -1
+<span class="nc bnc" id="L132" title="All 2 branches missed.">      final int previous = count.getAndUpdate(n -&gt; n &lt;= 1? -1: n - 1);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">      if (previous &lt; 0) {</span>
+<span class="nc" id="L134">        throw new IllegalStateException(&quot;Failed to release: object has already been completely released.&quot;);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">      } else if (previous == 0) {</span>
+<span class="nc" id="L136">        throw new IllegalStateException(&quot;Failed to release: object has not yet been retained.&quot;);</span>
+      }
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      final boolean completedReleased = previous == 1;</span>
+<span class="nc" id="L139">      releaseMethod.accept(completedReleased);</span>
+<span class="nc" id="L140">      return completedReleased;</span>
+    }
+  }
+
+  private static class SimpleTracing&lt;T&gt; extends Impl&lt;T&gt; {
+    private final LeakDetector leakDetector;
+    private final Class&lt;?&gt; valueClass;
+<span class="nc" id="L147">    private String valueString = null;</span>
+<span class="nc" id="L148">    private Runnable removeMethod = null;</span>
+
+    SimpleTracing(T value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod, LeakDetector leakDetector) {
+<span class="nc" id="L151">      super(value, retainMethod, releaseMethod);</span>
+<span class="nc" id="L152">      this.valueClass = value.getClass();</span>
+<span class="nc" id="L153">      this.leakDetector = leakDetector;</span>
+<span class="nc" id="L154">    }</span>
+
+    String getTraceString(int count) {
+<span class="nc" id="L157">      return &quot;(&quot; + valueClass + &quot;, count=&quot; + count + &quot;, value=&quot; + valueString + &quot;)&quot;;</span>
+    }
+
+    /** @return the leak message if there is a leak; return null if there is no leak. */
+    String logLeakMessage() {
+<span class="nc" id="L162">      final int count = getCount();</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">      if (count == 0) { // never retain</span>
+<span class="nc" id="L164">        return null;</span>
+      }
+<span class="nc" id="L166">      final String message = &quot;LEAK: &quot; + getTraceString(count);</span>
+<span class="nc" id="L167">      LOG.warn(message);</span>
+<span class="nc" id="L168">      return message;</span>
+    }
+
+    @Override
+    public synchronized T get() {
+      try {
+<span class="nc" id="L174">        return super.get();</span>
+<span class="nc" id="L175">      } catch (Exception e) {</span>
+<span class="nc" id="L176">        throw new IllegalStateException(&quot;Failed to get: &quot; + getTraceString(getCount()), e);</span>
+      }
+    }
+
+    @Override
+    public synchronized T retain() {
+      final T value;
+      try {
+<span class="nc" id="L184">        value = super.retain();</span>
+<span class="nc" id="L185">      } catch (Exception e) {</span>
+<span class="nc" id="L186">        throw new IllegalStateException(&quot;Failed to retain: &quot; + getTraceString(getCount()), e);</span>
+<span class="nc" id="L187">      }</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">      if (getCount() == 1) { // this is the first retain</span>
+<span class="nc" id="L189">        this.removeMethod = leakDetector.track(this, this::logLeakMessage);</span>
+<span class="nc" id="L190">        this.valueString = value.toString();</span>
+      }
+<span class="nc" id="L192">      return value;</span>
+    }
+
+    @Override
+    public synchronized boolean release() {
+      final boolean released;
+      try {
+<span class="nc" id="L199">        released = super.release();</span>
+<span class="nc" id="L200">      } catch (Exception e) {</span>
+<span class="nc" id="L201">        throw new IllegalStateException(&quot;Failed to release: &quot; + getTraceString(getCount()), e);</span>
+<span class="nc" id="L202">      }</span>
+
+<span class="nc bnc" id="L204" title="All 2 branches missed.">      if (released) {</span>
+<span class="nc" id="L205">        Preconditions.assertNotNull(removeMethod, () -&gt; &quot;Not yet retained (removeMethod == null): &quot; + valueClass);</span>
+<span class="nc" id="L206">        removeMethod.run();</span>
+      }
+<span class="nc" id="L208">      return released;</span>
+    }
+  }
+
+  private static class AdvancedTracing&lt;T&gt; extends SimpleTracing&lt;T&gt; {
+<span class="nc" id="L213">    enum Op {CREATION, RETAIN, RELEASE, CURRENT}</span>
+
+    static class Counts {
+      private final int refCount;
+      private final int retainCount;
+      private final int releaseCount;
+
+<span class="nc" id="L220">      Counts() {</span>
+<span class="nc" id="L221">        this.refCount = 0;</span>
+<span class="nc" id="L222">        this.retainCount = 0;</span>
+<span class="nc" id="L223">        this.releaseCount = 0;</span>
+<span class="nc" id="L224">      }</span>
+
+<span class="nc" id="L226">      Counts(Op op, Counts previous) {</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (op == Op.RETAIN) {</span>
+<span class="nc" id="L228">          this.refCount = previous.refCount + 1;</span>
+<span class="nc" id="L229">          this.retainCount = previous.retainCount + 1;</span>
+<span class="nc" id="L230">          this.releaseCount = previous.releaseCount;</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        } else if (op == Op.RELEASE) {</span>
+<span class="nc" id="L232">          this.refCount = previous.refCount - 1;</span>
+<span class="nc" id="L233">          this.retainCount = previous.retainCount;</span>
+<span class="nc" id="L234">          this.releaseCount = previous.releaseCount + 1;</span>
+        } else {
+<span class="nc" id="L236">          throw new IllegalStateException(&quot;Unexpected op: &quot; + op);</span>
+        }
+<span class="nc" id="L238">      }</span>
+
+      @Override
+      public String toString() {
+<span class="nc" id="L242">        return &quot;refCount=&quot; + refCount</span>
+            + &quot;, retainCount=&quot; + retainCount
+            + &quot;, releaseCount=&quot; + releaseCount;
+      }
+    }
+
+    static class TraceInfo {
+      private final int id;
+      private final Op op;
+      private final int previousRefCount;
+      private final Counts counts;
+
+      private final String threadInfo;
+      private final StackTraceElement[] stackTraces;
+      private final int newTraceElementIndex;
+
+<span class="nc" id="L258">      TraceInfo(int id, Op op, TraceInfo previous, int previousRefCount) {</span>
+<span class="nc" id="L259">        this.id = id;</span>
+<span class="nc" id="L260">        this.op = op;</span>
+<span class="nc" id="L261">        this.previousRefCount = previousRefCount;</span>
+<span class="nc bnc" id="L262" title="All 4 branches missed.">        this.counts = previous == null? new Counts()</span>
+            : op == Op.CURRENT ? previous.counts
+            : new Counts(op, previous.counts);
+
+<span class="nc" id="L266">        final Thread thread = Thread.currentThread();</span>
+<span class="nc" id="L267">        this.threadInfo = &quot;Thread_&quot; + thread.getId() + &quot;:&quot; + thread.getName();</span>
+<span class="nc" id="L268">        this.stackTraces = thread.getStackTrace();</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">        this.newTraceElementIndex = previous == null? stackTraces.length - 1</span>
+<span class="nc" id="L270">            : findFirstUnequalFromTail(this.stackTraces, previous.stackTraces);</span>
+<span class="nc" id="L271">      }</span>
+
+      static &lt;T&gt; int findFirstUnequalFromTail(T[] current, T[] previous) {
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        int c = current.length == 0 ? 0 : current.length - 1;</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        for(int p = previous.length - 1; p &gt;= 0; p--, c--) {</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">          if (!previous[p].equals(current[c])) {</span>
+<span class="nc" id="L277">            return c;</span>
+          }
+        }
+<span class="nc" id="L280">        return -1;</span>
+      }
+
+      private StringBuilder appendTo(StringBuilder b) {
+<span class="nc" id="L284">        b.append(op).append(&quot;_&quot;).append(id)</span>
+<span class="nc" id="L285">            .append(&quot;: previousRefCount=&quot;).append(previousRefCount)</span>
+<span class="nc" id="L286">            .append(&quot;, &quot;).append(counts)</span>
+<span class="nc" id="L287">            .append(&quot;, &quot;).append(threadInfo).append(&quot;\n&quot;);</span>
+<span class="nc" id="L288">        final int n = newTraceElementIndex + 1;</span>
+<span class="nc" id="L289">        int line = 3;</span>
+<span class="nc bnc" id="L290" title="All 4 branches missed.">        for (; line &lt;= n &amp;&amp; line &lt; stackTraces.length; line++) {</span>
+<span class="nc" id="L291">          b.append(&quot;    &quot;).append(stackTraces[line]).append(&quot;\n&quot;);</span>
+        }
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (line &lt; stackTraces.length) {</span>
+<span class="nc" id="L294">          b.append(&quot;    ...\n&quot;);</span>
+        }
+<span class="nc" id="L296">        return b;</span>
+      }
+
+      @Override
+      public String toString() {
+<span class="nc" id="L301">        return appendTo(new StringBuilder()).toString();</span>
+      }
+    }
+
+<span class="nc" id="L305">    private final List&lt;TraceInfo&gt; traceInfos = new ArrayList&lt;&gt;();</span>
+    private TraceInfo previous;
+
+    AdvancedTracing(T value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod, LeakDetector leakDetector) {
+<span class="nc" id="L309">      super(value, retainMethod, releaseMethod, leakDetector);</span>
+<span class="nc" id="L310">      addTraceInfo(Op.CREATION, -1);</span>
+<span class="nc" id="L311">    }</span>
+
+    private synchronized TraceInfo addTraceInfo(Op op, int previousRefCount) {
+<span class="nc" id="L314">      final TraceInfo current = new TraceInfo(traceInfos.size(), op, previous, previousRefCount);</span>
+<span class="nc" id="L315">      traceInfos.add(current);</span>
+<span class="nc" id="L316">      previous = current;</span>
+<span class="nc" id="L317">      return current;</span>
+    }
+
+
+    @Override
+    public synchronized T retain() {
+<span class="nc" id="L323">      final int previousRefCount = getCount();</span>
+<span class="nc" id="L324">      final T retained = super.retain();</span>
+<span class="nc" id="L325">      final TraceInfo info = addTraceInfo(Op.RETAIN, previousRefCount);</span>
+<span class="nc" id="L326">      Preconditions.assertSame(getCount(), info.counts.refCount, &quot;refCount&quot;);</span>
+<span class="nc" id="L327">      return retained;</span>
+    }
+
+    @Override
+    public synchronized boolean release() {
+<span class="nc" id="L332">      final int previousRefCount = getCount();</span>
+<span class="nc" id="L333">      final boolean released = super.release();</span>
+<span class="nc" id="L334">      final TraceInfo info = addTraceInfo(Op.RELEASE, previousRefCount);</span>
+<span class="nc" id="L335">      final int count = getCount();</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">      final int expected = count == -1? 0 : count;</span>
+<span class="nc" id="L337">      Preconditions.assertSame(expected, info.counts.refCount, &quot;refCount&quot;);</span>
+<span class="nc" id="L338">      return released;</span>
+    }
+
+    @Override
+    synchronized String getTraceString(int count) {
+<span class="nc" id="L343">      return super.getTraceString(count) + getTraceInfosString();</span>
+    }
+
+    private String getTraceInfosString() {
+<span class="nc" id="L347">      final int n = traceInfos.size();</span>
+<span class="nc" id="L348">      final StringBuilder b = new StringBuilder(n &lt;&lt; 10).append(&quot; #TraceInfos=&quot;).append(n);</span>
+<span class="nc" id="L349">      TraceInfo last = null;</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">      for (TraceInfo info : traceInfos) {</span>
+<span class="nc" id="L351">        info.appendTo(b.append(&quot;\n&quot;));</span>
+<span class="nc" id="L352">        last = info;</span>
+<span class="nc" id="L353">      }</span>
+
+      // append current track info
+<span class="nc" id="L356">      final TraceInfo current = new TraceInfo(n, Op.CURRENT, last, getCount());</span>
+<span class="nc" id="L357">      current.appendTo(b.append(&quot;\n&quot;));</span>
+
+<span class="nc" id="L359">      return b.toString();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

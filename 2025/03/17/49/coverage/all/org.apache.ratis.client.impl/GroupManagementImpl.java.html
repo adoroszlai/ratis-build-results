@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GroupManagementImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">GroupManagementImpl.java</span></div><h1>GroupManagementImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import org.apache.ratis.client.api.GroupManagementApi;
+import org.apache.ratis.protocol.GroupInfoReply;
+import org.apache.ratis.protocol.GroupInfoRequest;
+import org.apache.ratis.protocol.GroupListReply;
+import org.apache.ratis.protocol.GroupListRequest;
+import org.apache.ratis.protocol.GroupManagementRequest;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.rpc.CallId;
+import org.apache.ratis.util.Preconditions;
+
+import java.io.IOException;
+import java.util.Objects;
+
+class GroupManagementImpl implements GroupManagementApi {
+  private final RaftPeerId server;
+  private final RaftClientImpl client;
+
+<span class="nc" id="L40">  GroupManagementImpl(RaftPeerId server, RaftClientImpl client) {</span>
+<span class="nc" id="L41">    this.server = Objects.requireNonNull(server, &quot;server == null&quot;);</span>
+<span class="nc" id="L42">    this.client = Objects.requireNonNull(client, &quot;client == null&quot;);</span>
+<span class="nc" id="L43">  }</span>
+
+  @Override
+  public RaftClientReply add(RaftGroup newGroup, boolean format) throws IOException {
+<span class="nc" id="L47">    Objects.requireNonNull(newGroup, &quot;newGroup == null&quot;);</span>
+
+<span class="nc" id="L49">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L50">    client.getClientRpc().addRaftPeers(newGroup.getPeers());</span>
+<span class="nc" id="L51">    return client.io().sendRequestWithRetry(</span>
+<span class="nc" id="L52">        () -&gt; GroupManagementRequest.newAdd(client.getId(), server, callId, newGroup, format));</span>
+  }
+
+  @Override
+  public RaftClientReply remove(RaftGroupId groupId, boolean deleteDirectory, boolean renameDirectory)
+      throws IOException {
+<span class="nc" id="L58">    Objects.requireNonNull(groupId, &quot;groupId == null&quot;);</span>
+
+<span class="nc" id="L60">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L61">    return client.io().sendRequestWithRetry(</span>
+<span class="nc" id="L62">        () -&gt; GroupManagementRequest.newRemove(client.getId(), server, callId, groupId,</span>
+            deleteDirectory, renameDirectory));
+  }
+
+  @Override
+  public GroupListReply list() throws IOException {
+<span class="nc" id="L68">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L69">    final RaftClientReply reply = client.io().sendRequestWithRetry(</span>
+<span class="nc" id="L70">        () -&gt; new GroupListRequest(client.getId(), server, client.getGroupId(), callId));</span>
+<span class="nc" id="L71">    Preconditions.assertTrue(reply instanceof GroupListReply, () -&gt; &quot;Unexpected reply: &quot; + reply);</span>
+<span class="nc" id="L72">    return (GroupListReply)reply;</span>
+  }
+
+  @Override
+  public GroupInfoReply info(RaftGroupId groupId) throws IOException {
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    final RaftGroupId gid = groupId != null? groupId: client.getGroupId();</span>
+<span class="nc" id="L78">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L79">    final RaftClientReply reply = client.io().sendRequestWithRetry(</span>
+<span class="nc" id="L80">        () -&gt; new GroupInfoRequest(client.getId(), server, gid, callId));</span>
+<span class="nc" id="L81">    Preconditions.assertTrue(reply instanceof GroupInfoReply, () -&gt; &quot;Unexpected reply: &quot; + reply);</span>
+<span class="nc" id="L82">    return (GroupInfoReply)reply;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

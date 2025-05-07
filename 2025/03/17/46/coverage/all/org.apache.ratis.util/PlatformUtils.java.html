@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PlatformUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">PlatformUtils.java</span></div><h1>PlatformUtils.java</h1><pre class="source lang-java linenums">/*
+ * *
+ *  * Licensed to the Apache Software Foundation (ASF) under one
+ *  * or more contributor license agreements.  See the NOTICE file
+ *  * distributed with this work for additional information
+ *  * regarding copyright ownership.  The ASF licenses this file
+ *  * to you under the Apache License, Version 2.0 (the
+ *  * &quot;License&quot;); you may not use this file except in compliance
+ *  * with the License.  You may obtain a copy of the License at
+ *  *
+ *  *     http://www.apache.org/licenses/LICENSE-2.0
+ *  *
+ *  * Unless required by applicable law or agreed to in writing, software
+ *  * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  * See the License for the specific language governing permissions and
+ *  * limitations under the License.
+ *
+ */
+
+package org.apache.ratis.util;
+
+/**
+ * Platform and architecture related utility methods.
+ */
+public final class PlatformUtils {
+
+  private PlatformUtils() {
+    // Utility class, cannot instantiate
+  }
+
+  public static final boolean PPC_64
+<span class="nc" id="L33">      = System.getProperties().getProperty(&quot;os.arch&quot;).contains(&quot;ppc64&quot;);</span>
+  /**
+   * Get the type of the operating system, as determined from parsing
+   * the &lt;code&gt;os.name&lt;/code&gt; property.
+   */
+<span class="nc" id="L38">  private static final OSType OS_TYPE = getOSType();</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">  public static final boolean OTHER   = (OS_TYPE == OSType.OS_TYPE_OTHER);</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">  public static final boolean LINUX   = (OS_TYPE == OSType.OS_TYPE_LINUX);</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">  public static final boolean FREEBSD = (OS_TYPE == OSType.OS_TYPE_FREEBSD);</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">  public static final boolean MAC     = (OS_TYPE == OSType.OS_TYPE_MAC);</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">  public static final boolean SOLARIS = (OS_TYPE == OSType.OS_TYPE_SOLARIS);</span>
+  // Helper static vars for each platform
+<span class="nc bnc" id="L45" title="All 2 branches missed.">  public static final boolean WINDOWS = (OS_TYPE == OSType.OS_TYPE_WIN);</span>
+
+  private static OSType getOSType() {
+<span class="nc" id="L48">    String osName = System.getProperty(&quot;os.name&quot;);</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">    if (osName.startsWith(&quot;Windows&quot;)) {</span>
+<span class="nc" id="L50">      return OSType.OS_TYPE_WIN;</span>
+<span class="nc bnc" id="L51" title="All 4 branches missed.">    } else if (osName.contains(&quot;SunOS&quot;) || osName.contains(&quot;Solaris&quot;)) {</span>
+<span class="nc" id="L52">      return OSType.OS_TYPE_SOLARIS;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    } else if (osName.contains(&quot;Mac&quot;)) {</span>
+<span class="nc" id="L54">      return OSType.OS_TYPE_MAC;</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    } else if (osName.contains(&quot;FreeBSD&quot;)) {</span>
+<span class="nc" id="L56">      return OSType.OS_TYPE_FREEBSD;</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    } else if (osName.startsWith(&quot;Linux&quot;)) {</span>
+<span class="nc" id="L58">      return OSType.OS_TYPE_LINUX;</span>
+    } else {
+      // Some other form of Unix
+<span class="nc" id="L61">      return OSType.OS_TYPE_OTHER;</span>
+    }
+  }
+
+  // OSType detection
+<span class="nc" id="L66">  public enum OSType {</span>
+<span class="nc" id="L67">    OS_TYPE_LINUX,</span>
+<span class="nc" id="L68">    OS_TYPE_WIN,</span>
+<span class="nc" id="L69">    OS_TYPE_SOLARIS,</span>
+<span class="nc" id="L70">    OS_TYPE_MAC,</span>
+<span class="nc" id="L71">    OS_TYPE_FREEBSD,</span>
+<span class="nc" id="L72">    OS_TYPE_OTHER</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

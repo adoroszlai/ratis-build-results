@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GroupManagementRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.protocol</a> &gt; <span class="el_source">GroupManagementRequest.java</span></div><h1>GroupManagementRequest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.protocol;
+
+import org.apache.ratis.util.JavaUtils;
+
+public final class GroupManagementRequest extends RaftClientRequest {
+<span class="nc" id="L23">  public abstract static class Op {</span>
+    public abstract RaftGroupId getGroupId();
+  }
+
+  public static class Add extends Op {
+    private final RaftGroup group;
+    private final boolean format;
+
+<span class="nc" id="L31">    public Add(RaftGroup group, boolean format) {</span>
+<span class="nc" id="L32">      this.group = group;</span>
+<span class="nc" id="L33">      this.format = format;</span>
+<span class="nc" id="L34">    }</span>
+
+    @Override
+    public RaftGroupId getGroupId() {
+<span class="nc" id="L38">      return getGroup().getGroupId();</span>
+    }
+
+    public RaftGroup getGroup() {
+<span class="nc" id="L42">      return group;</span>
+    }
+
+    public boolean isFormat() {
+<span class="nc" id="L46">      return format;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L51">      return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + getGroup();</span>
+    }
+  }
+
+  public static class Remove extends Op {
+    private final RaftGroupId groupId;
+    private final boolean deleteDirectory;
+    private final boolean renameDirectory;
+
+    public Remove(RaftGroupId groupId, boolean deleteDirectory,
+<span class="nc" id="L61">        boolean renameDirectory) {</span>
+<span class="nc" id="L62">      this.groupId = groupId;</span>
+<span class="nc" id="L63">      this.deleteDirectory = deleteDirectory;</span>
+<span class="nc" id="L64">      this.renameDirectory = renameDirectory;</span>
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    public RaftGroupId getGroupId() {
+<span class="nc" id="L69">      return groupId;</span>
+    }
+
+    public boolean isDeleteDirectory() {
+<span class="nc" id="L73">      return deleteDirectory;</span>
+    }
+
+    public boolean isRenameDirectory() {
+<span class="nc" id="L77">      return renameDirectory;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L82" title="All 4 branches missed.">      return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + getGroupId() + &quot;, &quot;</span>
+          + (deleteDirectory? &quot;delete&quot;: (renameDirectory ? &quot;rename&quot; : &quot;retain&quot;))
+          + &quot;-dir&quot;;
+    }
+  }
+
+  /** The same as newAdd(clientId, serverId, callId, group, true). */
+  public static GroupManagementRequest newAdd(ClientId clientId, RaftPeerId serverId, long callId, RaftGroup group) {
+<span class="nc" id="L90">    return newAdd(clientId, serverId, callId, group, true);</span>
+  }
+
+  public static GroupManagementRequest newAdd(ClientId clientId, RaftPeerId serverId, long callId,
+      RaftGroup group, boolean format) {
+<span class="nc" id="L95">    return new GroupManagementRequest(clientId, serverId, callId, new Add(group, format));</span>
+  }
+
+  public static GroupManagementRequest newRemove(ClientId clientId, RaftPeerId serverId, long callId,
+      RaftGroupId groupId, boolean deleteDirectory, boolean renameDirectory) {
+<span class="nc" id="L100">    return new GroupManagementRequest(clientId, serverId, callId,</span>
+        new Remove(groupId, deleteDirectory, renameDirectory));
+  }
+
+  private final Op op;
+
+  private GroupManagementRequest(ClientId clientId, RaftPeerId serverId, long callId, Op op) {
+<span class="nc" id="L107">    super(clientId, serverId, op.getGroupId(), callId, writeRequestType());</span>
+<span class="nc" id="L108">    this.op = op;</span>
+<span class="nc" id="L109">  }</span>
+
+  public Add getAdd() {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    return op instanceof Add? (Add)op: null;</span>
+  }
+
+  public Remove getRemove() {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    return op instanceof Remove? (Remove)op: null;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L121">    return super.toString() + &quot;, &quot; + op;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

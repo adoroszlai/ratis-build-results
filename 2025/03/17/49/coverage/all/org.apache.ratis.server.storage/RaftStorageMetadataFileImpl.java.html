@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftStorageMetadataFileImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">RaftStorageMetadataFileImpl.java</span></div><h1>RaftStorageMetadataFileImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.util.AtomicFileOutputStream;
+import org.apache.ratis.util.ConcurrentUtils;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.JavaUtils;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Represent a file on disk which persistently stores the metadata of a raft storage.
+ * The file is updated atomically.
+ */
+class RaftStorageMetadataFileImpl implements RaftStorageMetadataFile {
+  private static final String TERM_KEY = &quot;term&quot;;
+  private static final String VOTED_FOR_KEY = &quot;votedFor&quot;;
+
+  private final File file;
+<span class="nc" id="L47">  private final AtomicReference&lt;RaftStorageMetadata&gt; metadata = new AtomicReference&lt;&gt;();</span>
+
+<span class="nc" id="L49">  RaftStorageMetadataFileImpl(File file) {</span>
+<span class="nc" id="L50">    this.file = file;</span>
+<span class="nc" id="L51">  }</span>
+
+  @Override
+  public RaftStorageMetadata getMetadata() throws IOException {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    return ConcurrentUtils.updateAndGet(metadata, value -&gt; value != null? value: load(file));</span>
+  }
+
+  @Override
+  public void persist(RaftStorageMetadata newMetadata) throws IOException {
+<span class="nc" id="L60">    ConcurrentUtils.updateAndGet(metadata,</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">        old -&gt; Objects.equals(old, newMetadata)? old: atomicWrite(newMetadata, file));</span>
+<span class="nc" id="L62">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L66">    return JavaUtils.getClassSimpleName(RaftStorageMetadataFile.class) + &quot;:&quot; + file;</span>
+  }
+
+  /**
+   * Atomically write the given term and votedFor information to the given file,
+   * including fsyncing.
+   *
+   * @throws IOException if the file cannot be written
+   */
+  static RaftStorageMetadata atomicWrite(RaftStorageMetadata metadata, File file) throws IOException {
+<span class="nc" id="L76">    final Properties properties = new Properties();</span>
+<span class="nc" id="L77">    properties.setProperty(TERM_KEY, Long.toString(metadata.getTerm()));</span>
+<span class="nc" id="L78">    properties.setProperty(VOTED_FOR_KEY, metadata.getVotedFor().toString());</span>
+
+<span class="nc" id="L80">    try(BufferedWriter out = new BufferedWriter(</span>
+        new OutputStreamWriter(new AtomicFileOutputStream(file), StandardCharsets.UTF_8))) {
+<span class="nc" id="L82">      properties.store(out, &quot;&quot;);</span>
+    }
+<span class="nc" id="L84">    return metadata;</span>
+  }
+
+  static Object getValue(String key, Properties properties) throws IOException {
+<span class="nc" id="L88">    return Optional.ofNullable(properties.getProperty(key)).orElseThrow(</span>
+<span class="nc" id="L89">        () -&gt; new IOException(&quot;'&quot; + key + &quot;' not found in properties: &quot; + properties));</span>
+  }
+
+  static long getTerm(Properties properties) throws IOException {
+    try {
+<span class="nc" id="L94">      return Long.parseLong((String) getValue(TERM_KEY, properties));</span>
+<span class="nc" id="L95">    } catch (Exception e) {</span>
+<span class="nc" id="L96">      throw new IOException(&quot;Failed to parse '&quot; + TERM_KEY + &quot;' from properties: &quot; + properties, e);</span>
+    }
+  }
+
+  static RaftPeerId getVotedFor(Properties properties) throws IOException {
+    try {
+<span class="nc" id="L102">      return RaftPeerId.valueOf((String) getValue(VOTED_FOR_KEY, properties));</span>
+<span class="nc" id="L103">    } catch (Exception e) {</span>
+<span class="nc" id="L104">      throw new IOException(&quot;Failed to parse '&quot; + VOTED_FOR_KEY + &quot;' from properties: &quot; + properties, e);</span>
+    }
+  }
+
+  static RaftStorageMetadata load(File file) throws IOException {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    if (!file.exists()) {</span>
+<span class="nc" id="L110">      return RaftStorageMetadata.getDefault();</span>
+    }
+<span class="nc" id="L112">    try(BufferedReader br = new BufferedReader(new InputStreamReader(</span>
+<span class="nc" id="L113">        FileUtils.newInputStream(file), StandardCharsets.UTF_8))) {</span>
+<span class="nc" id="L114">      Properties properties = new Properties();</span>
+<span class="nc" id="L115">      properties.load(br);</span>
+<span class="nc" id="L116">      return RaftStorageMetadata.valueOf(getTerm(properties), getVotedFor(properties));</span>
+<span class="nc" id="L117">    } catch (IOException e) {</span>
+<span class="nc" id="L118">      throw new IOException(&quot;Failed to load &quot; + file, e);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferLeadership.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">TransferLeadership.java</span></div><h1>TransferLeadership.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.protocol.exceptions.TransferLeadershipException;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.leader.FollowerInfo;
+import org.apache.ratis.server.leader.LogAppender;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.StringUtils;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.TimeoutExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+
+public class TransferLeadership {
+<span class="nc" id="L48">  public static final Logger LOG = LoggerFactory.getLogger(TransferLeadership.class);</span>
+
+  private static class Context {
+    private final TransferLeadershipRequest request;
+    private final Supplier&lt;LogAppender&gt; transferee;
+
+<span class="nc" id="L54">    Context(TransferLeadershipRequest request, Supplier&lt;LogAppender&gt; transferee) {</span>
+<span class="nc" id="L55">      this.request = request;</span>
+<span class="nc" id="L56">      this.transferee = transferee;</span>
+<span class="nc" id="L57">    }</span>
+
+    TransferLeadershipRequest getRequest() {
+<span class="nc" id="L60">      return request;</span>
+    }
+
+    RaftPeerId getTransfereeId() {
+<span class="nc" id="L64">      return request.getNewLeader();</span>
+    }
+
+    LogAppender getTransfereeLogAppender() {
+<span class="nc" id="L68">      return transferee.get();</span>
+    }
+  }
+
+  static class Result {
+<span class="nc" id="L73">    enum Type {</span>
+<span class="nc" id="L74">      SUCCESS,</span>
+<span class="nc" id="L75">      DIFFERENT_LEADER,</span>
+<span class="nc" id="L76">      NULL_FOLLOWER,</span>
+<span class="nc" id="L77">      NULL_LOG_APPENDER,</span>
+<span class="nc" id="L78">      NOT_UP_TO_DATE,</span>
+<span class="nc" id="L79">      TIMED_OUT,</span>
+<span class="nc" id="L80">      FAILED_TO_START,</span>
+<span class="nc" id="L81">      COMPLETED_EXCEPTIONALLY,</span>
+    }
+
+<span class="nc" id="L84">    static final Result SUCCESS = new Result(Type.SUCCESS);</span>
+<span class="nc" id="L85">    static final Result DIFFERENT_LEADER = new Result(Type.DIFFERENT_LEADER);</span>
+<span class="nc" id="L86">    static final Result NULL_FOLLOWER = new Result(Type.NULL_FOLLOWER);</span>
+<span class="nc" id="L87">    static final Result NULL_LOG_APPENDER = new Result(Type.NULL_LOG_APPENDER);</span>
+
+    private final Type type;
+    private final String errorMessage;
+    private final Throwable exception;
+
+    private Result(Type type) {
+<span class="nc" id="L94">      this(type, null);</span>
+<span class="nc" id="L95">    }</span>
+
+<span class="nc" id="L97">    private Result(Type type, String errorMessage, Throwable exception) {</span>
+<span class="nc" id="L98">      this.type = type;</span>
+<span class="nc" id="L99">      this.errorMessage = errorMessage;</span>
+<span class="nc" id="L100">      this.exception = exception;</span>
+<span class="nc" id="L101">    }</span>
+
+    Result(Type type, String errorMessage) {
+<span class="nc" id="L104">      this(type, errorMessage, null);</span>
+<span class="nc" id="L105">    }</span>
+
+    Result(Throwable t) {
+<span class="nc" id="L108">      this(Type.COMPLETED_EXCEPTIONALLY, null, t);</span>
+<span class="nc" id="L109">    }</span>
+
+    Type getType() {
+<span class="nc" id="L112">      return type;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L117" title="All 2 branches missed.">      if (exception == null) {</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        return type + (errorMessage == null ? &quot;&quot; : &quot;(&quot; + errorMessage + &quot;)&quot;);</span>
+      }
+<span class="nc" id="L120">      return type + &quot;: &quot; + StringUtils.stringifyException(exception);</span>
+    }
+  }
+
+  class PendingRequest {
+    private final TransferLeadershipRequest request;
+<span class="nc" id="L126">    private final CompletableFuture&lt;RaftClientReply&gt; replyFuture = new CompletableFuture&lt;&gt;();</span>
+
+<span class="nc" id="L128">    PendingRequest(TransferLeadershipRequest request) {</span>
+<span class="nc" id="L129">      this.request = request;</span>
+<span class="nc" id="L130">    }</span>
+
+    TransferLeadershipRequest getRequest() {
+<span class="nc" id="L133">      return request;</span>
+    }
+
+    CompletableFuture&lt;RaftClientReply&gt; getReplyFuture() {
+<span class="nc" id="L137">      return replyFuture;</span>
+    }
+
+    void complete(Result result) {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">      if (replyFuture.isDone()) {</span>
+<span class="nc" id="L142">        return;</span>
+      }
+<span class="nc" id="L144">      final RaftPeerId currentLeader = server.getState().getLeaderId();</span>
+<span class="nc bnc" id="L145" title="All 4 branches missed.">      if (currentLeader != null &amp;&amp; currentLeader.equals(request.getNewLeader())) {</span>
+<span class="nc" id="L146">        replyFuture.complete(server.newSuccessReply(request));</span>
+      } else {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (result.getType() == Result.Type.SUCCESS) {</span>
+<span class="nc" id="L149">          result = Result.DIFFERENT_LEADER;</span>
+        }
+<span class="nc" id="L151">        final TransferLeadershipException tle = new TransferLeadershipException(server.getMemberId()</span>
+<span class="nc" id="L152">            + &quot;: Failed to transfer leadership to &quot; + request.getNewLeader()</span>
+            + &quot; (the current leader is &quot; + currentLeader + &quot;): &quot; + result);
+<span class="nc" id="L154">        replyFuture.complete(server.newExceptionReply(request, tle));</span>
+      }
+<span class="nc" id="L156">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L160">      return request.toString();</span>
+    }
+  }
+
+  private final RaftServerImpl server;
+  private final TimeDuration requestTimeout;
+<span class="nc" id="L166">  private final TimeoutExecutor scheduler = TimeoutExecutor.getInstance();</span>
+
+<span class="nc" id="L168">  private final AtomicReference&lt;PendingRequest&gt; pending = new AtomicReference&lt;&gt;();</span>
+
+<span class="nc" id="L170">  TransferLeadership(RaftServerImpl server, RaftProperties properties) {</span>
+<span class="nc" id="L171">    this.server = server;</span>
+<span class="nc" id="L172">    this.requestTimeout = RaftServerConfigKeys.Rpc.requestTimeout(properties);</span>
+<span class="nc" id="L173">  }</span>
+
+  private Optional&lt;RaftPeerId&gt; getTransferee() {
+<span class="nc" id="L176">    return Optional.ofNullable(pending.get())</span>
+<span class="nc" id="L177">        .map(r -&gt; r.getRequest().getNewLeader());</span>
+  }
+
+  boolean isSteppingDown() {
+<span class="nc bnc" id="L181" title="All 2 branches missed.">    return pending.get() != null;</span>
+  }
+
+  static Result isFollowerUpToDate(FollowerInfo follower, TermIndex leaderLastEntry) {
+<span class="nc bnc" id="L185" title="All 2 branches missed.">    if (follower == null) {</span>
+<span class="nc" id="L186">      return Result.NULL_FOLLOWER;</span>
+    }
+<span class="nc bnc" id="L188" title="All 2 branches missed.">    if (leaderLastEntry == null) {</span>
+      // The transferee is expecting leaderLastEntry to be non-null,
+      // return NOT_UP_TO_DATE to indicate TransferLeadership should wait.
+<span class="nc" id="L191">      return new Result(Result.Type.NOT_UP_TO_DATE, &quot;leaderLastEntry is null&quot;);</span>
+    }
+<span class="nc" id="L193">    final long followerMatchIndex = follower.getMatchIndex();</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">    if (followerMatchIndex &lt; leaderLastEntry.getIndex()) {</span>
+<span class="nc" id="L195">      return new Result(Result.Type.NOT_UP_TO_DATE, &quot;followerMatchIndex = &quot; + followerMatchIndex</span>
+<span class="nc" id="L196">          + &quot; &lt; leaderLastEntry.getIndex() = &quot; + leaderLastEntry.getIndex());</span>
+    }
+<span class="nc" id="L198">    return Result.SUCCESS;</span>
+  }
+
+  private Result sendStartLeaderElection(FollowerInfo follower) {
+<span class="nc" id="L202">    final TermIndex lastEntry = server.getState().getLastEntry();</span>
+
+<span class="nc" id="L204">    final Result result = isFollowerUpToDate(follower, lastEntry);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">    if (result != Result.SUCCESS) {</span>
+<span class="nc" id="L206">      return result;</span>
+    }
+
+<span class="nc" id="L209">    final RaftPeerId transferee = follower.getId();</span>
+<span class="nc" id="L210">    LOG.info(&quot;{}: sendStartLeaderElection to follower {}, lastEntry={}&quot;,</span>
+<span class="nc" id="L211">        server.getMemberId(), transferee, lastEntry);</span>
+
+<span class="nc" id="L213">    final RaftProtos.StartLeaderElectionRequestProto r = ServerProtoUtils.toStartLeaderElectionRequestProto(</span>
+<span class="nc" id="L214">        server.getMemberId(), transferee, lastEntry);</span>
+<span class="nc" id="L215">    final CompletableFuture&lt;RaftProtos.StartLeaderElectionReplyProto&gt; f = CompletableFuture.supplyAsync(() -&gt; {</span>
+<span class="nc" id="L216">      server.getLeaderElectionMetrics().onTransferLeadership();</span>
+      try {
+<span class="nc" id="L218">        return server.getServerRpc().startLeaderElection(r);</span>
+<span class="nc" id="L219">      } catch (IOException e) {</span>
+<span class="nc" id="L220">        throw new CompletionException(&quot;Failed to sendStartLeaderElection to follower &quot; + transferee, e);</span>
+      }
+<span class="nc" id="L222">    }, server.getServerExecutor()).whenComplete((reply, exception) -&gt; {</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">      if (reply != null) {</span>
+<span class="nc" id="L224">        LOG.info(&quot;{}: Received startLeaderElection reply from {}: success? {}&quot;,</span>
+<span class="nc" id="L225">            server.getMemberId(), transferee, reply.getServerReply().getSuccess());</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">      } else if (exception != null) {</span>
+<span class="nc" id="L227">        LOG.warn(server.getMemberId() + &quot;: Failed to startLeaderElection for &quot; + transferee, exception);</span>
+      }
+<span class="nc" id="L229">    });</span>
+
+<span class="nc bnc" id="L231" title="All 2 branches missed.">    if (f.isCompletedExceptionally()) { // already failed</span>
+      try {
+<span class="nc" id="L233">        f.join();</span>
+<span class="nc" id="L234">      } catch (Throwable t) {</span>
+<span class="nc" id="L235">        return new Result(t);</span>
+<span class="nc" id="L236">      }</span>
+    }
+<span class="nc" id="L238">    return Result.SUCCESS;</span>
+  }
+
+  /**
+   * If the transferee has just append some entries and becomes up-to-date,
+   * send StartLeaderElection to it
+   */
+  void onFollowerAppendEntriesReply(FollowerInfo follower) {
+<span class="nc bnc" id="L246" title="All 2 branches missed.">    if (!getTransferee().filter(t -&gt; t.equals(follower.getId())).isPresent()) {</span>
+<span class="nc" id="L247">      return;</span>
+    }
+<span class="nc" id="L249">    final Result result = sendStartLeaderElection(follower);</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    if (result == Result.SUCCESS) {</span>
+<span class="nc" id="L251">      LOG.info(&quot;{}: sent StartLeaderElection to transferee {} after received AppendEntriesResponse&quot;,</span>
+<span class="nc" id="L252">          server.getMemberId(), follower.getId());</span>
+    }
+<span class="nc" id="L254">  }</span>
+
+  private Result tryTransferLeadership(Context context) {
+<span class="nc" id="L257">    final RaftPeerId transferee = context.getTransfereeId();</span>
+<span class="nc" id="L258">    LOG.info(&quot;{}: start transferring leadership to {}&quot;, server.getMemberId(), transferee);</span>
+<span class="nc" id="L259">    final LogAppender appender = context.getTransfereeLogAppender();</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">    if (appender == null) {</span>
+<span class="nc" id="L261">      return Result.NULL_LOG_APPENDER;</span>
+    }
+<span class="nc" id="L263">    final FollowerInfo follower = appender.getFollower();</span>
+<span class="nc" id="L264">    final Result result = sendStartLeaderElection(follower);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">    if (result.getType() == Result.Type.SUCCESS) {</span>
+<span class="nc" id="L266">      LOG.info(&quot;{}: {} sent StartLeaderElection to transferee {} immediately as it already has up-to-date log&quot;,</span>
+<span class="nc" id="L267">          server.getMemberId(), result, transferee);</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">    } else if (result.getType() == Result.Type.NOT_UP_TO_DATE) {</span>
+<span class="nc" id="L269">      LOG.info(&quot;{}: {} notifying LogAppender to send AppendEntries to transferee {}&quot;,</span>
+<span class="nc" id="L270">          server.getMemberId(), result, transferee);</span>
+<span class="nc" id="L271">      appender.notifyLogAppender();</span>
+    }
+<span class="nc" id="L273">    return result;</span>
+  }
+
+  void start(LogAppender transferee) {
+    // TransferLeadership will block client request, so we don't want wait too long.
+    // If everything goes well, transferee should be elected within the min rpc timeout.
+<span class="nc" id="L279">    final long timeout = server.properties().minRpcTimeoutMs();</span>
+<span class="nc" id="L280">    final TransferLeadershipRequest request = new TransferLeadershipRequest(ClientId.emptyClientId(),</span>
+<span class="nc" id="L281">        server.getId(), server.getMemberId().getGroupId(), 0, transferee.getFollowerId(), timeout);</span>
+<span class="nc" id="L282">    start(new Context(request, () -&gt; transferee));</span>
+<span class="nc" id="L283">  }</span>
+
+  CompletableFuture&lt;RaftClientReply&gt; start(LeaderStateImpl leaderState, TransferLeadershipRequest request) {
+<span class="nc" id="L286">    final Context context = new Context(request,</span>
+<span class="nc" id="L287">        JavaUtils.memoize(() -&gt; leaderState.getLogAppender(request.getNewLeader()).orElse(null)));</span>
+<span class="nc" id="L288">    return start(context);</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; start(Context context) {
+<span class="nc" id="L292">    final TransferLeadershipRequest request = context.getRequest();</span>
+<span class="nc" id="L293">    final MemoizedSupplier&lt;PendingRequest&gt; supplier = JavaUtils.memoize(() -&gt; new PendingRequest(request));</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">    final PendingRequest previous = pending.getAndUpdate(f -&gt; f != null? f: supplier.get());</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">    if (previous != null) {</span>
+<span class="nc" id="L296">      return createReplyFutureFromPreviousRequest(request, previous);</span>
+    }
+    // disable the lease before transferring leader
+<span class="nc" id="L299">    final boolean previousLeaseEnabled = server.getRole().getLeaderState()</span>
+<span class="nc" id="L300">        .map(l -&gt; l.getAndSetLeaseEnabled(false)).orElse(false);</span>
+<span class="nc" id="L301">    final PendingRequest pendingRequest = supplier.get();</span>
+<span class="nc" id="L302">    final Result result = tryTransferLeadership(context);</span>
+<span class="nc" id="L303">    final Result.Type type = result.getType();</span>
+<span class="nc bnc" id="L304" title="All 4 branches missed.">    if (type != Result.Type.SUCCESS &amp;&amp; type != Result.Type.NOT_UP_TO_DATE) {</span>
+<span class="nc" id="L305">      pendingRequest.complete(result);</span>
+    } else {
+      // if timeout is not specified in request, use default request timeout
+<span class="nc bnc" id="L308" title="All 2 branches missed.">      final TimeDuration timeout = request.getTimeoutMs() == 0 ? requestTimeout</span>
+<span class="nc" id="L309">          : TimeDuration.valueOf(request.getTimeoutMs(), TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L310">      scheduler.onTimeout(timeout, () -&gt; complete(new Result(Result.Type.TIMED_OUT,</span>
+<span class="nc" id="L311">              timeout.toString(TimeUnit.SECONDS, 3))),</span>
+<span class="nc" id="L312">          LOG, () -&gt; &quot;Failed to handle timeout&quot;);</span>
+    }
+    // reset back lease if the current transfer fails
+<span class="nc" id="L315">    pendingRequest.getReplyFuture().whenCompleteAsync((reply, ex) -&gt; {</span>
+<span class="nc bnc" id="L316" title="All 4 branches missed.">      if (ex != null || !reply.isSuccess()) {</span>
+<span class="nc" id="L317">        server.getRole().getLeaderState().ifPresent(l -&gt; l.getAndSetLeaseEnabled(previousLeaseEnabled));</span>
+      }
+<span class="nc" id="L319">    });</span>
+<span class="nc" id="L320">    return pendingRequest.getReplyFuture();</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; createReplyFutureFromPreviousRequest(
+      TransferLeadershipRequest request, PendingRequest previous) {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">    if (request.getNewLeader().equals(previous.getRequest().getNewLeader())) {</span>
+<span class="nc" id="L326">      final CompletableFuture&lt;RaftClientReply&gt; replyFuture = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L327">      previous.getReplyFuture().whenComplete((r, e) -&gt; {</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        if (e != null) {</span>
+<span class="nc" id="L329">          replyFuture.completeExceptionally(e);</span>
+        } else {
+<span class="nc bnc" id="L331" title="All 2 branches missed.">          replyFuture.complete(r.isSuccess() ? server.newSuccessReply(request)</span>
+<span class="nc" id="L332">              : server.newExceptionReply(request, r.getException()));</span>
+        }
+<span class="nc" id="L334">      });</span>
+<span class="nc" id="L335">      return replyFuture;</span>
+    } else {
+<span class="nc" id="L337">      final TransferLeadershipException tle = new TransferLeadershipException(server.getMemberId() +</span>
+<span class="nc" id="L338">          &quot;Failed to transfer leadership to &quot; + request.getNewLeader() + &quot;: a previous &quot; + previous + &quot; exists&quot;);</span>
+<span class="nc" id="L339">      return CompletableFuture.completedFuture(server.newExceptionReply(request, tle));</span>
+    }
+  }
+
+  void complete(Result result) {
+<span class="nc" id="L344">    Optional.ofNullable(pending.getAndSet(null))</span>
+<span class="nc" id="L345">        .ifPresent(r -&gt; r.complete(result));</span>
+<span class="nc" id="L346">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

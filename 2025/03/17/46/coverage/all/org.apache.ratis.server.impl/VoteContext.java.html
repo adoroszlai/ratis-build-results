@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VoteContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">VoteContext.java</span></div><h1>VoteContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.DivisionInfo;
+import org.apache.ratis.server.impl.LeaderElection.Phase;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+class VoteContext {
+<span class="nc" id="L30">  static final Logger LOG = LoggerFactory.getLogger(VoteContext.class);</span>
+
+  private final RaftServerImpl impl;
+  private final RaftConfigurationImpl conf;
+  private final Phase phase;
+  private final RaftPeerId candidateId;
+
+<span class="nc" id="L37">  VoteContext(RaftServerImpl impl, Phase phase, RaftPeerId candidateId) {</span>
+<span class="nc" id="L38">    this.impl = impl;</span>
+<span class="nc" id="L39">    this.conf = impl.getRaftConf();</span>
+<span class="nc" id="L40">    this.phase = phase;</span>
+<span class="nc" id="L41">    this.candidateId = candidateId;</span>
+<span class="nc" id="L42">  }</span>
+
+  private boolean reject(String reason) {
+<span class="nc" id="L45">    return log(false, reason);</span>
+  }
+
+  private boolean log(boolean accept, String reason) {
+<span class="nc" id="L49">    LOG.info(&quot;{}-{}: {} {} from {}: {}&quot;,</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        impl.getMemberId(), impl.getInfo().getCurrentRole(), accept? &quot;accept&quot;: &quot;reject&quot;, phase, candidateId, reason);</span>
+<span class="nc" id="L51">    return accept;</span>
+  }
+
+  /** Check if the candidate is in the current conf. */
+  private RaftPeer checkConf() {
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    if (!conf.containsInConf(candidateId)) {</span>
+<span class="nc" id="L57">      reject(candidateId + &quot; is not in current conf &quot; + conf.getCurrentPeers());</span>
+<span class="nc" id="L58">      return null;</span>
+    }
+<span class="nc" id="L60">    return conf.getPeer(candidateId);</span>
+  }
+
+<span class="nc" id="L63">  enum CheckTermResult {</span>
+<span class="nc" id="L64">    FAILED, CHECK_LEADER, SKIP_CHECK_LEADER</span>
+  }
+
+  /** Check the candidate term. */
+  private CheckTermResult checkTerm(long candidateTerm) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">    if (phase == Phase.PRE_VOTE) {</span>
+<span class="nc" id="L70">      return CheckTermResult.CHECK_LEADER;</span>
+    }
+    // check term
+<span class="nc" id="L73">    final ServerState state = impl.getState();</span>
+<span class="nc" id="L74">    final long currentTerm = state.getCurrentTerm();</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">    if (currentTerm &gt; candidateTerm) {</span>
+<span class="nc" id="L76">      reject(&quot;current term &quot; + currentTerm + &quot; &gt; candidate's term &quot; + candidateTerm);</span>
+<span class="nc" id="L77">      return CheckTermResult.FAILED;</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">    } else if (currentTerm == candidateTerm) {</span>
+      // check if this server has already voted
+<span class="nc" id="L80">      final RaftPeerId votedFor = state.getVotedFor();</span>
+<span class="nc bnc" id="L81" title="All 4 branches missed.">      if (votedFor != null &amp;&amp; !votedFor.equals(candidateId)) {</span>
+<span class="nc" id="L82">        reject(&quot;already has voted for &quot; + votedFor + &quot; at current term &quot; + currentTerm);</span>
+<span class="nc" id="L83">        return CheckTermResult.FAILED;</span>
+      }
+<span class="nc" id="L85">      return CheckTermResult.CHECK_LEADER;</span>
+    } else {
+<span class="nc" id="L87">      return CheckTermResult.SKIP_CHECK_LEADER; //currentTerm &lt; candidateTerm</span>
+    }
+  }
+
+  /** Check if there is already a leader. */
+  private boolean checkLeader() {
+    // check if this server is the leader
+<span class="nc" id="L94">    final DivisionInfo info = impl.getInfo();</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">    if (info.isLeader()) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">      if (impl.getRole().getLeaderState().map(LeaderStateImpl::checkLeadership).orElse(false)) {</span>
+<span class="nc" id="L97">        return reject(&quot;this server is the leader and still has leadership&quot;);</span>
+      }
+    }
+
+    // check if this server is a follower and has a valid leader
+<span class="nc bnc" id="L102" title="All 2 branches missed.">    if (info.isFollower()) {</span>
+<span class="nc" id="L103">      final RaftPeerId leader = impl.getState().getLeaderId();</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      if (leader != null</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">          &amp;&amp; !leader.equals(candidateId)</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">          &amp;&amp; impl.getRole().getFollowerState().map(FollowerState::isCurrentLeaderValid).orElse(false)) {</span>
+<span class="nc" id="L107">        return reject(&quot;this server is a follower and still has a valid leader &quot; + leader</span>
+            + &quot; different than the candidate &quot; + candidateId);
+      }
+    }
+<span class="nc" id="L111">    return true;</span>
+  }
+
+  RaftPeer recognizeCandidate(long candidateTerm) {
+<span class="nc" id="L115">    final RaftPeer candidate = checkConf();</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    if (candidate == null) {</span>
+<span class="nc" id="L117">      return null;</span>
+    }
+<span class="nc" id="L119">    final CheckTermResult r = checkTerm(candidateTerm);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (r == CheckTermResult.FAILED) {</span>
+<span class="nc" id="L121">      return null;</span>
+    }
+<span class="nc bnc" id="L123" title="All 4 branches missed.">    if (r == CheckTermResult.CHECK_LEADER &amp;&amp; !checkLeader()) {</span>
+<span class="nc" id="L124">      return null;</span>
+    }
+<span class="nc" id="L126">    return candidate;</span>
+  }
+
+  /**
+   * A server should vote for candidate if:
+   * 1. log lags behind candidate, or
+   * 2. log equals candidate's, and priority less or equal candidate's
+   *
+   * See Section 5.4.1 Election restriction
+   */
+  boolean decideVote(RaftPeer candidate, TermIndex candidateLastEntry) {
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (impl.getRole().getCurrentRole() == RaftProtos.RaftPeerRole.LISTENER) {</span>
+<span class="nc" id="L138">      return reject(&quot;this server is a listener, who is a non-voting member&quot;);</span>
+    }
+<span class="nc bnc" id="L140" title="All 2 branches missed.">    if (candidate == null) {</span>
+<span class="nc" id="L141">      return false;</span>
+    }
+    // Check last log entry
+<span class="nc" id="L144">    final TermIndex lastEntry = impl.getState().getLastEntry();</span>
+<span class="nc" id="L145">    final int compare = ServerState.compareLog(lastEntry, candidateLastEntry);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    if (compare &lt; 0) {</span>
+<span class="nc" id="L147">      return log(true, &quot;our last entry &quot; + lastEntry + &quot; &lt; candidate's last entry &quot; + candidateLastEntry);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">    } else if (compare &gt; 0) {</span>
+<span class="nc" id="L149">      return reject(&quot;our last entry &quot; + lastEntry + &quot; &gt; candidate's last entry &quot; + candidateLastEntry);</span>
+    }
+
+    // Check priority
+<span class="nc" id="L153">    final RaftPeer peer = conf.getPeer(impl.getId());</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">    if (peer == null) {</span>
+<span class="nc" id="L155">      return reject(&quot;our server &quot; + impl.getId() + &quot; is not in the conf &quot; + conf);</span>
+    }
+<span class="nc" id="L157">    final int priority = peer.getPriority();</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    if (priority &lt;= candidate.getPriority()) {</span>
+<span class="nc" id="L159">      return log(true, &quot;our priority &quot; + priority + &quot; &lt;= candidate's priority &quot; + candidate.getPriority());</span>
+    } else {
+<span class="nc" id="L161">      return reject(&quot;our priority &quot; + priority + &quot; &gt; candidate's priority &quot; + candidate.getPriority());</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

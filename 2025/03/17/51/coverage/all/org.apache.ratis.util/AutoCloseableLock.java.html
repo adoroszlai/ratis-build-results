@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AutoCloseableLock.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">AutoCloseableLock.java</span></div><h1>AutoCloseableLock.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+
+/**
+ * Wrap a lock with the {@link AutoCloseable} interface
+ * so that the {@link #close()} method will unlock the lock.
+ */
+public final class AutoCloseableLock implements AutoCloseable {
+  /**
+   * Acquire the given lock and then wrap it with {@link AutoCloseableLock}
+   * so that the given lock can be released by calling {@link #close()},
+   * or by using a {@code try}-with-resources statement as shown below.
+   *
+   * &lt;pre&gt; {@code
+   * try(AutoCloseableLock acl = AutoCloseableLock.acquire(lock)) {
+   *   ...
+   * }}&lt;/pre&gt;
+   */
+  public static AutoCloseableLock acquire(final Lock lock) {
+<span class="nc" id="L40">    return acquire(lock, null);</span>
+  }
+
+  @SuppressWarnings(&quot;java:S2222&quot;) // Locks should be release by calling {@link #close()}
+  public static AutoCloseableLock acquire(final Lock lock, Runnable preUnlock) {
+<span class="nc" id="L45">    lock.lock();</span>
+<span class="nc" id="L46">    return new AutoCloseableLock(lock, preUnlock);</span>
+  }
+
+  public static AutoCloseableLock tryAcquire(final Lock lock, Runnable preUnlock, TimeDuration timeout)
+      throws InterruptedException {
+<span class="nc" id="L51">    Objects.requireNonNull(timeout, &quot;timeout == null&quot;);</span>
+<span class="nc" id="L52">    final boolean locked = lock.tryLock(timeout.getDuration(), timeout.getUnit());</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    return locked? new AutoCloseableLock(lock, preUnlock): null;</span>
+  }
+
+  private final Lock underlying;
+<span class="nc" id="L57">  private final AtomicBoolean closed = new AtomicBoolean(false);</span>
+  private final Runnable preUnlock;
+
+<span class="nc" id="L60">  private AutoCloseableLock(Lock underlying, Runnable preUnlock) {</span>
+<span class="nc" id="L61">    this.underlying = underlying;</span>
+<span class="nc" id="L62">    this.preUnlock = preUnlock;</span>
+<span class="nc" id="L63">  }</span>
+
+  /** Unlock the underlying lock.  This method is idempotent. */
+  @Override
+  public void close() {
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (closed.compareAndSet(false, true)) {</span>
+      try {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (preUnlock != null) {</span>
+<span class="nc" id="L71">          preUnlock.run();</span>
+        }
+      } finally {
+<span class="nc" id="L74">        underlying.unlock();</span>
+      }
+    }
+<span class="nc" id="L77">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

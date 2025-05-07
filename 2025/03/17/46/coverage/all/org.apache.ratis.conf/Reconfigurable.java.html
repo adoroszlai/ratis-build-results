@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Reconfigurable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.conf</a> &gt; <span class="el_source">Reconfigurable.java</span></div><h1>Reconfigurable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.conf;
+
+import java.util.Collection;
+
+/**
+ * To reconfigure {@link RaftProperties} in runtime.
+ */
+public interface Reconfigurable {
+  /** @return the {@link RaftProperties} to be reconfigured. */
+  RaftProperties getProperties();
+
+  /**
+   * Change a property on this object to the new value specified.
+   * If the new value specified is null, reset the property to its default value.
+   * &lt;p&gt;
+   * This method must apply the change to all internal data structures derived
+   * from the configuration property that is being changed.
+   * If this object owns other {@link Reconfigurable} objects,
+   * it must call this method recursively in order to update all these objects.
+   *
+   * @param property the name of the given property.
+   * @param newValue the new value.
+   * @return the effective value, which could possibly be different from specified new value,
+   *         of the property after reconfiguration.
+   * @throws ReconfigurationException if the property is not reconfigurable or there is an error applying the new value.
+   */
+  String reconfigureProperty(String property, String newValue) throws ReconfigurationException;
+
+  /**
+   * Is the given property reconfigurable at runtime?
+   *
+   * @param property the name of the given property.
+   * @return true iff the given property is reconfigurable.
+   */
+  default boolean isPropertyReconfigurable(String property) {
+<span class="nc" id="L54">    return getReconfigurableProperties().contains(property);</span>
+  }
+
+  /** @return all the properties that are reconfigurable at runtime. */
+  Collection&lt;String&gt; getReconfigurableProperties();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TlsConf.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.security</a> &gt; <span class="el_source">TlsConf.java</span></div><h1>TlsConf.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.security;
+
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.TrustManager;
+import java.io.File;
+import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * TLS configurations.
+ */
+public class TlsConf {
+  /**
+   * The value is either an actual object or a file containing the object.
+   * @param &lt;V&gt; The value type.
+   */
+  private static class FileBasedValue&lt;V&gt; {
+    private final V value;
+    private final File file;
+
+<span class="nc" id="L46">    FileBasedValue(V value) {</span>
+<span class="nc" id="L47">      this.value = Objects.requireNonNull(value, () -&gt; &quot;value == null in &quot; + getClass());</span>
+<span class="nc" id="L48">      this.file = null;</span>
+
+<span class="nc bnc" id="L50" title="All 2 branches missed.">      if (value instanceof Iterable) {</span>
+<span class="nc" id="L51">        final Iterator&lt;?&gt; i = ((Iterable&lt;?&gt;) value).iterator();</span>
+<span class="nc" id="L52">        Preconditions.assertTrue(i.hasNext(), &quot;value is an empty Iterable in &quot; + getClass());</span>
+<span class="nc" id="L53">        Objects.requireNonNull(i.next(), () -&gt; &quot;The first item in value is null in &quot; + getClass());</span>
+      }
+<span class="nc" id="L55">    }</span>
+
+<span class="nc" id="L57">    FileBasedValue(File file) {</span>
+<span class="nc" id="L58">      this.value = null;</span>
+<span class="nc" id="L59">      this.file = Objects.requireNonNull(file, () -&gt; &quot;file == null in &quot; + getClass());</span>
+<span class="nc" id="L60">    }</span>
+
+    public V get() {
+<span class="nc" id="L63">      return value;</span>
+    }
+
+    public File getFile() {
+<span class="nc" id="L67">      return file;</span>
+    }
+
+    public final boolean isFileBased() {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">      return getFile() != null;</span>
+    }
+  }
+
+  /** Configuration for {@link X509Certificate}s. */
+  public static class CertificatesConf extends FileBasedValue&lt;Iterable&lt;X509Certificate&gt;&gt; {
+    public CertificatesConf(Iterable&lt;X509Certificate&gt; certificates) {
+<span class="nc" id="L78">      super(certificates);</span>
+<span class="nc" id="L79">    }</span>
+    public CertificatesConf(X509Certificate... certificates) {
+<span class="nc" id="L81">      this(Arrays.asList(certificates));</span>
+<span class="nc" id="L82">    }</span>
+    public CertificatesConf(File certificates) {
+<span class="nc" id="L84">      super(certificates);</span>
+<span class="nc" id="L85">    }</span>
+  }
+
+  /** Configuration for a {@link PrivateKey}. */
+  public static class PrivateKeyConf extends FileBasedValue&lt;PrivateKey&gt; {
+    public PrivateKeyConf(PrivateKey privateKey) {
+<span class="nc" id="L91">      super(privateKey);</span>
+<span class="nc" id="L92">    }</span>
+    public PrivateKeyConf(File privateKeyFile) {
+<span class="nc" id="L94">      super(privateKeyFile);</span>
+<span class="nc" id="L95">    }</span>
+  }
+
+  /** Configurations for a trust manager. */
+  public static final class TrustManagerConf {
+    /** Trust certificates. */
+    private final CertificatesConf trustCertificates;
+    private final TrustManager trustManager;
+
+<span class="nc" id="L104">    private TrustManagerConf(CertificatesConf trustCertificates) {</span>
+<span class="nc" id="L105">      this.trustCertificates = trustCertificates;</span>
+<span class="nc" id="L106">      this.trustManager = null;</span>
+<span class="nc" id="L107">    }</span>
+
+<span class="nc" id="L109">    private TrustManagerConf(TrustManager trustManager) {</span>
+<span class="nc" id="L110">      this.trustManager = trustManager;</span>
+<span class="nc" id="L111">      this.trustCertificates = null;</span>
+<span class="nc" id="L112">    }</span>
+
+    /** @return the trust certificates. */
+    public CertificatesConf getTrustCertificates() {
+<span class="nc" id="L116">      return trustCertificates;</span>
+    }
+
+    public TrustManager getTrustManager() {
+<span class="nc" id="L120">      return trustManager;</span>
+    }
+  }
+
+  /** Configurations for a key manager. */
+  public static final class KeyManagerConf {
+    /** A {@link PrivateKey}. */
+    private final PrivateKeyConf privateKey;
+    /** Certificates for the private key. */
+    private final CertificatesConf keyCertificates;
+    private final KeyManager keyManager;
+
+<span class="nc" id="L132">    private KeyManagerConf(PrivateKeyConf privateKey, CertificatesConf keyCertificates) {</span>
+<span class="nc" id="L133">      this.privateKey = Objects.requireNonNull(privateKey, &quot;privateKey == null&quot;);</span>
+<span class="nc" id="L134">      this.keyCertificates = Objects.requireNonNull(keyCertificates, &quot;keyCertificates == null&quot;);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">      Preconditions.assertTrue(privateKey.isFileBased() == keyCertificates.isFileBased(),</span>
+<span class="nc" id="L136">          () -&gt; &quot;The privateKey (isFileBased? &quot; + privateKey.isFileBased()</span>
+<span class="nc" id="L137">              + &quot;) and the keyCertificates (isFileBased? &quot; + keyCertificates.isFileBased()</span>
+              + &quot;) must be either both file based or both not.&quot;);
+<span class="nc" id="L139">      keyManager = null;</span>
+<span class="nc" id="L140">    }</span>
+
+<span class="nc" id="L142">    private KeyManagerConf(KeyManager keyManager) {</span>
+<span class="nc" id="L143">      this.keyManager = keyManager;</span>
+<span class="nc" id="L144">      this.privateKey = null;</span>
+<span class="nc" id="L145">      this.keyCertificates = null;</span>
+<span class="nc" id="L146">    }</span>
+
+    /** @return the private key. */
+    public PrivateKeyConf getPrivateKey() {
+<span class="nc" id="L150">      return privateKey;</span>
+    }
+
+    /** @return the certificates for the private key. */
+    public CertificatesConf getKeyCertificates() {
+<span class="nc" id="L155">      return keyCertificates;</span>
+    }
+
+    public boolean isFileBased() {
+<span class="nc" id="L159">      return privateKey.isFileBased();</span>
+    }
+
+    public KeyManager getKeyManager() {
+<span class="nc" id="L163">      return keyManager;</span>
+    }
+  }
+
+<span class="nc" id="L167">  private static final AtomicInteger COUNT = new AtomicInteger();</span>
+
+  private final String name;
+  private final KeyManagerConf keyManager;
+  private final TrustManagerConf trustManager;
+  private final boolean mutualTls;
+
+<span class="nc" id="L174">  private TlsConf(String name, KeyManagerConf keyManager, TrustManagerConf trustManager, boolean mutualTls) {</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    this.name = JavaUtils.getClassSimpleName(getClass()) + COUNT.getAndIncrement() + (name == null? &quot;&quot;: &quot;-&quot; + name);</span>
+<span class="nc" id="L176">    this.keyManager = keyManager;</span>
+<span class="nc" id="L177">    this.trustManager = trustManager;</span>
+<span class="nc" id="L178">    this.mutualTls = mutualTls;</span>
+<span class="nc" id="L179">  }</span>
+
+  protected TlsConf(Builder b) {
+<span class="nc" id="L182">    this(b.buildName(), b.buildKeyManagerConf(), b.buildTrustManagerConf(), b.isMutualTls());</span>
+<span class="nc" id="L183">  }</span>
+
+  /** @return the key manager configuration. */
+  public KeyManagerConf getKeyManager() {
+<span class="nc" id="L187">    return keyManager;</span>
+  }
+
+  /** @return the trust manager configuration. */
+  public TrustManagerConf getTrustManager() {
+<span class="nc" id="L192">    return trustManager;</span>
+  }
+
+  /** Is mutual TLS enabled? */
+  public boolean isMutualTls() {
+<span class="nc" id="L197">    return mutualTls;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L202">    return name;</span>
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L206">    return new Builder();</span>
+  }
+
+  /** For building {@link TlsConf}. */
+<span class="nc" id="L210">  public static class Builder {</span>
+    private String name;
+    private CertificatesConf trustCertificates;
+    private PrivateKeyConf privateKey;
+    private CertificatesConf keyCertificates;
+    private boolean mutualTls;
+    private KeyManager keyManager;
+    private TrustManager trustManager;
+
+    public Builder setName(String name) {
+<span class="nc" id="L220">      this.name = name;</span>
+<span class="nc" id="L221">      return this;</span>
+    }
+
+    public Builder setTrustCertificates(CertificatesConf trustCertificates) {
+<span class="nc" id="L225">      this.trustCertificates = trustCertificates;</span>
+<span class="nc" id="L226">      return this;</span>
+    }
+
+    public Builder setPrivateKey(PrivateKeyConf privateKey) {
+<span class="nc" id="L230">      this.privateKey = privateKey;</span>
+<span class="nc" id="L231">      return this;</span>
+    }
+
+    public Builder setKeyCertificates(CertificatesConf keyCertificates) {
+<span class="nc" id="L235">      this.keyCertificates = keyCertificates;</span>
+<span class="nc" id="L236">      return this;</span>
+    }
+
+    public Builder setKeyManager(KeyManager keyManager) {
+<span class="nc" id="L240">      this.keyManager = keyManager;</span>
+<span class="nc" id="L241">      return this;</span>
+    }
+
+    public Builder setTrustManager(TrustManager trustManager) {
+<span class="nc" id="L245">      this.trustManager = trustManager;</span>
+<span class="nc" id="L246">      return this;</span>
+    }
+
+    public Builder setMutualTls(boolean mutualTls) {
+<span class="nc" id="L250">      this.mutualTls = mutualTls;</span>
+<span class="nc" id="L251">      return this;</span>
+    }
+
+    private boolean isMutualTls() {
+<span class="nc" id="L255">      return mutualTls;</span>
+    }
+
+    private String buildName() {
+<span class="nc" id="L259">      return Optional.ofNullable(name).orElse(&quot;&quot;);</span>
+    }
+
+    private TrustManagerConf buildTrustManagerConf() {
+<span class="nc bnc" id="L263" title="All 2 branches missed.">      if (trustManager != null) {</span>
+<span class="nc" id="L264">        return new TrustManagerConf(trustManager);</span>
+      } else {
+<span class="nc" id="L266">        return new TrustManagerConf(trustCertificates);</span>
+      }
+    }
+
+    private KeyManagerConf buildKeyManagerConf() {
+<span class="nc bnc" id="L271" title="All 2 branches missed.">      if (keyManager != null) {</span>
+<span class="nc" id="L272">        return new KeyManagerConf(keyManager);</span>
+<span class="nc bnc" id="L273" title="All 4 branches missed.">      } else if (privateKey == null &amp;&amp; keyCertificates == null) {</span>
+<span class="nc" id="L274">        return null;</span>
+<span class="nc bnc" id="L275" title="All 4 branches missed.">      } else if (privateKey != null &amp;&amp; keyCertificates != null) {</span>
+<span class="nc" id="L276">        return new KeyManagerConf(privateKey, keyCertificates);</span>
+      }
+<span class="nc bnc" id="L278" title="All 4 branches missed.">      throw new IllegalStateException(&quot;The privateKey (null? &quot; + (privateKey == null)</span>
+          + &quot;) and the keyCertificates (null? &quot; + (keyCertificates == null)
+          + &quot;) must be either both null or both not.&quot;);
+
+    }
+
+    public TlsConf build() {
+<span class="nc" id="L285">      return new TlsConf(this);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

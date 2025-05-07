@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SetConfigurationRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.protocol</a> &gt; <span class="el_source">SetConfigurationRequest.java</span></div><h1>SetConfigurationRequest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.protocol;
+
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.util.Preconditions;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+public class SetConfigurationRequest extends RaftClientRequest {
+
+<span class="nc" id="L30">  public enum Mode {</span>
+<span class="nc" id="L31">    SET_UNCONDITIONALLY,</span>
+<span class="nc" id="L32">    ADD,</span>
+<span class="nc" id="L33">    COMPARE_AND_SET</span>
+  }
+
+  public static final class Arguments {
+    private final List&lt;RaftPeer&gt; serversInNewConf;
+    private final List&lt;RaftPeer&gt; listenersInNewConf;
+    private final List&lt;RaftPeer&gt; serversInCurrentConf;
+    private final List&lt;RaftPeer&gt; listenersInCurrentConf;
+    private final Mode mode;
+
+    private Arguments(List&lt;RaftPeer&gt; serversInNewConf, List&lt;RaftPeer&gt; listenersInNewConf, Mode mode,
+<span class="nc" id="L44">        List&lt;RaftPeer&gt; serversInCurrentConf, List&lt;RaftPeer&gt; listenersInCurrentConf) {</span>
+<span class="nc" id="L45">      this.serversInNewConf = Optional.ofNullable(serversInNewConf)</span>
+<span class="nc" id="L46">          .map(Collections::unmodifiableList)</span>
+<span class="nc" id="L47">          .orElseGet(Collections::emptyList);</span>
+<span class="nc" id="L48">      this.listenersInNewConf = Optional.ofNullable(listenersInNewConf)</span>
+<span class="nc" id="L49">          .map(Collections::unmodifiableList)</span>
+<span class="nc" id="L50">          .orElseGet(Collections::emptyList);</span>
+<span class="nc" id="L51">      this.serversInCurrentConf = Optional.ofNullable(serversInCurrentConf)</span>
+<span class="nc" id="L52">          .map(Collections::unmodifiableList)</span>
+<span class="nc" id="L53">          .orElseGet(Collections::emptyList);</span>
+<span class="nc" id="L54">      this.listenersInCurrentConf = Optional.ofNullable(listenersInCurrentConf)</span>
+<span class="nc" id="L55">          .map(Collections::unmodifiableList)</span>
+<span class="nc" id="L56">          .orElseGet(Collections::emptyList);</span>
+<span class="nc" id="L57">      this.mode = mode;</span>
+
+<span class="nc" id="L59">      Preconditions.assertUnique(serversInNewConf);</span>
+<span class="nc" id="L60">      Preconditions.assertUnique(listenersInNewConf);</span>
+<span class="nc" id="L61">      Preconditions.assertUnique(serversInCurrentConf);</span>
+<span class="nc" id="L62">      Preconditions.assertUnique(listenersInCurrentConf);</span>
+<span class="nc" id="L63">    }</span>
+
+    public List&lt;RaftPeer&gt; getPeersInNewConf(RaftProtos.RaftPeerRole role) {
+<span class="nc bnc" id="L66" title="All 3 branches missed.">      switch (role) {</span>
+<span class="nc" id="L67">        case FOLLOWER: return serversInNewConf;</span>
+<span class="nc" id="L68">        case LISTENER: return listenersInNewConf;</span>
+        default:
+<span class="nc" id="L70">          throw new IllegalArgumentException(&quot;Unexpected role &quot; + role);</span>
+      }
+    }
+
+    public List&lt;RaftPeer&gt; getListenersInCurrentConf() {
+<span class="nc" id="L75">      return listenersInCurrentConf;</span>
+    }
+
+    public List&lt;RaftPeer&gt; getServersInCurrentConf() {
+<span class="nc" id="L79">      return serversInCurrentConf;</span>
+    }
+
+    public List&lt;RaftPeer&gt; getServersInNewConf() {
+<span class="nc" id="L83">      return serversInNewConf;</span>
+    }
+
+    public Mode getMode() {
+<span class="nc" id="L87">      return mode;</span>
+    }
+    @Override
+    public String toString() {
+<span class="nc" id="L91">      return getMode()</span>
+<span class="nc" id="L92">          + &quot;, servers:&quot; + getPeersInNewConf(RaftProtos.RaftPeerRole.FOLLOWER)</span>
+<span class="nc" id="L93">          + &quot;, listeners:&quot; + getPeersInNewConf(RaftProtos.RaftPeerRole.LISTENER);</span>
+
+    }
+
+    public static Builder newBuilder() {
+<span class="nc" id="L98">      return new Builder();</span>
+    }
+
+<span class="nc" id="L101">    public static class Builder {</span>
+      private List&lt;RaftPeer&gt; serversInNewConf;
+<span class="nc" id="L103">      private List&lt;RaftPeer&gt; listenersInNewConf = Collections.emptyList();</span>
+<span class="nc" id="L104">      private List&lt;RaftPeer&gt; serversInCurrentConf = Collections.emptyList();</span>
+<span class="nc" id="L105">      private List&lt;RaftPeer&gt; listenersInCurrentConf = Collections.emptyList();</span>
+<span class="nc" id="L106">      private Mode mode = Mode.SET_UNCONDITIONALLY;</span>
+
+      public Builder setServersInNewConf(List&lt;RaftPeer&gt; serversInNewConf) {
+<span class="nc" id="L109">        this.serversInNewConf = serversInNewConf;</span>
+<span class="nc" id="L110">        return this;</span>
+      }
+
+      public Builder setListenersInNewConf(List&lt;RaftPeer&gt; listenersInNewConf) {
+<span class="nc" id="L114">        this.listenersInNewConf = listenersInNewConf;</span>
+<span class="nc" id="L115">        return this;</span>
+      }
+
+      public Builder setServersInNewConf(RaftPeer[] serversInNewConfArray) {
+<span class="nc" id="L119">        this.serversInNewConf = Arrays.asList(serversInNewConfArray);</span>
+<span class="nc" id="L120">        return this;</span>
+      }
+
+      public Builder setListenersInNewConf(RaftPeer[] listenersInNewConfArray) {
+<span class="nc" id="L124">        this.listenersInNewConf = Arrays.asList(listenersInNewConfArray);</span>
+<span class="nc" id="L125">        return this;</span>
+      }
+
+      public Builder setServersInCurrentConf(List&lt;RaftPeer&gt; serversInCurrentConf) {
+<span class="nc" id="L129">        this.serversInCurrentConf = serversInCurrentConf;</span>
+<span class="nc" id="L130">        return this;</span>
+      }
+
+      public Builder setListenersInCurrentConf(List&lt;RaftPeer&gt; listenersInCurrentConf) {
+<span class="nc" id="L134">        this.listenersInCurrentConf = listenersInCurrentConf;</span>
+<span class="nc" id="L135">        return this;</span>
+      }
+
+      public Builder setMode(Mode mode) {
+<span class="nc" id="L139">        this.mode = mode;</span>
+<span class="nc" id="L140">        return this;</span>
+      }
+
+      public Arguments build() {
+<span class="nc" id="L144">        return new Arguments(serversInNewConf, listenersInNewConf, mode, serversInCurrentConf,</span>
+            listenersInCurrentConf);
+      }
+    }
+  }
+  private final Arguments arguments;
+
+  public SetConfigurationRequest(ClientId clientId, RaftPeerId serverId,
+      RaftGroupId groupId, long callId, List&lt;RaftPeer&gt; peers) {
+<span class="nc" id="L153">    this(clientId, serverId, groupId, callId,</span>
+<span class="nc" id="L154">        Arguments.newBuilder()</span>
+<span class="nc" id="L155">            .setServersInNewConf(peers)</span>
+<span class="nc" id="L156">            .build());</span>
+<span class="nc" id="L157">  }</span>
+
+  public SetConfigurationRequest(ClientId clientId, RaftPeerId serverId,
+      RaftGroupId groupId, long callId, List&lt;RaftPeer&gt; peers, List&lt;RaftPeer&gt; listeners) {
+<span class="nc" id="L161">    this(clientId, serverId, groupId, callId,</span>
+<span class="nc" id="L162">        Arguments.newBuilder()</span>
+<span class="nc" id="L163">            .setServersInNewConf(peers)</span>
+<span class="nc" id="L164">            .setListenersInNewConf(listeners)</span>
+<span class="nc" id="L165">            .build());</span>
+<span class="nc" id="L166">  }</span>
+
+  public SetConfigurationRequest(ClientId clientId, RaftPeerId serverId,
+      RaftGroupId groupId, long callId, Arguments arguments) {
+<span class="nc" id="L170">    super(clientId, serverId, groupId, callId, writeRequestType(), 0);</span>
+<span class="nc" id="L171">    this.arguments = arguments;</span>
+<span class="nc" id="L172">  }</span>
+
+  public List&lt;RaftPeer&gt; getPeersInNewConf() {
+<span class="nc" id="L175">    return arguments.serversInNewConf;</span>
+  }
+
+  public List&lt;RaftPeer&gt; getListenersInNewConf() {
+<span class="nc" id="L179">    return arguments.listenersInNewConf;</span>
+  }
+
+  public Arguments getArguments() {
+<span class="nc" id="L183">    return arguments;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L188">    return super.toString() + &quot;, &quot; + getArguments();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

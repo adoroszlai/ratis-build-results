@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaderProtoUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">LeaderProtoUtils.java</span></div><h1>LeaderProtoUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.proto.RaftProtos.FileChunkProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto.NotificationProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto.SnapshotChunkProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+
+import java.util.Collections;
+
+/** Leader only proto utilities. */
+final class LeaderProtoUtils {
+  private LeaderProtoUtils() {}
+
+  static SnapshotChunkProto.Builder toSnapshotChunkProtoBuilder(String requestId, int requestIndex,
+      TermIndex lastTermIndex, FileChunkProto chunk, long totalSize, boolean done) {
+<span class="nc" id="L40">    return SnapshotChunkProto.newBuilder()</span>
+<span class="nc" id="L41">        .setRequestId(requestId)</span>
+<span class="nc" id="L42">        .setRequestIndex(requestIndex)</span>
+<span class="nc" id="L43">        .setTermIndex(lastTermIndex.toProto())</span>
+<span class="nc" id="L44">        .addAllFileChunks(Collections.singleton(chunk))</span>
+<span class="nc" id="L45">        .setTotalSize(totalSize)</span>
+<span class="nc" id="L46">        .setDone(done);</span>
+  }
+
+  static InstallSnapshotRequestProto toInstallSnapshotRequestProto(
+      RaftServer.Division server, RaftPeerId replyId, SnapshotChunkProto.Builder chunk) {
+<span class="nc" id="L51">    return toInstallSnapshotRequestProtoBuilder(server, replyId)</span>
+<span class="nc" id="L52">        .setSnapshotChunk(chunk)</span>
+<span class="nc" id="L53">        .build();</span>
+  }
+
+  static InstallSnapshotRequestProto toInstallSnapshotRequestProto(
+      RaftServer.Division server, RaftPeerId replyId, TermIndex firstAvailable) {
+<span class="nc" id="L58">    return toInstallSnapshotRequestProtoBuilder(server, replyId)</span>
+<span class="nc" id="L59">        .setNotification(NotificationProto.newBuilder().setFirstAvailableTermIndex(firstAvailable.toProto()))</span>
+<span class="nc" id="L60">        .build();</span>
+  }
+
+  private static InstallSnapshotRequestProto.Builder toInstallSnapshotRequestProtoBuilder(
+      RaftServer.Division server, RaftPeerId replyId) {
+    // term is not going to used by installSnapshot to update the RaftConfiguration
+<span class="nc" id="L66">    final RaftConfiguration conf = server.getRaftConf();</span>
+<span class="nc" id="L67">    final LogEntryProto confLogEntryProto = LogProtoUtils.toLogEntryProto(conf, null, conf.getLogEntryIndex());</span>
+<span class="nc" id="L68">    return InstallSnapshotRequestProto.newBuilder()</span>
+<span class="nc" id="L69">        .setServerRequest(ClientProtoUtils.toRaftRpcRequestProtoBuilder(server.getMemberId(), replyId))</span>
+<span class="nc" id="L70">        .setLeaderTerm(server.getInfo().getCurrentTerm())</span>
+<span class="nc" id="L71">        .setLastRaftConfigurationLogEntryProto(confLogEntryProto);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

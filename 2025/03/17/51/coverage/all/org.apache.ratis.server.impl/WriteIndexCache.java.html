@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WriteIndexCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">WriteIndexCache.java</span></div><h1>WriteIndexCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.thirdparty.com.google.common.cache.Cache;
+import org.apache.ratis.thirdparty.com.google.common.cache.CacheBuilder;
+import org.apache.ratis.util.TimeDuration;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicReference;
+
+/** Caching the per client write index in order to support read-after-write consistency. */
+class WriteIndexCache {
+  private final Cache&lt;ClientId, AtomicReference&lt;CompletableFuture&lt;Long&gt;&gt;&gt; cache;
+
+  WriteIndexCache(RaftProperties properties) {
+<span class="nc" id="L37">    this(RaftServerConfigKeys.Read.ReadAfterWriteConsistent.writeIndexCacheExpiryTime(properties));</span>
+<span class="nc" id="L38">  }</span>
+
+  /**
+   * @param cacheExpiryTime time for a cache entry to expire.
+   */
+<span class="nc" id="L43">  WriteIndexCache(TimeDuration cacheExpiryTime) {</span>
+<span class="nc" id="L44">    this.cache = CacheBuilder.newBuilder()</span>
+<span class="nc" id="L45">        .expireAfterAccess(cacheExpiryTime.getDuration(), cacheExpiryTime.getUnit())</span>
+<span class="nc" id="L46">        .build();</span>
+<span class="nc" id="L47">  }</span>
+
+  void add(ClientId key, CompletableFuture&lt;Long&gt; future) {
+    final AtomicReference&lt;CompletableFuture&lt;Long&gt;&gt; ref;
+    try {
+<span class="nc" id="L52">      ref = cache.get(key, AtomicReference::new);</span>
+<span class="nc" id="L53">    } catch (ExecutionException e) {</span>
+<span class="nc" id="L54">      throw new IllegalStateException(e);</span>
+<span class="nc" id="L55">    }</span>
+<span class="nc" id="L56">    ref.set(future);</span>
+<span class="nc" id="L57">  }</span>
+
+  CompletableFuture&lt;Long&gt; getWriteIndexFuture(RaftClientRequest request) {
+<span class="nc bnc" id="L60" title="All 4 branches missed.">    if (request != null &amp;&amp; request.getType().getRead().getReadAfterWriteConsistent()) {</span>
+<span class="nc" id="L61">      final AtomicReference&lt;CompletableFuture&lt;Long&gt;&gt; ref = cache.getIfPresent(request.getClientId());</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      if (ref != null) {</span>
+<span class="nc" id="L63">        return ref.get();</span>
+      }
+    }
+<span class="nc" id="L66">    return CompletableFuture.completedFuture(null);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

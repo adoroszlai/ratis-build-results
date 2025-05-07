@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractShell.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli</a> &gt; <span class="el_source">AbstractShell.java</span></div><h1>AbstractShell.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.ratis.shell.cli.sh.command.Context;
+import org.apache.ratis.thirdparty.com.google.common.io.Closer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
+
+/**
+ * Abstract class for handling command line inputs.
+ */
+public abstract class AbstractShell implements Closeable {
+<span class="nc" id="L38">  private static final Logger LOG = LoggerFactory.getLogger(AbstractShell.class);</span>
+
+  private final Map&lt;String, Command&gt; mCommands;
+  private final Closer closer;
+
+  /**
+   * Creates a new instance of {@link AbstractShell}.
+   */
+<span class="nc" id="L46">  protected AbstractShell(Context context) {</span>
+<span class="nc" id="L47">    closer = Closer.create();</span>
+<span class="nc" id="L48">    mCommands = loadCommands(context);</span>
+    // Register all loaded commands under closer.
+<span class="nc" id="L50">    mCommands.values().forEach(closer::register);</span>
+<span class="nc" id="L51">  }</span>
+
+  /**
+   * Handles the specified shell command request, displaying usage if the command format is invalid.
+   *
+   * @param argv [] Array of arguments given by the user's input from the terminal
+   * @return 0 if command is successful, -1 if an error occurred
+   */
+  public int run(String... argv) {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">    if (argv.length == 0) {</span>
+<span class="nc" id="L61">      printUsage();</span>
+<span class="nc" id="L62">      return -1;</span>
+    }
+
+    // Sanity check on the number of arguments
+<span class="nc" id="L66">    String cmd = argv[0];</span>
+<span class="nc" id="L67">    Command command = mCommands.get(cmd);</span>
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">    if (command == null) {</span>
+      // Unknown command (we didn't find the cmd in our dict)
+<span class="nc" id="L71">      System.err.printf(&quot;%s is an unknown command.%n&quot;, cmd);</span>
+<span class="nc" id="L72">      printUsage();</span>
+<span class="nc" id="L73">      return -1;</span>
+    }
+
+    // Find the inner-most command and its argument line.
+    CommandLine cmdline;
+    try {
+<span class="nc" id="L79">      String[] currArgs = Arrays.copyOf(argv, argv.length);</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">      while (command.hasSubCommand()) {</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        if (currArgs.length &lt; 2) {</span>
+<span class="nc" id="L82">          throw new IllegalArgumentException(&quot;No sub-command is specified&quot;);</span>
+        }
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if (!command.getSubCommands().containsKey(currArgs[1])) {</span>
+<span class="nc" id="L85">          throw new IllegalArgumentException(&quot;Unknown sub-command: &quot; + currArgs[1]);</span>
+        }
+<span class="nc" id="L87">        command = command.getSubCommands().get(currArgs[1]);</span>
+<span class="nc" id="L88">        currArgs = Arrays.copyOfRange(currArgs, 1, currArgs.length);</span>
+      }
+<span class="nc" id="L90">      currArgs = Arrays.copyOfRange(currArgs, 1, currArgs.length);</span>
+
+<span class="nc" id="L92">      cmdline = command.parseAndValidateArgs(currArgs);</span>
+<span class="nc" id="L93">    } catch (IllegalArgumentException e) {</span>
+      // It outputs a prompt message when passing wrong args to CLI
+<span class="nc" id="L95">      System.out.println(e.getMessage());</span>
+<span class="nc" id="L96">      System.out.println(&quot;Usage: &quot; + command.getUsage());</span>
+<span class="nc" id="L97">      System.out.println(command.getDescription());</span>
+<span class="nc" id="L98">      LOG.error(&quot;Invalid arguments for command {}:&quot;, command.getCommandName(), e);</span>
+<span class="nc" id="L99">      return -1;</span>
+<span class="nc" id="L100">    }</span>
+
+    // Handle the command
+    try {
+<span class="nc" id="L104">      return command.run(cmdline);</span>
+<span class="nc" id="L105">    } catch (Exception e) {</span>
+<span class="nc" id="L106">      System.out.println(e.getMessage());</span>
+<span class="nc" id="L107">      LOG.error(&quot;Error running&quot; + Arrays.stream(argv).reduce(&quot;&quot;, (a, b) -&gt; a + &quot; &quot; + b), e);</span>
+<span class="nc" id="L108">      return -1;</span>
+    }
+  }
+
+  /**
+   * @return all commands provided by this shell
+   */
+  public Collection&lt;Command&gt; getCommands() {
+<span class="nc" id="L116">    return mCommands.values();</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc" id="L121">    closer.close();</span>
+<span class="nc" id="L122">  }</span>
+
+  /**
+   * @return name of the shell
+   */
+  protected abstract String getShellName();
+
+  /**
+   * Map structure: Command name =&gt; {@link Command} instance.
+   *
+   * @return a set of commands which can be executed under this shell
+   */
+  protected abstract Map&lt;String, Command&gt; loadCommands(Context context);
+
+  protected Closer getCloser() {
+<span class="nc" id="L137">    return closer;</span>
+  }
+
+  /**
+   * Prints usage for all commands.
+   */
+  protected void printUsage() {
+<span class="nc" id="L144">    System.out.println(&quot;Usage: ratis &quot; + getShellName() + &quot; [generic options]&quot;);</span>
+<span class="nc" id="L145">    SortedSet&lt;String&gt; sortedCmds = new TreeSet&lt;&gt;(mCommands.keySet());</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    for (String cmd : sortedCmds) {</span>
+<span class="nc" id="L147">      System.out.format(&quot;%-60s%n&quot;, &quot;\t [&quot; + mCommands.get(cmd).getUsage() + &quot;]&quot;);</span>
+<span class="nc" id="L148">    }</span>
+<span class="nc" id="L149">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

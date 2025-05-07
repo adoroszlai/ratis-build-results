@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftLogMetricsBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.metrics</a> &gt; <span class="el_source">RaftLogMetricsBase.java</span></div><h1>RaftLogMetricsBase.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.server.metrics;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.metrics.RatisMetrics;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.server.raftlog.LogEntryHeader;
+
+public class RaftLogMetricsBase extends RatisMetrics implements RaftLogMetrics {
+  public static final String RATIS_LOG_WORKER_METRICS_DESC = &quot;Metrics for Log Worker&quot;;
+  public static final String RATIS_LOG_WORKER_METRICS = &quot;log_worker&quot;;
+
+  // Log Entry metrics
+  public static final String METADATA_LOG_ENTRY_COUNT = &quot;metadataLogEntryCount&quot;;
+  public static final String CONFIG_LOG_ENTRY_COUNT = &quot;configLogEntryCount&quot;;
+  public static final String STATE_MACHINE_LOG_ENTRY_COUNT = &quot;stateMachineLogEntryCount&quot;;
+
+<span class="nc" id="L37">  private final LongCounter configLogEntryCount = getRegistry().counter(CONFIG_LOG_ENTRY_COUNT);</span>
+<span class="nc" id="L38">  private final LongCounter metadataLogEntryCount = getRegistry().counter(METADATA_LOG_ENTRY_COUNT);</span>
+<span class="nc" id="L39">  private final LongCounter stateMachineLogEntryCount = getRegistry().counter(STATE_MACHINE_LOG_ENTRY_COUNT);</span>
+
+  public RaftLogMetricsBase(RaftGroupMemberId serverId) {
+<span class="nc" id="L42">    super(createRegistry(serverId));</span>
+<span class="nc" id="L43">  }</span>
+
+  public static RatisMetricRegistry createRegistry(RaftGroupMemberId serverId) {
+<span class="nc" id="L46">    return create(new MetricRegistryInfo(serverId.toString(),</span>
+        RATIS_APPLICATION_NAME_METRICS,
+        RATIS_LOG_WORKER_METRICS, RATIS_LOG_WORKER_METRICS_DESC));
+  }
+
+  @Override
+  public void onLogEntryCommitted(LogEntryHeader header) {
+<span class="nc bnc" id="L53" title="All 4 branches missed.">    switch (header.getLogEntryBodyCase()) {</span>
+      case CONFIGURATIONENTRY:
+<span class="nc" id="L55">        configLogEntryCount.inc();</span>
+<span class="nc" id="L56">        return;</span>
+      case METADATAENTRY:
+<span class="nc" id="L58">        metadataLogEntryCount.inc();</span>
+<span class="nc" id="L59">        return;</span>
+      case STATEMACHINELOGENTRY:
+<span class="nc" id="L61">        stateMachineLogEntryCount.inc();</span>
+<span class="nc" id="L62">        return;</span>
+      default:
+    }
+<span class="nc" id="L65">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

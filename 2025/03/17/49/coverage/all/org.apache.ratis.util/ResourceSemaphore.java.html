@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResourceSemaphore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ResourceSemaphore.java</span></div><h1>ResourceSemaphore.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * A {@link Semaphore} with a limit for a resource.
+ *
+ * After {@link #close()}, the resource becomes unavailable, i.e. any acquire will not succeed.
+ */
+public class ResourceSemaphore extends Semaphore {
+  private final int limit;
+<span class="nc" id="L33">  private final AtomicBoolean reducePermits = new AtomicBoolean();</span>
+<span class="nc" id="L34">  private final AtomicBoolean isClosed = new AtomicBoolean();</span>
+
+  public ResourceSemaphore(int limit) {
+<span class="nc" id="L37">    super(limit, true);</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">    Preconditions.assertTrue(limit &gt; 0, () -&gt; &quot;limit = &quot; + limit + &quot; &lt;= 0&quot;);</span>
+<span class="nc" id="L39">    this.limit = limit;</span>
+<span class="nc" id="L40">  }</span>
+
+  @Override
+  public void release() {
+<span class="nc" id="L44">    release(1);</span>
+<span class="nc" id="L45">  }</span>
+
+  @Override
+  public void release(int permits) {
+<span class="nc" id="L49">    assertRelease(permits);</span>
+<span class="nc" id="L50">    super.release(permits);</span>
+<span class="nc" id="L51">    assertAvailable();</span>
+<span class="nc" id="L52">  }</span>
+
+  private void assertRelease(int toRelease) {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    Preconditions.assertTrue(toRelease &gt;= 0, () -&gt; &quot;toRelease = &quot; + toRelease + &quot; &lt; 0&quot;);</span>
+<span class="nc" id="L56">    final int available = assertAvailable();</span>
+<span class="nc" id="L57">    final int permits = Math.addExact(available, toRelease);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">    Preconditions.assertTrue(permits &lt;= limit, () -&gt; &quot;permits = &quot; + permits + &quot; &gt; limit = &quot; + limit);</span>
+<span class="nc" id="L59">  }</span>
+
+  private int assertAvailable() {
+<span class="nc" id="L62">    final int available = availablePermits();</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">    Preconditions.assertTrue(available &gt;= 0, () -&gt; &quot;available = &quot; + available + &quot; &lt; 0&quot;);</span>
+<span class="nc" id="L64">    return available;</span>
+  }
+
+  public int used() {
+<span class="nc" id="L68">    return limit - availablePermits();</span>
+  }
+
+  /** Close the resource. */
+  public void close() {
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    if (reducePermits.compareAndSet(false, true)) {</span>
+<span class="nc" id="L74">      reducePermits(limit);</span>
+<span class="nc" id="L75">      isClosed.set(true);</span>
+    }
+<span class="nc" id="L77">  }</span>
+
+  public boolean isClosed() {
+<span class="nc" id="L80">    return isClosed.get();</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    return (isClosed()? &quot;closed/&quot;: availablePermits() + &quot;/&quot;) + limit;</span>
+  }
+
+  /**
+   * Track a group of resources with a list of {@link ResourceSemaphore}s.
+   */
+  public static class Group {
+    public static final int SUCCESS = -1;
+
+    private final List&lt;ResourceSemaphore&gt; resources;
+
+<span class="nc" id="L96">    public Group(int... limits) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">      Preconditions.assertTrue(limits.length &gt;= 1, () -&gt; &quot;limits is empty&quot;);</span>
+<span class="nc" id="L98">      final List&lt;ResourceSemaphore&gt; list = new ArrayList&lt;&gt;(limits.length);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      for(int limit : limits) {</span>
+<span class="nc" id="L100">        list.add(new ResourceSemaphore(limit));</span>
+      }
+<span class="nc" id="L102">      this.resources = Collections.unmodifiableList(list);</span>
+<span class="nc" id="L103">    }</span>
+
+    public int resourceSize() {
+<span class="nc" id="L106">      return resources.size();</span>
+    }
+
+    protected ResourceSemaphore get(int i) {
+<span class="nc" id="L110">      return resources.get(i);</span>
+    }
+
+    /** @return {@link #SUCCESS} if successfully acquired; otherwise, return the failed index. */
+    public int tryAcquire(int... permits) {
+<span class="nc bnc" id="L115" title="All 2 branches missed.">      Preconditions.assertTrue(permits.length == resources.size(),</span>
+<span class="nc" id="L116">          () -&gt; &quot;items.length = &quot; + permits.length + &quot; != resources.size() = &quot; + resources.size());</span>
+<span class="nc" id="L117">      int i = 0;</span>
+      // try acquiring all resources
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      for(; i &lt; permits.length; i++) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (!resources.get(i).tryAcquire(permits[i])) {</span>
+<span class="nc" id="L121">          break;</span>
+        }
+      }
+
+<span class="nc bnc" id="L125" title="All 2 branches missed.">      if (i == permits.length) {</span>
+<span class="nc" id="L126">        return SUCCESS; // successfully acquired all resources</span>
+      }
+
+      // failed at i, releasing all previous resources
+<span class="nc bnc" id="L130" title="All 2 branches missed.">      for(int k = i - 1; k &gt;= 0; k--) {</span>
+<span class="nc" id="L131">        resources.get(k).release(permits[k]);</span>
+      }
+
+<span class="nc" id="L134">      return i;</span>
+    }
+
+    public void acquire(int... permits) throws InterruptedException {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      Preconditions.assertTrue(permits.length == resources.size(),</span>
+<span class="nc" id="L139">          () -&gt; &quot;items.length = &quot; + permits.length + &quot; != resources.size() = &quot;</span>
+<span class="nc" id="L140">              + resources.size());</span>
+<span class="nc" id="L141">      int i = 0;</span>
+      try {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        for (; i &lt; permits.length; i++) {</span>
+<span class="nc" id="L144">          resources.get(i).acquire(permits[i]);</span>
+        }
+<span class="nc" id="L146">      } catch (Exception e) {</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        for (; --i &gt;= 0;) {</span>
+<span class="nc" id="L148">          resources.get(i).release(permits[i]);</span>
+        }
+<span class="nc" id="L150">        throw e;</span>
+<span class="nc" id="L151">      }</span>
+<span class="nc" id="L152">    }</span>
+
+    protected void release(int... permits) {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">      for(int i = resources.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L156">        resources.get(i).release(permits[i]);</span>
+      }
+<span class="nc" id="L158">    }</span>
+
+    public void close() {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">      for(int i = resources.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L162">        resources.get(i).close();</span>
+      }
+<span class="nc" id="L164">    }</span>
+
+    public boolean isClosed() {
+<span class="nc" id="L167">      return resources.get(resources.size() - 1).isClosed();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L172">      return resources + &quot;,size=&quot; + resources.size();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

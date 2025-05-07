@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Dm3MetricRegistriesImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.metrics.dropwizard3</a> &gt; <span class="el_source">Dm3MetricRegistriesImpl.java</span></div><h1>Dm3MetricRegistriesImpl.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * &lt;p&gt;
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * &lt;p&gt;
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.metrics.dropwizard3;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+
+import org.apache.ratis.metrics.MetricRegistries;
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.util.RefCountingMap;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Implementation of MetricRegistries that does ref-counting.
+ */
+public class Dm3MetricRegistriesImpl extends MetricRegistries {
+
+<span class="nc" id="L41">  private static final Logger LOG = LoggerFactory.getLogger(Dm3MetricRegistriesImpl.class);</span>
+
+<span class="nc" id="L43">  private final List&lt;Consumer&lt;RatisMetricRegistry&gt;&gt; reporterRegistrations = new CopyOnWriteArrayList&lt;&gt;();</span>
+
+<span class="nc" id="L45">  private final List&lt;Consumer&lt;RatisMetricRegistry&gt;&gt; stopReporters = new CopyOnWriteArrayList&lt;&gt;();</span>
+
+  private final Dm3MetricRegistryFactoryImpl factory;
+
+  private final RefCountingMap&lt;MetricRegistryInfo, RatisMetricRegistry&gt; registries;
+
+<span class="nc" id="L51">  private final Object registerLock = new Object();</span>
+
+  public Dm3MetricRegistriesImpl() {
+<span class="nc" id="L54">    this(new Dm3MetricRegistryFactoryImpl());</span>
+<span class="nc" id="L55">  }</span>
+
+<span class="nc" id="L57">  Dm3MetricRegistriesImpl(Dm3MetricRegistryFactoryImpl factory) {</span>
+<span class="nc" id="L58">    this.factory = factory;</span>
+<span class="nc" id="L59">    this.registries = new RefCountingMap&lt;&gt;();</span>
+<span class="nc" id="L60">  }</span>
+
+  @Override
+  public RatisMetricRegistry create(MetricRegistryInfo info) {
+<span class="nc" id="L64">    return registries.put(info, () -&gt; {</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">      if (reporterRegistrations.isEmpty()) {</span>
+<span class="nc" id="L66">        synchronized (registerLock) {</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">          if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L68">            LOG.debug(&quot;First MetricRegistry has been created without registering reporters. &quot; +</span>
+                    &quot;Hence registering JMX reporter by default.&quot;);
+          }
+<span class="nc" id="L71">          enableJmxReporter();</span>
+<span class="nc" id="L72">        }</span>
+      }
+<span class="nc" id="L74">      RatisMetricRegistry registry = factory.create(info);</span>
+<span class="nc" id="L75">      reporterRegistrations.forEach(reg -&gt; reg.accept(registry));</span>
+<span class="nc" id="L76">      return registry;</span>
+    });
+  }
+
+  @Override
+  public boolean remove(MetricRegistryInfo key) {
+<span class="nc" id="L82">    RatisMetricRegistry registry = registries.get(key);</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    if (registry != null) {</span>
+<span class="nc" id="L84">      stopReporters.forEach(reg -&gt; reg.accept(registry));</span>
+    }
+
+<span class="nc bnc" id="L87" title="All 2 branches missed.">    return registries.remove(key) == null;</span>
+  }
+
+  @Override
+  public Optional&lt;RatisMetricRegistry&gt; get(MetricRegistryInfo info) {
+<span class="nc" id="L92">    return Optional.ofNullable(registries.get(info));</span>
+  }
+
+  @Override
+  public Collection&lt;RatisMetricRegistry&gt; getMetricRegistries() {
+<span class="nc" id="L97">    return Collections.unmodifiableCollection(registries.values());</span>
+  }
+
+  @Override
+  public void clear() {
+<span class="nc" id="L102">    registries.clear();</span>
+<span class="nc" id="L103">  }</span>
+
+  @Override
+  public Set&lt;MetricRegistryInfo&gt; getMetricRegistryInfos() {
+<span class="nc" id="L107">    return Collections.unmodifiableSet(registries.keySet());</span>
+  }
+
+  @Override
+  public void addReporterRegistration(Consumer&lt;RatisMetricRegistry&gt; reporterRegistration,
+      Consumer&lt;RatisMetricRegistry&gt; stopReporter) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (registries.size() &gt; 0) {</span>
+<span class="nc" id="L114">      LOG.warn(&quot;New reporters are added after registries were created. Some metrics will be missing from the reporter. &quot;</span>
+          + &quot;Please add reporter before adding any new registry.&quot;);
+    }
+<span class="nc" id="L117">    this.reporterRegistrations.add(reporterRegistration);</span>
+<span class="nc" id="L118">    this.stopReporters.add(stopReporter);</span>
+<span class="nc" id="L119">  }</span>
+
+  @Override
+  public void removeReporterRegistration(Consumer&lt;RatisMetricRegistry&gt; reporterRegistration,
+      Consumer&lt;RatisMetricRegistry&gt; stopReporter) {
+<span class="nc" id="L124">    this.reporterRegistrations.remove(reporterRegistration);</span>
+<span class="nc" id="L125">    this.stopReporters.remove(stopReporter);</span>
+<span class="nc" id="L126">  }</span>
+
+  @Override
+  public void enableJmxReporter() {
+<span class="nc" id="L130">    addReporterRegistration(</span>
+<span class="nc" id="L131">        Dm3MetricsReporting.jmxReporter(),</span>
+<span class="nc" id="L132">        Dm3MetricsReporting.stopJmxReporter());</span>
+<span class="nc" id="L133">  }</span>
+
+  @Override
+  public void enableConsoleReporter(TimeDuration consoleReportRate) {
+<span class="nc" id="L137">    addReporterRegistration(</span>
+<span class="nc" id="L138">        Dm3MetricsReporting.consoleReporter(consoleReportRate),</span>
+<span class="nc" id="L139">        Dm3MetricsReporting.stopConsoleReporter());</span>
+<span class="nc" id="L140">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

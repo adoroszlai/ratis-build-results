@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">StringUtils.java</span></div><h1>StringUtils.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.thirdparty.com.google.common.collect.Interner;
+import org.apache.ratis.thirdparty.com.google.common.collect.Interners;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.function.StringSupplier;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public final class StringUtils {
+  private StringUtils() {
+  }
+
+<span class="nc" id="L42">  public static final String[] EMPTY_STRING_ARRAY = {};</span>
+
+  /** Retains a weak reference to each string instance it has interned. */
+<span class="nc" id="L45">  private static final Interner&lt;String&gt; WEAK_INTERNER = Interners.newWeakInterner();</span>
+
+<span class="nc" id="L47">  static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern(&quot;yyyyMMdd-HHmmss_SSS&quot;);</span>
+
+  public static String currentDateTime() {
+<span class="nc" id="L50">    return LocalDateTime.now().format(DATE_TIME);</span>
+  }
+
+  /**
+   * Interns and returns a reference to the representative instance
+   * for any of a collection of string instances that are equal to each other.
+   * Retains weak reference to the instance,
+   * and so does not prevent it from being garbage-collected.
+   *
+   * @param sample string instance to be interned
+   * @return weak reference to interned string instance
+   */
+  public static String weakIntern(String sample) {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">    return sample == null? null: WEAK_INTERNER.intern(sample);</span>
+  }
+
+  /**
+   * Splits the given comma separated {@link String}.
+   * Each split value is trimmed.
+   *
+   * @param s a comma separated {@link String}, or possibly null.
+   * @return the split strings, or an empty array if the given string is null.
+   */
+  public static String[] getTrimmedStrings(String s) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    return s == null? EMPTY_STRING_ARRAY</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        : (s = s.trim()).isEmpty()? EMPTY_STRING_ARRAY</span>
+<span class="nc" id="L76">        : s.split(&quot;\\s*,\\s*&quot;);</span>
+  }
+
+  /** The same as String.format(Locale.ENGLISH, format, objects). */
+  public static String format(final String format, final Object... objects) {
+<span class="nc" id="L81">    return String.format(Locale.ENGLISH, format, objects);</span>
+  }
+
+  public static String bytes2HexShortString(ByteString bytes) {
+<span class="nc" id="L85">    final int size = bytes.size();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    if (size == 0) {</span>
+<span class="nc" id="L87">      return &quot;&lt;EMPTY&gt;&quot;;</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">    } else if (size &gt; 10) {</span>
+      // return only the first 10 bytes
+<span class="nc" id="L90">      return bytes2HexString(bytes.substring(0, 10)) + &quot;...(size=&quot; + size + &quot;)&quot;;</span>
+    } else {
+<span class="nc" id="L92">      return bytes2HexString(bytes);</span>
+    }
+  }
+
+  public static String bytes2HexString(ByteString bytes) {
+<span class="nc" id="L97">    Objects.requireNonNull(bytes, &quot;bytes == null&quot;);</span>
+<span class="nc" id="L98">    return bytes2HexString(bytes.asReadOnlyByteBuffer());</span>
+  }
+
+  public static String bytes2HexString(byte[] bytes) {
+<span class="nc" id="L102">    Objects.requireNonNull(bytes, &quot;bytes == null&quot;);</span>
+<span class="nc" id="L103">    return bytes2HexString(ByteBuffer.wrap(bytes));</span>
+  }
+
+  public static String bytes2HexString(byte[] bytes, int offset, int length) {
+<span class="nc" id="L107">    Objects.requireNonNull(bytes, &quot;bytes == null&quot;);</span>
+<span class="nc" id="L108">    return bytes2HexString(ByteBuffer.wrap(bytes, offset, length));</span>
+  }
+
+  public static String bytes2HexString(ByteBuffer bytes) {
+<span class="nc" id="L112">    Objects.requireNonNull(bytes, &quot;bytes == null&quot;);</span>
+
+<span class="nc" id="L114">    final StringBuilder s = new StringBuilder(2 * bytes.remaining());</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">    for(; bytes.remaining() &gt; 0; ) {</span>
+<span class="nc" id="L116">      s.append(format(&quot;%02x&quot;, bytes.get()));</span>
+    }
+<span class="nc" id="L118">    bytes.flip();</span>
+<span class="nc" id="L119">    return s.toString();</span>
+  }
+
+  public static Boolean string2boolean(String s, Boolean defaultValue) {
+<span class="nc bnc" id="L123" title="All 4 branches missed.">    if (s == null || s.isEmpty()) {</span>
+<span class="nc" id="L124">      return defaultValue;</span>
+    }
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    if (&quot;true&quot;.equalsIgnoreCase(s)) {</span>
+<span class="nc" id="L128">      return true;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">    } else if (&quot;t&quot;.equalsIgnoreCase(s)) {</span>
+<span class="nc" id="L130">      return true;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">    } else if (&quot;false&quot;.equalsIgnoreCase(s)) {</span>
+<span class="nc" id="L132">      return false;</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">    } else if (&quot;f&quot;.equalsIgnoreCase(s)) {</span>
+<span class="nc" id="L134">      return false;</span>
+    } else {
+<span class="nc" id="L136">      return defaultValue;</span>
+    }
+  }
+
+  public static String stringifyException(Throwable e) {
+<span class="nc" id="L141">    StringWriter stm = new StringWriter();</span>
+<span class="nc" id="L142">    PrintWriter wrt = new PrintWriter(stm);</span>
+<span class="nc" id="L143">    e.printStackTrace(wrt);</span>
+<span class="nc" id="L144">    wrt.close();</span>
+<span class="nc" id="L145">    return stm.toString();</span>
+  }
+
+  public static StringSupplier stringSupplierAsObject(Supplier&lt;String&gt; supplier) {
+<span class="nc" id="L149">    return StringSupplier.get(supplier);</span>
+  }
+
+  public static &lt;K, V&gt; String map2String(Map&lt;K, V&gt; map) {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    if (map == null) {</span>
+<span class="nc" id="L154">      return null;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    } else if (map.isEmpty()) {</span>
+<span class="nc" id="L156">      return &quot;&lt;EMPTY_MAP&gt;&quot;;</span>
+    } else {
+<span class="nc" id="L158">      final StringBuilder b = new StringBuilder(&quot;{&quot;);</span>
+<span class="nc" id="L159">      map.entrySet().stream().forEach(e -&gt; b.append(&quot;\n  &quot;).append(e.getKey()).append(&quot; -&gt; &quot;).append(e.getValue()));</span>
+<span class="nc" id="L160">      return b.append(&quot;\n}&quot;).toString();</span>
+    }
+  }
+
+  public static String completableFuture2String(CompletableFuture&lt;?&gt; future, boolean includeDetails) {
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    if (!future.isDone()) {</span>
+<span class="nc" id="L166">      return &quot;NOT_DONE&quot;;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    } else if (future.isCancelled()) {</span>
+<span class="nc" id="L168">      return &quot;CANCELLED&quot;;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    } else if (future.isCompletedExceptionally()) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">      if (!includeDetails) {</span>
+<span class="nc" id="L171">        return &quot;EXCEPTION&quot;;</span>
+      }
+<span class="nc" id="L173">      return future.thenApply(Objects::toString).exceptionally(Throwable::toString).join();</span>
+    } else {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">      if (!includeDetails) {</span>
+<span class="nc" id="L176">        return &quot;COMPLETED&quot;;</span>
+      }
+<span class="nc" id="L178">      return &quot;&quot; + future.join();</span>
+    }
+  }
+
+  public static &lt;T&gt; String array2String(T[] array, Function&lt;T, String&gt; toStringMethod) {
+<span class="nc bnc" id="L183" title="All 2 branches missed.">    if (array == null) {</span>
+<span class="nc" id="L184">      return null;</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">    } else if (array.length == 0) {</span>
+<span class="nc" id="L186">      return &quot;[]&quot;;</span>
+    }
+
+<span class="nc" id="L189">    final StringBuilder b = new StringBuilder(128).append('[');</span>
+<span class="nc" id="L190">    Arrays.stream(array).map(toStringMethod).forEach(s -&gt; b.append(s).append(&quot;, &quot;));</span>
+<span class="nc" id="L191">    final int length = b.length();</span>
+<span class="nc" id="L192">    b.setCharAt(length - 2, ']');</span>
+<span class="nc" id="L193">    b.setLength(length - 1);</span>
+<span class="nc" id="L194">    return b.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RetryPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.retry</a> &gt; <span class="el_source">RetryPolicy.java</span></div><h1>RetryPolicy.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.retry;
+
+import org.apache.ratis.util.TimeDuration;
+
+/**
+ * Policy abstract for retrying.
+ */
+@FunctionalInterface
+public interface RetryPolicy {
+<span class="nc" id="L27">  Action NO_RETRY_ACTION = new Action() {</span>
+    @Override
+    public boolean shouldRetry() {
+<span class="nc" id="L30">      return false;</span>
+    }
+    @Override
+    public TimeDuration getSleepTime() {
+<span class="nc" id="L34">      return TimeDuration.ZERO;</span>
+    }
+  };
+
+<span class="nc" id="L38">  Action RETRY_WITHOUT_SLEEP_ACTION = () -&gt; TimeDuration.ZERO;</span>
+
+  /** The action it should take. */
+  @FunctionalInterface
+  interface Action {
+    /** @return true if it has to make another attempt; otherwise, return false. */
+    default boolean shouldRetry() {
+<span class="nc" id="L45">      return true;</span>
+    }
+
+    /** @return the sleep time period before the next attempt. */
+    TimeDuration getSleepTime();
+  }
+
+  /** The event triggered the failure. */
+  @FunctionalInterface
+  interface Event {
+    /** @return the number of attempts tried so far. */
+    int getAttemptCount();
+
+    /** @return the number of attempts for the event cause. */
+    default int getCauseCount() {
+<span class="nc" id="L60">      return 0;</span>
+    }
+
+    default Throwable getCause() {
+<span class="nc" id="L64">      return null;</span>
+    }
+  }
+
+  /**
+   * Determines whether it is supposed to retry after the operation has failed.
+   *
+   * @param event The failed event.
+   * @return the action it should take.
+   */
+  Action handleAttemptFailure(Event event);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

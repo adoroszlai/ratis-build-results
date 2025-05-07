@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimeoutScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">TimeoutScheduler.java</span></div><h1>TimeoutScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedRunnable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collection;
+import java.util.Optional;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+public final class TimeoutScheduler implements TimeoutExecutor {
+<span class="nc" id="L35">  public static final Logger LOG = LoggerFactory.getLogger(TimeoutScheduler.class);</span>
+
+<span class="nc" id="L37">  static final TimeDuration DEFAULT_GRACE_PERIOD = TimeDuration.valueOf(1, TimeUnit.MINUTES);</span>
+
+<span class="nc" id="L39">  private static final Supplier&lt;TimeoutScheduler&gt; INSTANCE = JavaUtils.memoize(TimeoutScheduler::new);</span>
+<span class="nc" id="L40">  private static final AtomicInteger THREAD_COUNT = new AtomicInteger(0);</span>
+
+  public static TimeoutScheduler getInstance() {
+<span class="nc" id="L43">    return INSTANCE.get();</span>
+  }
+
+  static TimeoutScheduler newInstance() {
+<span class="nc" id="L47">    return new TimeoutScheduler();</span>
+  }
+
+  static class ShutdownTask {
+    private final int sid;
+    private final ScheduledFuture&lt;?&gt; future;
+
+<span class="nc" id="L54">    ShutdownTask(int sid, ScheduledFuture&lt;?&gt; future) {</span>
+<span class="nc" id="L55">      this.sid = sid;</span>
+<span class="nc" id="L56">      this.future = future;</span>
+<span class="nc" id="L57">    }</span>
+
+    int getSid() {
+<span class="nc" id="L60">      return sid;</span>
+    }
+
+    void cancel() {
+<span class="nc" id="L64">      future.cancel(false);</span>
+<span class="nc" id="L65">    }</span>
+  }
+
+<span class="nc" id="L68">  private static class Scheduler {</span>
+<span class="nc" id="L69">    private final AtomicReference&lt;ScheduledThreadPoolExecutor&gt; executor = new AtomicReference&lt;&gt;();</span>
+
+    boolean hasExecutor() {
+<span class="nc bnc" id="L72" title="All 2 branches missed.">      return executor.get() != null;</span>
+    }
+
+    int getQueueSize() {
+<span class="nc" id="L76">      return Optional.ofNullable(executor.get())</span>
+<span class="nc" id="L77">          .map(ScheduledThreadPoolExecutor::getQueue)</span>
+<span class="nc" id="L78">          .map(Collection::size).orElse(0);</span>
+    }
+
+    ScheduledFuture&lt;?&gt; schedule(Runnable task, Supplier&lt;String&gt; name, TimeDuration time) {
+<span class="nc" id="L82">      return executor.updateAndGet(e -&gt; Optional.ofNullable(e).orElseGet(Scheduler::newExecutor))</span>
+<span class="nc" id="L83">          .schedule(LogUtils.newRunnable(LOG, task, name), time.getDuration(), time.getUnit());</span>
+    }
+
+    private static ScheduledThreadPoolExecutor newExecutor() {
+<span class="nc" id="L87">      LOG.debug(&quot;new ScheduledThreadPoolExecutor&quot;);</span>
+<span class="nc" id="L88">      final ScheduledThreadPoolExecutor e = new ScheduledThreadPoolExecutor(1, (runnable) -&gt; Daemon.newBuilder()</span>
+<span class="nc" id="L89">          .setName(&quot;TimeoutScheduler-&quot; + THREAD_COUNT.getAndIncrement()).setRunnable(runnable).build());</span>
+<span class="nc" id="L90">      e.setRemoveOnCancelPolicy(true);</span>
+<span class="nc" id="L91">      return e;</span>
+    }
+
+    void shutdown() {
+<span class="nc" id="L95">      Optional.ofNullable(executor.getAndSet(null)).ifPresent(ScheduledThreadPoolExecutor::shutdown);</span>
+<span class="nc" id="L96">    }</span>
+  }
+
+  /** When there is no tasks, the time period to wait before shutting down the scheduler. */
+<span class="nc" id="L100">  private final AtomicReference&lt;TimeDuration&gt; gracePeriod = new AtomicReference&lt;&gt;(DEFAULT_GRACE_PERIOD);</span>
+
+  /** The number of scheduled tasks. */
+<span class="nc" id="L103">  private int numTasks = 0;</span>
+  /** The scheduleID for each task */
+<span class="nc" id="L105">  private int scheduleID = 0;</span>
+
+<span class="nc" id="L107">  private ShutdownTask shutdownTask = null;</span>
+
+<span class="nc" id="L109">  private final Scheduler scheduler = new Scheduler();</span>
+
+<span class="nc" id="L111">  private TimeoutScheduler() {</span>
+<span class="nc" id="L112">  }</span>
+
+  @Override
+  public int getTaskCount() {
+<span class="nc" id="L116">    return scheduler.getQueueSize();</span>
+  }
+
+  TimeDuration getGracePeriod() {
+<span class="nc" id="L120">    return gracePeriod.get();</span>
+  }
+
+  void setGracePeriod(TimeDuration gracePeriod) {
+<span class="nc" id="L124">    this.gracePeriod.set(gracePeriod);</span>
+<span class="nc" id="L125">  }</span>
+
+  boolean hasScheduler() {
+<span class="nc" id="L128">    return scheduler.hasExecutor();</span>
+  }
+
+  @Override
+  public &lt;THROWABLE extends Throwable&gt; void onTimeout(
+      TimeDuration timeout, CheckedRunnable&lt;THROWABLE&gt; task, Consumer&lt;THROWABLE&gt; errorHandler) {
+<span class="nc" id="L134">    onTimeout(timeout, sid -&gt; {</span>
+<span class="nc" id="L135">      LOG.debug(&quot;run a task: sid {}&quot;, sid);</span>
+      try {
+<span class="nc" id="L137">        task.run();</span>
+<span class="nc" id="L138">      } catch(Throwable t) {</span>
+<span class="nc" id="L139">        errorHandler.accept(JavaUtils.cast(t));</span>
+      } finally {
+<span class="nc" id="L141">        onTaskCompleted();</span>
+      }
+<span class="nc" id="L143">    });</span>
+<span class="nc" id="L144">  }</span>
+
+  private synchronized void onTimeout(TimeDuration timeout, Consumer&lt;Integer&gt; toSchedule) {
+<span class="nc" id="L147">    numTasks++;</span>
+<span class="nc" id="L148">    final int sid = scheduleID++;</span>
+
+<span class="nc" id="L150">    LOG.debug(&quot;schedule a task: timeout {}, sid {}&quot;, timeout, sid);</span>
+<span class="nc" id="L151">    scheduler.schedule(() -&gt; toSchedule.accept(sid), () -&gt; &quot;task #&quot; + sid, timeout);</span>
+<span class="nc" id="L152">  }</span>
+
+  private synchronized void onTaskCompleted() {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    if (--numTasks &gt; 0) {</span>
+<span class="nc" id="L156">      return;</span>
+    }
+<span class="nc" id="L158">    final int sid = scheduleID;</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (shutdownTask != null) {</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">      if (shutdownTask.getSid() == sid) {</span>
+        // the shutdown task is still valid
+<span class="nc" id="L162">        return;</span>
+      }
+      // the shutdown task is invalid
+<span class="nc" id="L165">      shutdownTask.cancel();</span>
+    }
+
+<span class="nc" id="L168">    final TimeDuration grace = getGracePeriod();</span>
+<span class="nc" id="L169">    LOG.debug(&quot;Schedule a shutdown task: grace {}, sid {}&quot;, grace, sid);</span>
+<span class="nc" id="L170">    final ScheduledFuture&lt;?&gt; future = scheduler.schedule(() -&gt; tryShutdownScheduler(sid),</span>
+<span class="nc" id="L171">        () -&gt; &quot;shutdown task #&quot; + sid, grace);</span>
+<span class="nc" id="L172">    shutdownTask = new ShutdownTask(sid, future);</span>
+<span class="nc" id="L173">  }</span>
+
+  private synchronized void tryShutdownScheduler(int sid) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    if (sid == scheduleID) {</span>
+      // No new tasks submitted, shutdown the scheduler.
+<span class="nc" id="L178">      LOG.debug(&quot;shutdown scheduler: sid {}&quot;, sid);</span>
+<span class="nc" id="L179">      scheduler.shutdown();</span>
+    } else {
+<span class="nc" id="L181">      LOG.debug(&quot;shutdown cancelled: scheduleID has changed from {} to {}&quot;, sid, scheduleID);</span>
+    }
+<span class="nc" id="L183">  }</span>
+
+  public synchronized void tryShutdownScheduler() {
+<span class="nc" id="L186">    tryShutdownScheduler(scheduleID);</span>
+<span class="nc" id="L187">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

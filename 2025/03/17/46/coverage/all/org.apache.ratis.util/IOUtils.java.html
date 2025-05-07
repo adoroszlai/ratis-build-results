@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IOUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">IOUtils.java</span></div><h1>IOUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.slf4j.Logger;
+
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.ObjectInputStream;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.FileChannel;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
+
+/**
+ * IO related utility methods.
+ */
+public interface IOUtils {
+  static InterruptedIOException toInterruptedIOException(
+      String message, InterruptedException e) {
+<span class="nc" id="L49">    final InterruptedIOException iioe = new InterruptedIOException(message);</span>
+<span class="nc" id="L50">    iioe.initCause(e);</span>
+<span class="nc" id="L51">    return iioe;</span>
+  }
+
+  static IOException asIOException(Throwable t) {
+<span class="nc" id="L55">    Objects.requireNonNull(t, &quot;t == null&quot;);</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    return t instanceof IOException? (IOException)t : new IOException(t);</span>
+  }
+
+  static IOException toIOException(ExecutionException e) {
+<span class="nc" id="L60">    final Throwable cause = e.getCause();</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">    return cause != null? asIOException(cause): new IOException(e);</span>
+  }
+
+  static &lt;T&gt; T getFromFuture(CompletableFuture&lt;T&gt; future, Supplier&lt;Object&gt; name) throws IOException {
+    try {
+<span class="nc" id="L66">      return future.get();</span>
+<span class="nc" id="L67">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L68">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L69">      throw toInterruptedIOException(name.get() + &quot; interrupted.&quot;, e);</span>
+<span class="nc" id="L70">    } catch (ExecutionException e) {</span>
+<span class="nc" id="L71">      throw toIOException(e);</span>
+<span class="nc" id="L72">    } catch (CompletionException e) {</span>
+<span class="nc" id="L73">      throw asIOException(JavaUtils.unwrapCompletionException(e));</span>
+    }
+  }
+
+  static &lt;T&gt; T getFromFuture(CompletableFuture&lt;T&gt; future, Supplier&lt;Object&gt; name, TimeDuration timeout)
+      throws IOException {
+    try {
+<span class="nc" id="L80">      return future.get(timeout.getDuration(), timeout.getUnit());</span>
+<span class="nc" id="L81">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L82">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L83">      throw toInterruptedIOException(name.get() + &quot; interrupted.&quot;, e);</span>
+<span class="nc" id="L84">    } catch (ExecutionException e) {</span>
+<span class="nc" id="L85">      throw toIOException(e);</span>
+<span class="nc" id="L86">    } catch (CompletionException e) {</span>
+<span class="nc" id="L87">      throw asIOException(JavaUtils.unwrapCompletionException(e));</span>
+<span class="nc" id="L88">    } catch(TimeoutException e) {</span>
+<span class="nc" id="L89">      throw new TimeoutIOException(&quot;Timeout &quot; + timeout + &quot;: &quot; + name.get(), e);</span>
+    }
+  }
+
+  static boolean shouldReconnect(Throwable e) {
+<span class="nc" id="L94">    return ReflectionUtils.isInstance(e,</span>
+        SocketException.class, SocketTimeoutException.class, ClosedChannelException.class, EOFException.class,
+        AlreadyClosedException.class);
+  }
+
+  static void readFully(InputStream in, int buffSize) throws IOException {
+<span class="nc" id="L100">    final byte [] buf = new byte[buffSize];</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    for(int bytesRead = in.read(buf); bytesRead &gt;= 0; ) {</span>
+<span class="nc" id="L102">      bytesRead = in.read(buf);</span>
+    }
+<span class="nc" id="L104">  }</span>
+
+  /**
+   * Reads len bytes in a loop.
+   *
+   * @param in InputStream to read from
+   * @param buf The buffer to fill
+   * @param off offset from the buffer
+   * @param len the length of bytes to read
+   * @throws IOException if it could not read requested number of bytes
+   * for any reason (including EOF)
+   */
+  static void readFully(InputStream in, byte[] buf, int off, int len)
+      throws IOException {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    for(int toRead = len; toRead &gt; 0; ) {</span>
+<span class="nc" id="L119">      final int ret = in.read(buf, off, toRead);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">      if (ret &lt; 0) {</span>
+<span class="nc" id="L121">        final int read = len - toRead;</span>
+<span class="nc" id="L122">        throw new EOFException(&quot;Premature EOF: read length is &quot; + len + &quot; but encountered EOF at &quot; + read);</span>
+      }
+<span class="nc" id="L124">      toRead -= ret;</span>
+<span class="nc" id="L125">      off += ret;</span>
+<span class="nc" id="L126">    }</span>
+<span class="nc" id="L127">  }</span>
+
+  static long preallocate(FileChannel fc, long size, ByteBuffer fill) throws IOException {
+<span class="nc" id="L130">    Preconditions.assertSame(0, fill.position(), &quot;fill.position&quot;);</span>
+<span class="nc" id="L131">    Preconditions.assertSame(fill.capacity(), fill.limit(), &quot;fill.limit&quot;);</span>
+<span class="nc" id="L132">    final int remaining = fill.remaining();</span>
+
+<span class="nc" id="L134">    long allocated = 0;</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">    for(; allocated &lt; size; ) {</span>
+<span class="nc" id="L136">      final long required = size - allocated;</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      final int n = remaining &lt; required? remaining: Math.toIntExact(required);</span>
+<span class="nc" id="L138">      final ByteBuffer buffer = fill.slice();</span>
+<span class="nc" id="L139">      buffer.limit(n);</span>
+
+<span class="nc" id="L141">      final int written = fc.write(buffer, fc.size());</span>
+<span class="nc" id="L142">      allocated += written;</span>
+<span class="nc" id="L143">    }</span>
+<span class="nc" id="L144">    return allocated;</span>
+  }
+
+  /**
+   * Similar to readFully(). Skips bytes in a loop.
+   * @param in The InputStream to skip bytes from
+   * @param len number of bytes to skip.
+   * @throws IOException if it could not skip requested number of bytes
+   * for any reason (including EOF)
+   */
+  static void skipFully(InputStream in, long len) throws IOException {
+<span class="nc" id="L155">    long amt = len;</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">    while (amt &gt; 0) {</span>
+<span class="nc" id="L157">      long ret = in.skip(amt);</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">      if (ret == 0) {</span>
+        // skip may return 0 even if we're not at EOF.  Luckily, we can
+        // use the read() method to figure out if we're at the end.
+<span class="nc" id="L161">        int b = in.read();</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (b == -1) {</span>
+<span class="nc" id="L163">          throw new EOFException( &quot;Premature EOF from inputStream after &quot; +</span>
+              &quot;skipping &quot; + (len - amt) + &quot; byte(s).&quot;);
+        }
+<span class="nc" id="L166">        ret = 1;</span>
+      }
+<span class="nc" id="L168">      amt -= ret;</span>
+<span class="nc" id="L169">    }</span>
+<span class="nc" id="L170">  }</span>
+
+  /**
+   * Close the Closeable objects and &lt;b&gt;ignore&lt;/b&gt; any {@link Throwable} or
+   * null pointers. Must only be used for cleanup in exception handlers.
+   *
+   * @param log the log to record problems to at debug level. Can be null.
+   * @param closeables the objects to close
+   */
+  static void cleanup(Logger log, Closeable... closeables) {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">    for (Closeable c : closeables) {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">      if (c != null) {</span>
+        try {
+<span class="nc" id="L183">          c.close();</span>
+<span class="nc" id="L184">        } catch(Exception e) {</span>
+<span class="nc bnc" id="L185" title="All 4 branches missed.">          if (log != null &amp;&amp; log.isDebugEnabled()) {</span>
+<span class="nc" id="L186">            log.debug(&quot;Exception in closing &quot; + c, e);</span>
+          }
+<span class="nc" id="L188">        }</span>
+      }
+    }
+<span class="nc" id="L191">  }</span>
+
+  /** Serialize the given object to a byte array using {@link java.io.ObjectOutputStream#writeObject(Object)}. */
+  static byte[] object2Bytes(Object obj) {
+<span class="nc" id="L195">    return ProtoUtils.writeObject2ByteString(obj).toByteArray();</span>
+  }
+
+  static &lt;T&gt; T bytes2Object(byte[] bytes, Class&lt;T&gt; clazz) {
+<span class="nc" id="L199">    return readObject(new ByteArrayInputStream(bytes), clazz);</span>
+  }
+
+  /**
+   * Read an object from the given input stream.
+   *
+   * @param in input stream to read from.
+   * @param clazz the class of the object.
+   * @return the object read from the stream.
+   *
+   * @param &lt;T&gt; The class type.
+   */
+  static &lt;T&gt; T readObject(InputStream in, Class&lt;T&gt; clazz) {
+    final Object obj;
+<span class="nc" id="L213">    try(ObjectInputStream oin = new ObjectInputStream(in)) {</span>
+<span class="nc" id="L214">      obj = oin.readObject();</span>
+<span class="nc" id="L215">    } catch (IOException | ClassNotFoundException e) {</span>
+<span class="nc" id="L216">      throw new IllegalStateException(&quot;Failed to readObject for class &quot; + clazz, e);</span>
+<span class="nc" id="L217">    }</span>
+    try {
+<span class="nc" id="L219">      return clazz.cast(obj);</span>
+<span class="nc" id="L220">    } catch (ClassCastException e) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">      throw new IllegalStateException(&quot;Failed to cast to &quot; + clazz + &quot;, object=&quot;</span>
+<span class="nc" id="L222">              + (obj instanceof Throwable? StringUtils.stringifyException((Throwable) obj): obj), e);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

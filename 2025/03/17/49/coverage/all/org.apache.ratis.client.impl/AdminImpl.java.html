@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AdminImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">AdminImpl.java</span></div><h1>AdminImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import org.apache.ratis.client.api.AdminApi;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.SetConfigurationRequest;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.rpc.CallId;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+class AdminImpl implements AdminApi {
+  private final RaftClientImpl client;
+
+<span class="nc" id="L35">  AdminImpl(RaftClientImpl client) {</span>
+<span class="nc" id="L36">    this.client = Objects.requireNonNull(client, &quot;client == null&quot;);</span>
+<span class="nc" id="L37">  }</span>
+
+  public RaftClientReply setConfiguration(SetConfigurationRequest.Arguments arguments) throws IOException {
+<span class="nc" id="L40">    List&lt;RaftPeer&gt; peersInNewConf = arguments.getServersInNewConf();</span>
+<span class="nc" id="L41">    Objects.requireNonNull(peersInNewConf, &quot;peersInNewConf == null&quot;);</span>
+
+<span class="nc" id="L43">    final long callId = CallId.getAndIncrement();</span>
+    // also refresh the rpc proxies for these peers
+<span class="nc" id="L45">    client.getClientRpc().addRaftPeers(peersInNewConf);</span>
+<span class="nc" id="L46">    return client.io().sendRequestWithRetry(() -&gt; new SetConfigurationRequest(</span>
+<span class="nc" id="L47">        client.getId(), client.getLeaderId(), client.getGroupId(), callId, arguments));</span>
+  }
+
+  @Override
+  public RaftClientReply transferLeadership(
+      RaftPeerId newLeader, RaftPeerId leaderId, long timeoutMs) throws IOException {
+<span class="nc" id="L53">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L54">    return client.io().sendRequestWithRetry(() -&gt; new TransferLeadershipRequest(</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        client.getId(), leaderId == null ? client.getLeaderId() : leaderId,</span>
+<span class="nc" id="L56">        client.getGroupId(), callId, newLeader, timeoutMs));</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

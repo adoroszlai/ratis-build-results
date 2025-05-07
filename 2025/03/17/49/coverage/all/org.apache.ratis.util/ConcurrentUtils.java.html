@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConcurrentUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ConcurrentUtils.java</span></div><h1>ConcurrentUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedConsumer;
+import org.apache.ratis.util.function.CheckedFunction;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+
+/**
+ * Utilities related to concurrent programming.
+ */
+public interface ConcurrentUtils {
+  /**
+   * Similar to {@link AtomicReference#updateAndGet(java.util.function.UnaryOperator)}
+   * except that the update function is checked.
+   */
+  static &lt;E, THROWABLE extends Throwable&gt; E updateAndGet(AtomicReference&lt;E&gt; reference,
+      CheckedFunction&lt;E, E, THROWABLE&gt; update) throws THROWABLE {
+<span class="nc" id="L49">    final AtomicReference&lt;Throwable&gt; throwableRef = new AtomicReference&lt;&gt;();</span>
+<span class="nc" id="L50">    final E updated = reference.updateAndGet(value -&gt; {</span>
+      try {
+<span class="nc" id="L52">        return update.apply(value);</span>
+<span class="nc" id="L53">      } catch (Error | RuntimeException e) {</span>
+<span class="nc" id="L54">        throw e;</span>
+<span class="nc" id="L55">      } catch (Throwable t) {</span>
+<span class="nc" id="L56">        throwableRef.set(t);</span>
+<span class="nc" id="L57">        return value;</span>
+      }
+    });
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L61">    final THROWABLE t = (THROWABLE) throwableRef.get();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (t != null) {</span>
+<span class="nc" id="L63">      throw t;</span>
+    }
+<span class="nc" id="L65">    return updated;</span>
+  }
+
+  /**
+   * Creates a {@link ThreadFactory} so that the threads created by the factory are named with the given name prefix.
+   *
+   * @param namePrefix the prefix used in the name of the threads created.
+   * @return a new {@link ThreadFactory}.
+   */
+  static ThreadFactory newThreadFactory(String namePrefix) {
+<span class="nc" id="L75">    final AtomicInteger numThread = new AtomicInteger();</span>
+<span class="nc" id="L76">    return runnable -&gt; {</span>
+<span class="nc" id="L77">      final int id = numThread.incrementAndGet();</span>
+<span class="nc" id="L78">      final Thread t = new Thread(runnable);</span>
+<span class="nc" id="L79">      t.setName(namePrefix + &quot;-thread&quot; + id);</span>
+<span class="nc" id="L80">      return t;</span>
+    };
+  }
+
+  /**
+    * This method is similar to {@link java.util.concurrent.Executors#newSingleThreadExecutor(ThreadFactory)}
+    * except that this method takes a specific thread name as there is only one thread.g
+    *
+    * @param name the thread name for only one thread.
+    * @return a new {@link ExecutorService}.
+    */
+  static ExecutorService newSingleThreadExecutor(String name) {
+<span class="nc" id="L92">      return Executors.newSingleThreadExecutor(runnable -&gt; {</span>
+<span class="nc" id="L93">          final Thread t = new Thread(runnable);</span>
+<span class="nc" id="L94">          t.setName(name);</span>
+<span class="nc" id="L95">          return t;</span>
+        });
+  }
+
+  /**
+   * The same as {@link java.util.concurrent.Executors#newCachedThreadPool(ThreadFactory)}
+   * except that this method takes a maximumPoolSize parameter.
+   *
+   * @param maximumPoolSize the maximum number of threads to allow in the pool.
+   *                        When maximumPoolSize == 0, this method is the same as
+   *                        {@link java.util.concurrent.Executors#newCachedThreadPool(ThreadFactory)}.
+   * @return a new {@link ExecutorService}.
+   */
+  static ExecutorService newCachedThreadPool(int maximumPoolSize, ThreadFactory threadFactory) {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    return maximumPoolSize == 0? Executors.newCachedThreadPool(threadFactory)</span>
+        : new ThreadPoolExecutor(0, maximumPoolSize, 60L, TimeUnit.SECONDS,
+        new LinkedBlockingQueue&lt;&gt;(), threadFactory);
+  }
+
+  /**
+   * Create a new {@link ExecutorService} with a maximum pool size.
+   * If it is cached, this method is similar to {@link #newCachedThreadPool(int, ThreadFactory)}.
+   * Otherwise, this method is similar to {@link java.util.concurrent.Executors#newFixedThreadPool(int)}.
+   *
+   * @param cached Use cached thread pool?  If not, use a fixed thread pool.
+   * @param maximumPoolSize the maximum number of threads to allow in the pool.
+   * @param namePrefix the prefix used in the name of the threads created.
+   * @return a new {@link ExecutorService}.
+   */
+  static ExecutorService newThreadPoolWithMax(boolean cached, int maximumPoolSize, String namePrefix) {
+<span class="nc" id="L125">    final ThreadFactory f = newThreadFactory(namePrefix);</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">    return cached ? newCachedThreadPool(maximumPoolSize, f)</span>
+<span class="nc" id="L127">        : Executors.newFixedThreadPool(maximumPoolSize, f);</span>
+  }
+
+  /**
+   * Shutdown the given executor and wait for its termination.
+   *
+   * @param executor The executor to be shut down.
+   */
+  static void shutdownAndWait(ExecutorService executor) {
+<span class="nc" id="L136">    shutdownAndWait(TimeDuration.ONE_DAY, executor, timeout -&gt; {</span>
+<span class="nc" id="L137">      throw new IllegalStateException(executor.getClass().getName() + &quot; shutdown timeout in &quot; + timeout);</span>
+    });
+<span class="nc" id="L139">  }</span>
+
+  static void shutdownAndWait(TimeDuration waitTime, ExecutorService executor, Consumer&lt;TimeDuration&gt; timoutHandler) {
+<span class="nc" id="L142">    executor.shutdown();</span>
+    try {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      if (executor.awaitTermination(waitTime.getDuration(), waitTime.getUnit())) {</span>
+<span class="nc" id="L145">        return;</span>
+      }
+<span class="nc" id="L147">    } catch (InterruptedException ignored) {</span>
+<span class="nc" id="L148">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L149">      return;</span>
+<span class="nc" id="L150">    }</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">    if (timoutHandler != null) {</span>
+<span class="nc" id="L152">      timoutHandler.accept(waitTime);</span>
+    }
+<span class="nc" id="L154">  }</span>
+
+  /**
+   * The same as {@link Collection#parallelStream()}.forEach(action) except that
+   * (1) this method is asynchronous,
+   * (2) this method has an executor parameter, and
+   * (3) the action can throw a checked exception.
+   *
+   * @param stream The stream to be processed.
+   * @param size The estimated size of the stream.
+   * @param action To act on each element in the stream.
+   * @param executor To execute the action.
+   * @param &lt;E&gt; The element type.
+   * @param &lt;THROWABLE&gt; the exception type.
+   *
+   * @return a {@link CompletableFuture} that is completed
+   *         when the action is completed for each element in the collection.
+   *         When the action throws an exception, the future will be completed exceptionally.
+   *
+   * @see Collection#parallelStream()
+   * @see java.util.stream.Stream#forEach(Consumer)
+   */
+  static &lt;E, THROWABLE extends Throwable&gt; CompletableFuture&lt;Void&gt; parallelForEachAsync(
+      Stream&lt;E&gt; stream, int size, CheckedConsumer&lt;? super E, THROWABLE&gt; action, Executor executor) {
+<span class="nc" id="L178">    final List&lt;CompletableFuture&lt;E&gt;&gt; futures = new ArrayList&lt;&gt;(size);</span>
+<span class="nc" id="L179">    stream.forEach(element -&gt; {</span>
+<span class="nc" id="L180">      final CompletableFuture&lt;E&gt; f = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L181">      futures.add(f);</span>
+<span class="nc" id="L182">      executor.execute(() -&gt; accept(action, element, f));</span>
+<span class="nc" id="L183">    });</span>
+<span class="nc" id="L184">    return JavaUtils.allOf(futures);</span>
+  }
+
+  /** The same as parallelForEachAsync(collection.stream(), collection.size(), action, executor). */
+  static &lt;E, THROWABLE extends Throwable&gt; CompletableFuture&lt;Void&gt; parallelForEachAsync(
+      Collection&lt;E&gt; collection, CheckedConsumer&lt;? super E, THROWABLE&gt; action, Executor executor) {
+<span class="nc" id="L190">    return parallelForEachAsync(collection.stream(), collection.size(), action, executor);</span>
+  }
+
+  /** The same as parallelForEachAsync(collection.stream(), collection.size(), action, executor). */
+  static &lt;THROWABLE extends Throwable&gt; CompletableFuture&lt;Void&gt; parallelForEachAsync(
+      int size, CheckedConsumer&lt;Integer, THROWABLE&gt; action, Executor executor) {
+<span class="nc" id="L196">    final AtomicInteger i = new AtomicInteger();</span>
+<span class="nc" id="L197">    return parallelForEachAsync(Stream.generate(i::getAndIncrement).limit(size), size, action, executor);</span>
+  }
+
+  static &lt;E, THROWABLE extends Throwable&gt; void accept(
+      CheckedConsumer&lt;? super E, THROWABLE&gt; action, E element, CompletableFuture&lt;E&gt; f) {
+    try {
+<span class="nc" id="L203">      action.accept(element);</span>
+<span class="nc" id="L204">      f.complete(element);</span>
+<span class="nc" id="L205">    } catch (Throwable t) {</span>
+<span class="nc" id="L206">      f.completeExceptionally(t);</span>
+<span class="nc" id="L207">    }</span>
+<span class="nc" id="L208">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

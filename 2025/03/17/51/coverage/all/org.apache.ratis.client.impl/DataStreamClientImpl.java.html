@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataStreamClientImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">DataStreamClientImpl.java</span></div><h1>DataStreamClientImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+package org.apache.ratis.client.impl;
+
+import org.apache.ratis.RaftConfigKeys;
+import org.apache.ratis.client.AsyncRpcApi;
+import org.apache.ratis.client.DataStreamClient;
+import org.apache.ratis.client.DataStreamClientRpc;
+import org.apache.ratis.client.DataStreamOutputRpc;
+import org.apache.ratis.client.RaftClient;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.datastream.impl.DataStreamPacketByteBuffer;
+import org.apache.ratis.datastream.impl.DataStreamReplyByteBuffer;
+import org.apache.ratis.io.FilePositionCount;
+import org.apache.ratis.io.StandardWriteOption;
+import org.apache.ratis.io.WriteOption;
+import org.apache.ratis.proto.RaftProtos.DataStreamPacketHeaderProto.Type;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.DataStreamReply;
+import org.apache.ratis.protocol.DataStreamRequestHeader;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.rpc.CallId;
+import org.apache.ratis.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.protocol.*;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.SlidingWindow;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.WritableByteChannel;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+
+/**
+ * Streaming client implementation
+ * allows client to create streams and send asynchronously.
+ */
+public class DataStreamClientImpl implements DataStreamClient {
+<span class="nc" id="L68">  public static final Logger LOG = LoggerFactory.getLogger(DataStreamClientImpl.class);</span>
+
+  private final RaftClient client;
+  private final ClientId clientId;
+  private final RaftGroupId groupId;
+
+  private final RaftPeer dataStreamServer;
+  private final DataStreamClientRpc dataStreamClientRpc;
+  private final OrderedStreamAsync orderedStreamAsync;
+  private final boolean skipSendForward;
+
+  DataStreamClientImpl(ClientId clientId, RaftGroupId groupId, RaftPeer dataStreamServer,
+<span class="nc" id="L80">      DataStreamClientRpc dataStreamClientRpc, RaftProperties properties) {</span>
+<span class="nc" id="L81">    this.skipSendForward = RaftConfigKeys.DataStream.skipSendForward(properties, LOG::info);</span>
+<span class="nc" id="L82">    this.client = null;</span>
+<span class="nc" id="L83">    this.clientId = clientId;</span>
+<span class="nc" id="L84">    this.groupId = groupId;</span>
+<span class="nc" id="L85">    this.dataStreamServer = dataStreamServer;</span>
+<span class="nc" id="L86">    this.dataStreamClientRpc = dataStreamClientRpc;</span>
+<span class="nc" id="L87">    this.orderedStreamAsync = new OrderedStreamAsync(dataStreamClientRpc, properties);</span>
+<span class="nc" id="L88">  }</span>
+
+  DataStreamClientImpl(RaftClient client, RaftPeer dataStreamServer,
+<span class="nc" id="L91">      DataStreamClientRpc dataStreamClientRpc, RaftProperties properties) {</span>
+<span class="nc" id="L92">    this.skipSendForward = RaftConfigKeys.DataStream.skipSendForward(properties, LOG::info);</span>
+<span class="nc" id="L93">    this.client = client;</span>
+<span class="nc" id="L94">    this.clientId = client.getId();</span>
+<span class="nc" id="L95">    this.groupId = client.getGroupId();</span>
+<span class="nc" id="L96">    this.dataStreamServer = dataStreamServer;</span>
+<span class="nc" id="L97">    this.dataStreamClientRpc = dataStreamClientRpc;</span>
+<span class="nc" id="L98">    this.orderedStreamAsync = new OrderedStreamAsync(dataStreamClientRpc, properties);</span>
+<span class="nc" id="L99">  }</span>
+
+  public final class DataStreamOutputImpl implements DataStreamOutputRpc {
+    private final RaftClientRequest header;
+    private final CompletableFuture&lt;DataStreamReply&gt; headerFuture;
+    private final SlidingWindow.Client&lt;OrderedStreamAsync.DataStreamWindowRequest, DataStreamReply&gt; slidingWindow;
+<span class="nc" id="L105">    private final CompletableFuture&lt;RaftClientReply&gt; raftClientReplyFuture = new CompletableFuture&lt;&gt;();</span>
+    private CompletableFuture&lt;DataStreamReply&gt; closeFuture;
+<span class="nc" id="L107">    private final MemoizedSupplier&lt;WritableByteChannel&gt; writableByteChannelSupplier</span>
+<span class="nc" id="L108">        = JavaUtils.memoize(() -&gt; new WritableByteChannel() {</span>
+      @Override
+      public int write(ByteBuffer src) throws IOException {
+<span class="nc" id="L111">        final int remaining = src.remaining();</span>
+        // flush each call; otherwise the future will not be completed.
+<span class="nc" id="L113">        final DataStreamReply reply = IOUtils.getFromFuture(writeAsync(src, StandardWriteOption.FLUSH),</span>
+<span class="nc" id="L114">            () -&gt; &quot;write(&quot; + remaining + &quot; bytes for &quot; + ClientInvocationId.valueOf(header) + &quot;)&quot;);</span>
+<span class="nc" id="L115">        return Math.toIntExact(reply.getBytesWritten());</span>
+      }
+
+      @Override
+      public boolean isOpen() {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        return !isClosed();</span>
+      }
+
+      @Override
+      public void close() throws IOException {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (isClosed()) {</span>
+<span class="nc" id="L126">          return;</span>
+        }
+<span class="nc" id="L128">        IOUtils.getFromFuture(writeAsync(DataStreamPacketByteBuffer.EMPTY_BYTE_BUFFER, StandardWriteOption.CLOSE),</span>
+<span class="nc" id="L129">            () -&gt; &quot;close(&quot; + ClientInvocationId.valueOf(header) + &quot;)&quot;);</span>
+<span class="nc" id="L130">      }</span>
+    });
+
+<span class="nc" id="L133">    private long streamOffset = 0;</span>
+
+<span class="nc" id="L135">    private DataStreamOutputImpl(RaftClientRequest request) {</span>
+<span class="nc" id="L136">      this.header = request;</span>
+<span class="nc" id="L137">      this.slidingWindow = new SlidingWindow.Client&lt;&gt;(ClientInvocationId.valueOf(clientId, header.getCallId()));</span>
+<span class="nc" id="L138">      final ByteBuffer buffer = ClientProtoUtils.toRaftClientRequestProtoByteBuffer(header);</span>
+      // TODO: RATIS-1938: In order not to auto-flush the header, remove the FLUSH below.
+<span class="nc" id="L140">      this.headerFuture = send(Type.STREAM_HEADER, buffer, buffer.remaining(),</span>
+<span class="nc" id="L141">          Collections.singleton(StandardWriteOption.FLUSH));</span>
+<span class="nc" id="L142">    }</span>
+    private CompletableFuture&lt;DataStreamReply&gt; send(Type type, Object data, long length,
+                                                    Iterable&lt;WriteOption&gt; options) {
+<span class="nc" id="L145">      final DataStreamRequestHeader h =</span>
+<span class="nc" id="L146">          new DataStreamRequestHeader(header.getClientId(), type, header.getCallId(), streamOffset, length, options);</span>
+<span class="nc" id="L147">      return orderedStreamAsync.sendRequest(h, data, slidingWindow);</span>
+    }
+
+    private CompletableFuture&lt;DataStreamReply&gt; combineHeader(CompletableFuture&lt;DataStreamReply&gt; future) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">      return future.thenCombine(headerFuture, (reply, headerReply) -&gt; headerReply.isSuccess()? reply : headerReply);</span>
+    }
+
+    private CompletableFuture&lt;DataStreamReply&gt; writeAsyncImpl(Object data, long length, Iterable&lt;WriteOption&gt; options) {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        if (data instanceof ByteBuf) {</span>
+<span class="nc" id="L157">          ((ByteBuf) data).release();</span>
+        }
+<span class="nc" id="L159">        return JavaUtils.completeExceptionally(new AlreadyClosedException(</span>
+<span class="nc" id="L160">            clientId + &quot;: stream already closed, request=&quot; + header));</span>
+      }
+<span class="nc" id="L162">      final CompletableFuture&lt;DataStreamReply&gt; f = combineHeader(send(Type.STREAM_DATA, data, length, options));</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">      if (WriteOption.containsOption(options, StandardWriteOption.CLOSE)) {</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (skipSendForward) {</span>
+<span class="nc" id="L165">          closeFuture = f;</span>
+        } else {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">          closeFuture = client != null? f.thenCompose(this::sendForward): f;</span>
+        }
+<span class="nc" id="L169">        closeFuture.thenApply(ClientProtoUtils::getRaftClientReply)</span>
+<span class="nc" id="L170">            .whenComplete(JavaUtils.asBiConsumer(raftClientReplyFuture));</span>
+      }
+<span class="nc" id="L172">      streamOffset += length;</span>
+<span class="nc" id="L173">      return f;</span>
+    }
+
+    public CompletableFuture&lt;DataStreamReply&gt; writeAsync(ByteBuf src, Iterable&lt;WriteOption&gt; options) {
+<span class="nc" id="L177">      return writeAsyncImpl(src, src.readableBytes(), options);</span>
+    }
+
+    @Override
+    public CompletableFuture&lt;DataStreamReply&gt; writeAsync(ByteBuffer src, Iterable&lt;WriteOption&gt; options) {
+<span class="nc" id="L182">      return writeAsyncImpl(src, src.remaining(), options);</span>
+    }
+
+    @Override
+    public CompletableFuture&lt;DataStreamReply&gt; writeAsync(FilePositionCount src, WriteOption... options) {
+<span class="nc" id="L187">      return writeAsyncImpl(src, src.getCount(), Arrays.asList(options));</span>
+    }
+
+    boolean isClosed() {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">      return closeFuture != null;</span>
+    }
+
+    @Override
+    public CompletableFuture&lt;DataStreamReply&gt; closeAsync() {
+<span class="nc bnc" id="L196" title="All 2 branches missed.">      if (!isClosed()) {</span>
+<span class="nc" id="L197">        writeAsync(DataStreamPacketByteBuffer.EMPTY_BYTE_BUFFER, StandardWriteOption.CLOSE);</span>
+      }
+<span class="nc" id="L199">      return Objects.requireNonNull(closeFuture, &quot;closeFuture == null&quot;);</span>
+    }
+
+    public RaftClientRequest getHeader() {
+<span class="nc" id="L203">      return header;</span>
+    }
+
+    @Override
+    public CompletableFuture&lt;DataStreamReply&gt; getHeaderFuture() {
+<span class="nc" id="L208">      return headerFuture;</span>
+    }
+
+    @Override
+    public CompletableFuture&lt;RaftClientReply&gt; getRaftClientReplyFuture() {
+<span class="nc" id="L213">      return raftClientReplyFuture;</span>
+    }
+
+    @Override
+    public WritableByteChannel getWritableByteChannel() {
+<span class="nc" id="L218">      return writableByteChannelSupplier.get();</span>
+    }
+
+    private CompletableFuture&lt;DataStreamReply&gt; sendForward(DataStreamReply writeReply) {
+<span class="nc" id="L222">      LOG.debug(&quot;sendForward {}&quot;, writeReply);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">      if (!writeReply.isSuccess()) {</span>
+<span class="nc" id="L224">        return CompletableFuture.completedFuture(writeReply);</span>
+      }
+<span class="nc" id="L226">      final AsyncRpcApi asyncRpc = (AsyncRpcApi) client.async();</span>
+<span class="nc" id="L227">      return asyncRpc.sendForward(header).thenApply(clientReply -&gt; DataStreamReplyByteBuffer.newBuilder()</span>
+<span class="nc" id="L228">          .setClientId(clientId)</span>
+<span class="nc" id="L229">          .setType(writeReply.getType())</span>
+<span class="nc" id="L230">          .setStreamId(writeReply.getStreamId())</span>
+<span class="nc" id="L231">          .setStreamOffset(writeReply.getStreamOffset())</span>
+<span class="nc" id="L232">          .setBuffer(ClientProtoUtils.toRaftClientReplyProto(clientReply).toByteString().asReadOnlyByteBuffer())</span>
+<span class="nc" id="L233">          .setSuccess(clientReply.isSuccess())</span>
+<span class="nc" id="L234">          .setBytesWritten(writeReply.getBytesWritten())</span>
+<span class="nc" id="L235">          .setCommitInfos(clientReply.getCommitInfos())</span>
+<span class="nc" id="L236">          .build());</span>
+    }
+  }
+
+  @Override
+  public DataStreamClientRpc getClientRpc() {
+<span class="nc" id="L242">    return dataStreamClientRpc;</span>
+  }
+
+  @Override
+  public DataStreamOutputImpl stream(RaftClientRequest request) {
+<span class="nc" id="L247">    return new DataStreamOutputImpl(request);</span>
+  }
+
+  @Override
+  public DataStreamOutputRpc stream(ByteBuffer headerMessage) {
+<span class="nc" id="L252">    return stream(headerMessage, null);</span>
+  }
+
+  @Override
+  public DataStreamOutputRpc stream(ByteBuffer headerMessage, RoutingTable routingTable) {
+<span class="nc bnc" id="L257" title="All 2 branches missed.">    if (routingTable != null) {</span>
+      // Validate that the primary peer is equal to the primary peer passed by the RoutingTable
+<span class="nc" id="L259">      Preconditions.assertTrue(dataStreamServer.getId().equals(routingTable.getPrimary()),</span>
+<span class="nc" id="L260">          () -&gt; &quot;Primary peer mismatched: the routing table has &quot; + routingTable.getPrimary()</span>
+<span class="nc" id="L261">              + &quot; but the client has &quot; + dataStreamServer.getId());</span>
+    }
+<span class="nc" id="L263">    final Message message =</span>
+<span class="nc" id="L264">        Optional.ofNullable(headerMessage).map(ByteString::copyFrom).map(Message::valueOf).orElse(null);</span>
+<span class="nc" id="L265">    RaftClientRequest request = RaftClientRequest.newBuilder()</span>
+<span class="nc" id="L266">        .setClientId(clientId)</span>
+<span class="nc" id="L267">        .setServerId(dataStreamServer.getId())</span>
+<span class="nc" id="L268">        .setGroupId(groupId)</span>
+<span class="nc" id="L269">        .setCallId(CallId.getAndIncrement())</span>
+<span class="nc" id="L270">        .setMessage(message)</span>
+<span class="nc" id="L271">        .setType(RaftClientRequest.dataStreamRequestType())</span>
+<span class="nc" id="L272">        .setRoutingTable(routingTable)</span>
+<span class="nc" id="L273">        .build();</span>
+<span class="nc" id="L274">    return new DataStreamOutputImpl(request);</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc" id="L279">    dataStreamClientRpc.close();</span>
+<span class="nc" id="L280">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

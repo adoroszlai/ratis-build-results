@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaderElection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">LeaderElection.java</span></div><h1>LeaderElection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.proto.RaftProtos.RequestVoteReplyProto;
+import org.apache.ratis.proto.RaftProtos.RequestVoteRequestProto;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.DivisionInfo;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.ratis.util.Daemon;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.LogUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.Timestamp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.apache.ratis.util.LifeCycle.State.NEW;
+import static org.apache.ratis.util.LifeCycle.State.RUNNING;
+import static org.apache.ratis.util.LifeCycle.State.STARTING;
+
+/**
+ * For a candidate to start an election for becoming the leader.
+ * There are two phases: Pre-Vote and Election.
+ * &lt;p&gt;
+ * In Pre-Vote, the candidate does not change its term and try to learn
+ * if a majority of the cluster would be willing to grant the candidate their votes
+ * (if the candidate’s log is sufficiently up-to-date,
+ * and the voters have not received heartbeats from a valid leader
+ * for at least a baseline election timeout).
+ * &lt;p&gt;
+ * Once the Pre-Vote has passed, the candidate increments its term and starts a real Election.
+ * &lt;p&gt;
+ * See
+ * Ongaro, D. Consensus: Bridging Theory and Practice. PhD thesis, Stanford University, 2014.
+ * Available at https://github.com/ongardie/dissertation
+ */
+class LeaderElection implements Runnable {
+<span class="nc" id="L80">  public static final Logger LOG = LoggerFactory.getLogger(LeaderElection.class);</span>
+
+  private ResultAndTerm logAndReturn(Phase phase, Result result, Map&lt;RaftPeerId, RequestVoteReplyProto&gt; responses,
+      List&lt;Exception&gt; exceptions) {
+<span class="nc" id="L84">    return logAndReturn(phase, result, responses, exceptions, null);</span>
+  }
+
+  private ResultAndTerm logAndReturn(Phase phase, Result result, Map&lt;RaftPeerId, RequestVoteReplyProto&gt; responses,
+      List&lt;Exception&gt; exceptions, Long newTerm) {
+<span class="nc" id="L89">    final ResultAndTerm resultAndTerm = new ResultAndTerm(result, newTerm);</span>
+<span class="nc" id="L90">    LOG.info(&quot;{}: {} {} received {} response(s) and {} exception(s):&quot;,</span>
+<span class="nc" id="L91">        this, phase, resultAndTerm, responses.size(), exceptions.size());</span>
+<span class="nc" id="L92">    int i = 0;</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">    for(RequestVoteReplyProto reply : responses.values()) {</span>
+<span class="nc" id="L94">      LOG.info(&quot;  Response {}: {}&quot;, i++, ServerStringUtils.toRequestVoteReplyString(reply));</span>
+<span class="nc" id="L95">    }</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    for(Exception e : exceptions) {</span>
+<span class="nc" id="L97">      final int j = i++;</span>
+<span class="nc" id="L98">      LogUtils.infoOrTrace(LOG, () -&gt; &quot;  Exception &quot; + j, e);</span>
+<span class="nc" id="L99">    }</span>
+<span class="nc" id="L100">    return resultAndTerm;</span>
+  }
+
+<span class="nc" id="L103">  enum Phase {</span>
+<span class="nc" id="L104">    PRE_VOTE,</span>
+<span class="nc" id="L105">    ELECTION</span>
+  }
+
+<span class="nc" id="L108">  enum Result {PASSED, SINGLE_MODE_PASSED, REJECTED, TIMEOUT, DISCOVERED_A_NEW_TERM, SHUTDOWN, NOT_IN_CONF}</span>
+
+  private static class ResultAndTerm {
+    private final Result result;
+    private final Long term;
+
+<span class="nc" id="L114">    ResultAndTerm(Result result, Long term) {</span>
+<span class="nc" id="L115">      this.result = result;</span>
+<span class="nc" id="L116">      this.term = term;</span>
+<span class="nc" id="L117">    }</span>
+
+    long maxTerm(long thatTerm) {
+<span class="nc bnc" id="L120" title="All 4 branches missed.">      return this.term != null &amp;&amp; this.term &gt; thatTerm ? this.term: thatTerm;</span>
+    }
+
+    Result getResult() {
+<span class="nc" id="L124">      return result;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      return result + (term != null? &quot; (term=&quot; + term + &quot;)&quot;: &quot;&quot;);</span>
+    }
+  }
+
+  static class Executor {
+    private final ExecutorCompletionService&lt;RequestVoteReplyProto&gt; service;
+    private final ExecutorService executor;
+
+<span class="nc" id="L137">    private final AtomicInteger count = new AtomicInteger();</span>
+
+<span class="nc" id="L139">    Executor(Object name, int size) {</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">      Preconditions.assertTrue(size &gt; 0);</span>
+<span class="nc" id="L141">      executor = Executors.newFixedThreadPool(size, r -&gt;</span>
+<span class="nc" id="L142">          Daemon.newBuilder().setName(name + &quot;-&quot; + count.incrementAndGet()).setRunnable(r).build());</span>
+<span class="nc" id="L143">      service = new ExecutorCompletionService&lt;&gt;(executor);</span>
+<span class="nc" id="L144">    }</span>
+
+    void shutdown() {
+<span class="nc" id="L147">      executor.shutdownNow();</span>
+<span class="nc" id="L148">    }</span>
+
+    void submit(Callable&lt;RequestVoteReplyProto&gt; task) {
+<span class="nc" id="L151">      service.submit(task);</span>
+<span class="nc" id="L152">    }</span>
+
+    Future&lt;RequestVoteReplyProto&gt; poll(TimeDuration waitTime) throws InterruptedException {
+<span class="nc" id="L155">      return service.poll(waitTime.getDuration(), waitTime.getUnit());</span>
+    }
+  }
+
+  static class ConfAndTerm {
+    private final RaftConfigurationImpl conf;
+    private final long term;
+
+<span class="nc" id="L163">    ConfAndTerm(RaftConfigurationImpl conf, long term) {</span>
+<span class="nc" id="L164">      this.conf = conf;</span>
+<span class="nc" id="L165">      this.term = term;</span>
+<span class="nc" id="L166">    }</span>
+
+    long getTerm() {
+<span class="nc" id="L169">      return term;</span>
+    }
+
+    RaftConfigurationImpl getConf() {
+<span class="nc" id="L173">      return conf;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L178">      return &quot;term=&quot; + term + &quot;, &quot; + conf;</span>
+    }
+  }
+
+<span class="nc" id="L182">  private static final AtomicInteger COUNT = new AtomicInteger();</span>
+
+  private final String name;
+  private final LifeCycle lifeCycle;
+  private final Daemon daemon;
+<span class="nc" id="L187">  private final CompletableFuture&lt;Void&gt; stopped = new CompletableFuture&lt;&gt;();</span>
+
+  private final RaftServerImpl server;
+  private final boolean skipPreVote;
+  private final ConfAndTerm round0;
+
+<span class="nc" id="L193">  LeaderElection(RaftServerImpl server, boolean force) {</span>
+<span class="nc" id="L194">    this.name = server.getMemberId() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass()) + COUNT.incrementAndGet();</span>
+<span class="nc" id="L195">    this.lifeCycle = new LifeCycle(this);</span>
+<span class="nc" id="L196">    this.daemon = Daemon.newBuilder().setName(name).setRunnable(this)</span>
+<span class="nc" id="L197">        .setThreadGroup(server.getThreadGroup()).build();</span>
+<span class="nc" id="L198">    this.server = server;</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">    this.skipPreVote = force ||</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        !RaftServerConfigKeys.LeaderElection.preVote(</span>
+<span class="nc" id="L201">            server.getRaftServer().getProperties());</span>
+    try {
+      // increase term of the candidate in advance if it's forced to election
+<span class="nc bnc" id="L204" title="All 2 branches missed.">      this.round0 = force ? server.getState().initElection(Phase.ELECTION) : null;</span>
+<span class="nc" id="L205">    } catch (IOException e) {</span>
+<span class="nc" id="L206">      throw new IllegalStateException(name + &quot;: Failed to initialize election&quot;, e);</span>
+<span class="nc" id="L207">    }</span>
+<span class="nc" id="L208">  }</span>
+
+  void start() {
+<span class="nc" id="L211">    startIfNew(daemon::start);</span>
+<span class="nc" id="L212">  }</span>
+
+  @VisibleForTesting
+  void startInForeground() {
+<span class="nc" id="L216">    startIfNew(this);</span>
+<span class="nc" id="L217">  }</span>
+
+  private void startIfNew(Runnable starter) {
+<span class="nc bnc" id="L220" title="All 2 branches missed.">    if (lifeCycle.compareAndTransition(NEW, STARTING)) {</span>
+<span class="nc" id="L221">      starter.run();</span>
+    } else {
+<span class="nc" id="L223">      final LifeCycle.State state = lifeCycle.getCurrentState();</span>
+<span class="nc" id="L224">      LOG.info(&quot;{}: skip starting since this is already {}&quot;, this, state);</span>
+    }
+<span class="nc" id="L226">  }</span>
+
+  CompletableFuture&lt;Void&gt; shutdown() {
+<span class="nc" id="L229">    lifeCycle.checkStateAndClose();</span>
+<span class="nc" id="L230">    return stopped;</span>
+  }
+
+  @VisibleForTesting
+  LifeCycle.State getCurrentState() {
+<span class="nc" id="L235">    return lifeCycle.getCurrentState();</span>
+  }
+
+  @Override
+  public void run() {
+    try {
+<span class="nc" id="L241">      runImpl();</span>
+    } finally {
+<span class="nc" id="L243">      stopped.complete(null);</span>
+    }
+<span class="nc" id="L245">  }</span>
+
+  private void runImpl() {
+<span class="nc bnc" id="L248" title="All 2 branches missed.">    if (!lifeCycle.compareAndTransition(STARTING, RUNNING)) {</span>
+<span class="nc" id="L249">      final LifeCycle.State state = lifeCycle.getCurrentState();</span>
+<span class="nc" id="L250">      LOG.info(&quot;{}: skip running since this is already {}&quot;, this, state);</span>
+<span class="nc" id="L251">      return;</span>
+    }
+
+<span class="nc" id="L254">    try (AutoCloseable ignored = Timekeeper.start(server.getLeaderElectionMetrics().getLeaderElectionTimer())) {</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">      for (int round = 0; shouldRun(); round++) {</span>
+<span class="nc bnc" id="L256" title="All 4 branches missed.">        if (skipPreVote || askForVotes(Phase.PRE_VOTE, round)) {</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">          if (askForVotes(Phase.ELECTION, round)) {</span>
+<span class="nc" id="L258">            server.changeToLeader();</span>
+          }
+        }
+      }
+<span class="nc" id="L262">    } catch(Exception e) {</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">      if (e instanceof InterruptedException) {</span>
+<span class="nc" id="L264">          Thread.currentThread().interrupt();</span>
+      }
+<span class="nc" id="L266">      final LifeCycle.State state = lifeCycle.getCurrentState();</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">      if (state.isClosingOrClosed()) {</span>
+<span class="nc" id="L268">        LOG.info(this + &quot;: since this is already &quot; + state + &quot;, safely ignore &quot; + e);</span>
+      } else {
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (!server.getInfo().isAlive()) {</span>
+<span class="nc" id="L271">          LOG.info(this + &quot;: since the server is not alive, safely ignore &quot; + e);</span>
+        } else {
+<span class="nc" id="L273">          LOG.error(&quot;{}: Failed, state={}&quot;, this, state, e);</span>
+        }
+<span class="nc" id="L275">        shutdown();</span>
+      }
+    } finally {
+      // Update leader election completion metric(s).
+<span class="nc" id="L279">      server.getLeaderElectionMetrics().onNewLeaderElectionCompletion();</span>
+<span class="nc" id="L280">      lifeCycle.checkStateAndClose(() -&gt; {});</span>
+    }
+<span class="nc" id="L282">  }</span>
+
+  private boolean shouldRun() {
+<span class="nc" id="L285">    final DivisionInfo info = server.getInfo();</span>
+<span class="nc bnc" id="L286" title="All 6 branches missed.">    return lifeCycle.getCurrentState().isRunning() &amp;&amp; info.isCandidate() &amp;&amp; info.isAlive();</span>
+  }
+
+  private boolean shouldRun(long electionTerm) {
+<span class="nc bnc" id="L290" title="All 4 branches missed.">    return shouldRun() &amp;&amp; server.getState().getCurrentTerm() == electionTerm;</span>
+  }
+
+  private ResultAndTerm submitRequestAndWaitResult(Phase phase, RaftConfigurationImpl conf, long electionTerm)
+      throws InterruptedException {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">    if (!conf.containsInConf(server.getId())) {</span>
+<span class="nc" id="L296">      return new ResultAndTerm(Result.NOT_IN_CONF, electionTerm);</span>
+    }
+    final ResultAndTerm r;
+<span class="nc" id="L299">    final Collection&lt;RaftPeer&gt; others = conf.getOtherPeers(server.getId());</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">    if (others.isEmpty()) {</span>
+<span class="nc" id="L301">      r = new ResultAndTerm(Result.PASSED, electionTerm);</span>
+    } else {
+<span class="nc" id="L303">      final TermIndex lastEntry = server.getState().getLastEntry();</span>
+<span class="nc" id="L304">      final Executor voteExecutor = new Executor(this, others.size());</span>
+      try {
+<span class="nc" id="L306">        final int submitted = submitRequests(phase, electionTerm, lastEntry, others, voteExecutor);</span>
+<span class="nc" id="L307">        r = waitForResults(phase, electionTerm, submitted, conf, voteExecutor);</span>
+      } finally {
+<span class="nc" id="L309">        voteExecutor.shutdown();</span>
+      }
+    }
+
+<span class="nc" id="L313">    return r;</span>
+  }
+
+  /** Send requestVote rpc to all other peers for the given phase. */
+  private boolean askForVotes(Phase phase, int round) throws InterruptedException, IOException {
+    final long electionTerm;
+    final RaftConfigurationImpl conf;
+<span class="nc" id="L320">    synchronized (server) {</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">      if (!shouldRun()) {</span>
+<span class="nc" id="L322">        return false;</span>
+      }
+      // If round0 is non-null, we have already called initElection in the constructor,
+      // reuse round0 to avoid initElection again for the first round
+<span class="nc bnc" id="L326" title="All 4 branches missed.">      final ConfAndTerm confAndTerm = (round == 0 &amp;&amp; round0 != null) ?</span>
+<span class="nc" id="L327">          round0 : server.getState().initElection(phase);</span>
+<span class="nc" id="L328">      electionTerm = confAndTerm.getTerm();</span>
+<span class="nc" id="L329">      conf = confAndTerm.getConf();</span>
+<span class="nc" id="L330">    }</span>
+
+<span class="nc" id="L332">    LOG.info(&quot;{} {} round {}: submit vote requests at term {} for {}&quot;, this, phase, round, electionTerm, conf);</span>
+<span class="nc" id="L333">    final ResultAndTerm r = submitRequestAndWaitResult(phase, conf, electionTerm);</span>
+<span class="nc" id="L334">    LOG.info(&quot;{} {} round {}: result {}&quot;, this, phase, round, r);</span>
+
+<span class="nc" id="L336">    synchronized (server) {</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">      if (!shouldRun(electionTerm)) {</span>
+<span class="nc" id="L338">        return false; // term already passed or this should not run anymore.</span>
+      }
+
+<span class="nc bnc" id="L341" title="All 5 branches missed.">      switch (r.getResult()) {</span>
+        case PASSED:
+        case SINGLE_MODE_PASSED:
+<span class="nc" id="L344">          return true;</span>
+        case NOT_IN_CONF:
+        case SHUTDOWN:
+<span class="nc" id="L347">          server.close();</span>
+<span class="nc" id="L348">          server.getStateMachine().event().notifyServerShutdown(server.getRoleInfoProto(), false);</span>
+<span class="nc" id="L349">          return false;</span>
+        case TIMEOUT:
+<span class="nc" id="L351">          return false; // should retry</span>
+        case REJECTED:
+        case DISCOVERED_A_NEW_TERM:
+<span class="nc" id="L354">          final long term = r.maxTerm(server.getState().getCurrentTerm());</span>
+<span class="nc" id="L355">          server.changeToFollowerAndPersistMetadata(term, false, r);</span>
+<span class="nc" id="L356">          return false;</span>
+<span class="nc" id="L357">        default: throw new IllegalArgumentException(&quot;Unable to process result &quot; + r.result);</span>
+      }
+    }
+  }
+
+  private int submitRequests(Phase phase, long electionTerm, TermIndex lastEntry,
+      Collection&lt;RaftPeer&gt; others, Executor voteExecutor) {
+<span class="nc" id="L364">    int submitted = 0;</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">    for (final RaftPeer peer : others) {</span>
+<span class="nc" id="L366">      final RequestVoteRequestProto r = ServerProtoUtils.toRequestVoteRequestProto(</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">          server.getMemberId(), peer.getId(), electionTerm, lastEntry, phase == Phase.PRE_VOTE);</span>
+<span class="nc" id="L368">      voteExecutor.submit(() -&gt; server.getServerRpc().requestVote(r));</span>
+<span class="nc" id="L369">      submitted++;</span>
+<span class="nc" id="L370">    }</span>
+<span class="nc" id="L371">    return submitted;</span>
+  }
+
+  private Set&lt;RaftPeerId&gt; getHigherPriorityPeers(RaftConfiguration conf) {
+<span class="nc" id="L375">    final Optional&lt;Integer&gt; priority = Optional.ofNullable(conf.getPeer(server.getId()))</span>
+<span class="nc" id="L376">        .map(RaftPeer::getPriority);</span>
+<span class="nc" id="L377">    return conf.getAllPeers().stream()</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        .filter(peer -&gt; priority.filter(p -&gt; peer.getPriority() &gt; p).isPresent())</span>
+<span class="nc" id="L379">        .map(RaftPeer::getId)</span>
+<span class="nc" id="L380">        .collect(Collectors.toSet());</span>
+  }
+
+  private ResultAndTerm waitForResults(Phase phase, long electionTerm, int submitted,
+      RaftConfigurationImpl conf, Executor voteExecutor) throws InterruptedException {
+<span class="nc" id="L385">    final Timestamp timeout = Timestamp.currentTime().addTime(server.getRandomElectionTimeout());</span>
+<span class="nc" id="L386">    final Map&lt;RaftPeerId, RequestVoteReplyProto&gt; responses = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L387">    final List&lt;Exception&gt; exceptions = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L388">    int waitForNum = submitted;</span>
+<span class="nc" id="L389">    Collection&lt;RaftPeerId&gt; votedPeers = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L390">    Collection&lt;RaftPeerId&gt; rejectedPeers = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L391">    Set&lt;RaftPeerId&gt; higherPriorityPeers = getHigherPriorityPeers(conf);</span>
+<span class="nc" id="L392">    final boolean singleMode = conf.isSingleMode(server.getId());</span>
+
+<span class="nc bnc" id="L394" title="All 4 branches missed.">    while (waitForNum &gt; 0 &amp;&amp; shouldRun(electionTerm)) {</span>
+<span class="nc" id="L395">      final TimeDuration waitTime = timeout.elapsedTime().apply(n -&gt; -n);</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">      if (waitTime.isNonPositive()) {</span>
+<span class="nc bnc" id="L397" title="All 2 branches missed.">        if (conf.hasMajority(votedPeers, server.getId())) {</span>
+          // if some higher priority peer did not response when timeout, but candidate get majority,
+          // candidate pass vote
+<span class="nc" id="L400">          return logAndReturn(phase, Result.PASSED, responses, exceptions);</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        } else if (singleMode) {</span>
+          // if candidate is in single mode, candidate pass vote.
+<span class="nc" id="L403">          return logAndReturn(phase, Result.SINGLE_MODE_PASSED, responses, exceptions);</span>
+        } else {
+<span class="nc" id="L405">          return logAndReturn(phase, Result.TIMEOUT, responses, exceptions);</span>
+        }
+      }
+
+      try {
+<span class="nc" id="L410">        final Future&lt;RequestVoteReplyProto&gt; future = voteExecutor.poll(waitTime);</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">        if (future == null) {</span>
+<span class="nc" id="L412">          continue; // poll timeout, continue to return Result.TIMEOUT</span>
+        }
+
+<span class="nc" id="L415">        final RequestVoteReplyProto r = future.get();</span>
+<span class="nc" id="L416">        final RaftPeerId replierId = RaftPeerId.valueOf(r.getServerReply().getReplyId());</span>
+<span class="nc" id="L417">        final RequestVoteReplyProto previous = responses.putIfAbsent(replierId, r);</span>
+<span class="nc bnc" id="L418" title="All 2 branches missed.">        if (previous != null) {</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">          if (LOG.isWarnEnabled()) {</span>
+<span class="nc" id="L420">            LOG.warn(&quot;{} received duplicated replies from {}, the 2nd reply is ignored: 1st={}, 2nd={}&quot;,</span>
+                this, replierId,
+<span class="nc" id="L422">                ServerStringUtils.toRequestVoteReplyString(previous),</span>
+<span class="nc" id="L423">                ServerStringUtils.toRequestVoteReplyString(r));</span>
+          }
+<span class="nc" id="L425">          continue;</span>
+        }
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        if (r.getShouldShutdown()) {</span>
+<span class="nc" id="L428">          return logAndReturn(phase, Result.SHUTDOWN, responses, exceptions);</span>
+        }
+<span class="nc bnc" id="L430" title="All 2 branches missed.">        if (r.getTerm() &gt; electionTerm) {</span>
+<span class="nc" id="L431">          return logAndReturn(phase, Result.DISCOVERED_A_NEW_TERM, responses, exceptions, r.getTerm());</span>
+        }
+
+        // If any peer with higher priority rejects vote, candidate can not pass vote
+<span class="nc bnc" id="L435" title="All 6 branches missed.">        if (!r.getServerReply().getSuccess() &amp;&amp; higherPriorityPeers.contains(replierId) &amp;&amp; !singleMode) {</span>
+<span class="nc" id="L436">          return logAndReturn(phase, Result.REJECTED, responses, exceptions);</span>
+        }
+
+        // remove higher priority peer, so that we check higherPriorityPeers empty to make sure
+        // all higher priority peers have replied
+<span class="nc" id="L441">        higherPriorityPeers.remove(replierId);</span>
+
+<span class="nc bnc" id="L443" title="All 2 branches missed.">        if (r.getServerReply().getSuccess()) {</span>
+<span class="nc" id="L444">          votedPeers.add(replierId);</span>
+          // If majority and all peers with higher priority have voted, candidate pass vote
+<span class="nc bnc" id="L446" title="All 4 branches missed.">          if (higherPriorityPeers.isEmpty() &amp;&amp; conf.hasMajority(votedPeers, server.getId())) {</span>
+<span class="nc" id="L447">            return logAndReturn(phase, Result.PASSED, responses, exceptions);</span>
+          }
+        } else {
+<span class="nc" id="L450">          rejectedPeers.add(replierId);</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">          if (conf.majorityRejectVotes(rejectedPeers)) {</span>
+<span class="nc" id="L452">            return logAndReturn(phase, Result.REJECTED, responses, exceptions);</span>
+          }
+        }
+<span class="nc" id="L455">      } catch(ExecutionException e) {</span>
+<span class="nc" id="L456">        LogUtils.infoOrTrace(LOG, () -&gt; this + &quot; got exception when requesting votes&quot;, e);</span>
+<span class="nc" id="L457">        exceptions.add(e);</span>
+<span class="nc" id="L458">      }</span>
+<span class="nc" id="L459">      waitForNum--;</span>
+<span class="nc" id="L460">    }</span>
+    // received all the responses
+<span class="nc bnc" id="L462" title="All 2 branches missed.">    if (conf.hasMajority(votedPeers, server.getId())) {</span>
+<span class="nc" id="L463">      return logAndReturn(phase, Result.PASSED, responses, exceptions);</span>
+<span class="nc bnc" id="L464" title="All 2 branches missed.">    } else if (singleMode) {</span>
+<span class="nc" id="L465">      return logAndReturn(phase, Result.SINGLE_MODE_PASSED, responses, exceptions);</span>
+    } else {
+<span class="nc" id="L467">      return logAndReturn(phase, Result.REJECTED, responses, exceptions);</span>
+    }
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L473">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

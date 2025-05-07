@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftClientConfigKeys.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client</a> &gt; <span class="el_source">RaftClientConfigKeys.java</span></div><h1>RaftClientConfigKeys.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import static org.apache.ratis.conf.ConfUtils.*;
+
+public interface RaftClientConfigKeys {
+<span class="nc" id="L33">  Logger LOG = LoggerFactory.getLogger(RaftClientConfigKeys.class);</span>
+
+  static Consumer&lt;String&gt; getDefaultLog() {
+<span class="nc" id="L36">    return LOG::debug;</span>
+  }
+
+  String PREFIX = &quot;raft.client&quot;;
+
+  interface Rpc {
+    String PREFIX = RaftClientConfigKeys.PREFIX + &quot;.rpc&quot;;
+
+    String REQUEST_TIMEOUT_KEY = PREFIX + &quot;.request.timeout&quot;;
+<span class="nc" id="L45">    TimeDuration REQUEST_TIMEOUT_DEFAULT = TimeDuration.valueOf(3, TimeUnit.SECONDS);</span>
+    static TimeDuration requestTimeout(RaftProperties properties) {
+<span class="nc" id="L47">      return getTimeDuration(properties.getTimeDuration(REQUEST_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L48">          REQUEST_TIMEOUT_KEY, REQUEST_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setRequestTimeout(RaftProperties properties, TimeDuration timeoutDuration) {
+<span class="nc" id="L51">      setTimeDuration(properties::setTimeDuration, REQUEST_TIMEOUT_KEY, timeoutDuration);</span>
+<span class="nc" id="L52">    }</span>
+
+    String WATCH_REQUEST_TIMEOUT_KEY = PREFIX + &quot;.watch.request.timeout&quot;;
+<span class="nc" id="L55">    TimeDuration WATCH_REQUEST_TIMEOUT_DEFAULT = TimeDuration.valueOf(10, TimeUnit.SECONDS);</span>
+    static TimeDuration watchRequestTimeout(RaftProperties properties) {
+<span class="nc" id="L57">      return getTimeDuration(properties.getTimeDuration(WATCH_REQUEST_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L58">          WATCH_REQUEST_TIMEOUT_KEY, WATCH_REQUEST_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setWatchRequestTimeout(RaftProperties properties,
+        TimeDuration timeoutDuration) {
+<span class="nc" id="L62">      setTimeDuration(properties::setTimeDuration, WATCH_REQUEST_TIMEOUT_KEY, timeoutDuration);</span>
+<span class="nc" id="L63">    }</span>
+  }
+
+  interface Async {
+    String PREFIX = RaftClientConfigKeys.PREFIX + &quot;.async&quot;;
+
+    String OUTSTANDING_REQUESTS_MAX_KEY = PREFIX + &quot;.outstanding-requests.max&quot;;
+    int OUTSTANDING_REQUESTS_MAX_DEFAULT = 100;
+    static int outstandingRequestsMax(RaftProperties properties) {
+<span class="nc" id="L72">      return getInt(properties::getInt, OUTSTANDING_REQUESTS_MAX_KEY,</span>
+<span class="nc" id="L73">          OUTSTANDING_REQUESTS_MAX_DEFAULT, getDefaultLog(), requireMin(2));</span>
+    }
+    static void setOutstandingRequestsMax(RaftProperties properties, int outstandingRequests) {
+<span class="nc" id="L76">      setInt(properties::setInt, OUTSTANDING_REQUESTS_MAX_KEY, outstandingRequests);</span>
+<span class="nc" id="L77">    }</span>
+
+    interface Experimental {
+<span class="nc" id="L80">      String PREFIX = Async.PREFIX + &quot;.&quot; + JavaUtils.getClassSimpleName(Experimental.class).toLowerCase();</span>
+
+<span class="nc" id="L82">      String SEND_DUMMY_REQUEST_KEY = PREFIX + &quot;.send-dummy-request&quot;;</span>
+      boolean SEND_DUMMY_REQUEST_DEFAULT = true;
+      static boolean sendDummyRequest(RaftProperties properties) {
+<span class="nc" id="L85">        return getBoolean(properties::getBoolean, SEND_DUMMY_REQUEST_KEY, SEND_DUMMY_REQUEST_DEFAULT, getDefaultLog());</span>
+      }
+      static void setSendDummyRequest(RaftProperties properties, boolean sendDummyRequest) {
+<span class="nc" id="L88">        setBoolean(properties::setBoolean, SEND_DUMMY_REQUEST_KEY, sendDummyRequest);</span>
+<span class="nc" id="L89">      }</span>
+    }
+  }
+
+  interface DataStream {
+    String PREFIX = RaftClientConfigKeys.PREFIX + &quot;.data-stream&quot;;
+
+    String OUTSTANDING_REQUESTS_MAX_KEY = PREFIX + &quot;.outstanding-requests.max&quot;;
+    int OUTSTANDING_REQUESTS_MAX_DEFAULT = 100;
+    static int outstandingRequestsMax(RaftProperties properties) {
+<span class="nc" id="L99">      return getInt(properties::getInt, OUTSTANDING_REQUESTS_MAX_KEY,</span>
+<span class="nc" id="L100">          OUTSTANDING_REQUESTS_MAX_DEFAULT, getDefaultLog(), requireMin(2));</span>
+    }
+    static void setOutstandingRequestsMax(RaftProperties properties, int outstandingRequests) {
+<span class="nc" id="L103">      setInt(properties::setInt, OUTSTANDING_REQUESTS_MAX_KEY, outstandingRequests);</span>
+<span class="nc" id="L104">    }</span>
+
+    String FLUSH_REQUEST_COUNT_MIN_KEY = PREFIX + &quot;.flush.request.count.min&quot;;
+    int FLUSH_REQUEST_COUNT_MIN_DEFAULT = 0;
+    static int flushRequestCountMin(RaftProperties properties) {
+<span class="nc" id="L109">      return getInt(properties::getInt, FLUSH_REQUEST_COUNT_MIN_KEY,</span>
+<span class="nc" id="L110">          FLUSH_REQUEST_COUNT_MIN_DEFAULT, getDefaultLog(), requireMin(0));</span>
+    }
+    static void setFlushRequestCountMin(RaftProperties properties, int flushRequestCountMin) {
+<span class="nc" id="L113">      setInt(properties::setInt, FLUSH_REQUEST_COUNT_MIN_KEY, flushRequestCountMin);</span>
+<span class="nc" id="L114">    }</span>
+
+    String FLUSH_REQUEST_BYTES_MIN_KEY = PREFIX + &quot;.flush.request.bytes.min&quot;;
+<span class="nc" id="L117">    SizeInBytes FLUSH_REQUEST_BYTES_MIN_DEFAULT = SizeInBytes.ONE_MB;</span>
+    static SizeInBytes flushRequestBytesMin(RaftProperties properties) {
+<span class="nc" id="L119">      return getSizeInBytes(properties::getSizeInBytes, FLUSH_REQUEST_BYTES_MIN_KEY,</span>
+<span class="nc" id="L120">          FLUSH_REQUEST_BYTES_MIN_DEFAULT, getDefaultLog(), requireMinSizeInByte(SizeInBytes.ZERO));</span>
+    }
+    static void setFlushRequestBytesMin(RaftProperties properties, SizeInBytes flushRequestBytesMin) {
+<span class="nc" id="L123">      setSizeInBytes(properties::set, FLUSH_REQUEST_BYTES_MIN_KEY, flushRequestBytesMin);</span>
+<span class="nc" id="L124">    }</span>
+
+    String REQUEST_TIMEOUT_KEY = PREFIX + &quot;.request.timeout&quot;;
+<span class="nc" id="L127">    TimeDuration REQUEST_TIMEOUT_DEFAULT = TimeDuration.valueOf(10, TimeUnit.SECONDS);</span>
+    static TimeDuration requestTimeout(RaftProperties properties) {
+<span class="nc" id="L129">      return getTimeDuration(properties.getTimeDuration(REQUEST_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="nc" id="L130">          REQUEST_TIMEOUT_KEY, REQUEST_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setRequestTimeout(RaftProperties properties, TimeDuration timeoutDuration) {
+<span class="nc" id="L133">      setTimeDuration(properties::setTimeDuration, REQUEST_TIMEOUT_KEY, timeoutDuration);</span>
+<span class="nc" id="L134">    }</span>
+  }
+
+  interface MessageStream {
+    String PREFIX = RaftClientConfigKeys.PREFIX + &quot;.message-stream&quot;;
+
+    String SUBMESSAGE_SIZE_KEY = PREFIX + &quot;.submessage-size&quot;;
+<span class="nc" id="L141">    SizeInBytes SUBMESSAGE_SIZE_DEFAULT = SizeInBytes.valueOf(&quot;1MB&quot;);</span>
+    static SizeInBytes submessageSize(RaftProperties properties) {
+<span class="nc" id="L143">      return getSizeInBytes(properties::getSizeInBytes,</span>
+<span class="nc" id="L144">          SUBMESSAGE_SIZE_KEY, SUBMESSAGE_SIZE_DEFAULT, getDefaultLog());</span>
+    }
+    static void setSubmessageSize(RaftProperties properties, SizeInBytes submessageSize) {
+<span class="nc" id="L147">      setSizeInBytes(properties::set, SUBMESSAGE_SIZE_KEY, submessageSize, requireMin(SizeInBytes.ONE_KB));</span>
+<span class="nc" id="L148">    }</span>
+    static void setSubmessageSize(RaftProperties properties) {
+<span class="nc" id="L150">      setSubmessageSize(properties, SUBMESSAGE_SIZE_DEFAULT);</span>
+<span class="nc" id="L151">    }</span>
+  }
+
+  static void main(String[] args) {
+<span class="nc" id="L155">    printAll(RaftClientConfigKeys.class);</span>
+<span class="nc" id="L156">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaderState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">LeaderState.java</span></div><h1>LeaderState.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.util.JavaUtils;
+
+import java.util.List;
+
+/**
+ * States for leader only.
+ */
+public interface LeaderState {
+  /** The reasons that this leader steps down and becomes a follower. */
+<span class="nc" id="L33">  enum StepDownReason {</span>
+<span class="nc" id="L34">    HIGHER_TERM, HIGHER_PRIORITY, LOST_MAJORITY_HEARTBEATS, STATE_MACHINE_EXCEPTION, JVM_PAUSE, FORCE;</span>
+
+<span class="nc" id="L36">    private final String longName = JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + name();</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L40">      return longName;</span>
+    }
+  }
+
+  /** Restart the given {@link LogAppender}. */
+  void restart(LogAppender appender);
+
+  /** @return a new {@link AppendEntriesRequestProto} object. */
+  AppendEntriesRequestProto newAppendEntriesRequestProto(FollowerInfo follower,
+      List&lt;LogEntryProto&gt; entries, TermIndex previous, long callId);
+
+  /** Check if the follower is healthy. */
+  void checkHealth(FollowerInfo follower);
+
+  /** Handle the event that the follower has replied a term. */
+  boolean onFollowerTerm(FollowerInfo follower, long followerTerm);
+
+  /** Handle the event that the follower has replied a commit index. */
+  void onFollowerCommitIndex(FollowerInfo follower, long commitIndex);
+
+  /** Handle the event that the follower has replied a success append entries. */
+  void onFollowerSuccessAppendEntries(FollowerInfo follower);
+
+  /** Check if a follower is bootstrapping. */
+  boolean isFollowerBootstrapping(FollowerInfo follower);
+
+  /** Received an {@link AppendEntriesReplyProto} */
+  void onAppendEntriesReply(LogAppender appender, AppendEntriesReplyProto reply);
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

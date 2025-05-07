@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLogReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">SegmentedRaftLogReader.java</span></div><h1>SegmentedRaftLogReader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.io.CorruptedFileException;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.protocol.exceptions.ChecksumException;
+import org.apache.ratis.server.metrics.SegmentedRaftLogMetrics;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.thirdparty.com.google.protobuf.CodedInputStream;
+import org.apache.ratis.thirdparty.com.google.protobuf.CodedOutputStream;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.PureJavaCrc32C;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedInputStream;
+import java.io.Closeable;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Optional;
+import java.util.zip.Checksum;
+
+class SegmentedRaftLogReader implements Closeable {
+<span class="nc" id="L49">  static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogReader.class);</span>
+  /**
+   * InputStream wrapper that keeps track of the current stream position.
+   * &lt;p&gt;
+   * This stream also allows us to set a limit on how many bytes we can read
+   * without getting an exception.
+   */
+  static class LimitedInputStream extends FilterInputStream {
+<span class="nc" id="L57">    private long curPos = 0;</span>
+<span class="nc" id="L58">    private volatile long markPos = -1;</span>
+<span class="nc" id="L59">    private long limitPos = Long.MAX_VALUE;</span>
+
+    LimitedInputStream(InputStream is) {
+<span class="nc" id="L62">      super(is);</span>
+<span class="nc" id="L63">    }</span>
+
+    private void checkLimit(long amt) throws IOException {
+<span class="nc" id="L66">      long extra = (curPos + amt) - limitPos;</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">      if (extra &gt; 0) {</span>
+<span class="nc" id="L68">        throw new IOException(&quot;Tried to read &quot; + amt + &quot; byte(s) past &quot; +</span>
+            &quot;the limit at offset &quot; + limitPos);
+      }
+<span class="nc" id="L71">    }</span>
+
+    @Override
+    public int read() throws IOException {
+<span class="nc" id="L75">      checkLimit(1);</span>
+<span class="nc" id="L76">      int ret = super.read();</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">      if (ret != -1) {</span>
+<span class="nc" id="L78">        curPos++;</span>
+      }
+<span class="nc" id="L80">      return ret;</span>
+    }
+
+    @Override
+    public int read(byte[] data) throws IOException {
+<span class="nc" id="L85">      checkLimit(data.length);</span>
+<span class="nc" id="L86">      int ret = super.read(data);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">      if (ret &gt; 0) {</span>
+<span class="nc" id="L88">        curPos += ret;</span>
+      }
+<span class="nc" id="L90">      return ret;</span>
+    }
+
+    @Override
+    public int read(byte[] data, int offset, int length) throws IOException {
+<span class="nc" id="L95">      checkLimit(length);</span>
+<span class="nc" id="L96">      int ret = super.read(data, offset, length);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">      if (ret &gt; 0) {</span>
+<span class="nc" id="L98">        curPos += ret;</span>
+      }
+<span class="nc" id="L100">      return ret;</span>
+    }
+
+    public void setLimit(long limit) {
+<span class="nc" id="L104">      limitPos = curPos + limit;</span>
+<span class="nc" id="L105">    }</span>
+
+    public void clearLimit() {
+<span class="nc" id="L108">      limitPos = Long.MAX_VALUE;</span>
+<span class="nc" id="L109">    }</span>
+
+    @Override
+    public synchronized void mark(int limit) {
+<span class="nc" id="L113">      super.mark(limit);</span>
+<span class="nc" id="L114">      markPos = curPos;</span>
+<span class="nc" id="L115">    }</span>
+
+    @Override
+    public synchronized void reset() throws IOException {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      if (markPos == -1) {</span>
+<span class="nc" id="L120">        throw new IOException(&quot;Not marked!&quot;);</span>
+      }
+<span class="nc" id="L122">      super.reset();</span>
+<span class="nc" id="L123">      curPos = markPos;</span>
+<span class="nc" id="L124">      markPos = -1;</span>
+<span class="nc" id="L125">    }</span>
+
+    public long getPos() {
+<span class="nc" id="L128">      return curPos;</span>
+    }
+
+    @Override
+    public long skip(long amt) throws IOException {
+<span class="nc" id="L133">      long extra = (curPos + amt) - limitPos;</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">      if (extra &gt; 0) {</span>
+<span class="nc" id="L135">        throw new IOException(&quot;Tried to skip &quot; + extra + &quot; bytes past &quot; +</span>
+            &quot;the limit at offset &quot; + limitPos);
+      }
+<span class="nc" id="L138">      long ret = super.skip(amt);</span>
+<span class="nc" id="L139">      curPos += ret;</span>
+<span class="nc" id="L140">      return ret;</span>
+    }
+  }
+
+  private final File file;
+  private final LimitedInputStream limiter;
+  private final DataInputStream in;
+<span class="nc" id="L147">  private byte[] temp = new byte[4096];</span>
+  private final Checksum checksum;
+  private final SegmentedRaftLogMetrics raftLogMetrics;
+  private final SizeInBytes maxOpSize;
+
+<span class="nc" id="L152">  SegmentedRaftLogReader(File file, SizeInBytes maxOpSize, SegmentedRaftLogMetrics raftLogMetrics) throws IOException {</span>
+<span class="nc" id="L153">    this.file = file;</span>
+<span class="nc" id="L154">    this.limiter = new LimitedInputStream(new BufferedInputStream(FileUtils.newInputStream(file)));</span>
+<span class="nc" id="L155">    in = new DataInputStream(limiter);</span>
+<span class="nc" id="L156">    checksum = new PureJavaCrc32C();</span>
+<span class="nc" id="L157">    this.maxOpSize = maxOpSize;</span>
+<span class="nc" id="L158">    this.raftLogMetrics = raftLogMetrics;</span>
+<span class="nc" id="L159">  }</span>
+
+  /**
+   * Read header from the log file:
+   * (1) The header in file is verified successfully.
+   *     Then, return true.
+   * (2) The header in file is partially written.
+   *     Then, return false.
+   * (3) The header in file is corrupted or there is some other {@link IOException}.
+   *     Then, throw an exception.
+   */
+  boolean verifyHeader() throws IOException {
+<span class="nc" id="L171">    final int headerLength = SegmentedRaftLogFormat.getHeaderLength();</span>
+<span class="nc" id="L172">    final int readLength = in.read(temp, 0, headerLength);</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">    Preconditions.assertTrue(readLength &lt;= headerLength);</span>
+<span class="nc" id="L174">    final int matchLength = SegmentedRaftLogFormat.matchHeader(temp, 0, readLength);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    Preconditions.assertTrue(matchLength &lt;= readLength);</span>
+
+<span class="nc bnc" id="L177" title="All 4 branches missed.">    if (readLength == headerLength &amp;&amp; matchLength == readLength) {</span>
+      // The header is matched successfully
+<span class="nc" id="L179">      return true;</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">    } else if (SegmentedRaftLogFormat.isTerminator(temp, matchLength, readLength - matchLength)) {</span>
+      // The header is partially written
+<span class="nc" id="L182">      return false;</span>
+    }
+    // The header is corrupted
+<span class="nc" id="L185">    throw new CorruptedFileException(file, &quot;Log header mismatched: expected header length=&quot;</span>
+<span class="nc" id="L186">        + SegmentedRaftLogFormat.getHeaderLength() + &quot;, read length=&quot; + readLength + &quot;, match length=&quot; + matchLength</span>
+<span class="nc" id="L187">        + &quot;, header in file=&quot; + StringUtils.bytes2HexString(temp, 0, readLength)</span>
+<span class="nc" id="L188">        + &quot;, expected header=&quot; + StringUtils.bytes2HexString(SegmentedRaftLogFormat.getHeaderBytebuffer()));</span>
+  }
+
+  /**
+   * Read a log entry from the input stream.
+   *
+   * @return the operation read from the stream, or null at the end of the
+   *         file
+   * @throws IOException on error.  This function should only throw an
+   *         exception when skipBrokenEdits is false.
+   */
+  LogEntryProto readEntry() throws IOException {
+<span class="nc" id="L200">    final Timekeeper timekeeper = Optional.ofNullable(raftLogMetrics)</span>
+<span class="nc" id="L201">        .map(SegmentedRaftLogMetrics::getReadEntryTimer)</span>
+<span class="nc" id="L202">        .orElse(null);</span>
+<span class="nc" id="L203">    try(AutoCloseable ignored = Timekeeper.start(timekeeper)) {</span>
+<span class="nc" id="L204">      return decodeEntry();</span>
+<span class="nc" id="L205">    } catch (EOFException eof) {</span>
+<span class="nc" id="L206">      in.reset();</span>
+      // The last entry is partially written.
+      // It is okay to ignore it since this entry is never committed in this server.
+<span class="nc bnc" id="L209" title="All 2 branches missed.">      if (LOG.isWarnEnabled()) {</span>
+<span class="nc" id="L210">        LOG.warn(&quot;Ignoring the last partial written log entry in &quot; + file + &quot;: &quot; + eof);</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">      } else if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L212">        LOG.trace(&quot;Ignoring the last partial written log entry in &quot; + file , eof);</span>
+      }
+<span class="nc" id="L214">      return null;</span>
+<span class="nc" id="L215">    } catch (IOException e) {</span>
+<span class="nc" id="L216">      in.reset();</span>
+
+<span class="nc" id="L218">      throw e;</span>
+<span class="nc" id="L219">    } catch (Exception e) {</span>
+      // raft log requires no gap between any two entries. thus if an entry is
+      // broken, throw the exception instead of skipping broken entries
+<span class="nc" id="L222">      in.reset();</span>
+<span class="nc" id="L223">      throw new IOException(&quot;got unexpected exception &quot; + e.getMessage(), e);</span>
+    }
+  }
+
+  /**
+   * Scan and validate a log entry.
+   * @return the index of the log entry
+   */
+  long scanEntry() throws IOException {
+<span class="nc" id="L232">    return Optional.ofNullable(decodeEntry()).map(LogEntryProto::getIndex).orElse(RaftLog.INVALID_LOG_INDEX);</span>
+  }
+
+  void verifyTerminator() throws IOException {
+     // The end of the log should contain 0x00 bytes.
+     // If it contains other bytes, the log itself may be corrupt.
+<span class="nc" id="L238">    limiter.clearLimit();</span>
+<span class="nc" id="L239">    int numRead = -1, idx = 0;</span>
+    while (true) {
+      try {
+<span class="nc" id="L242">        numRead = in.read(temp);</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        if (numRead == -1) {</span>
+<span class="nc" id="L244">          return;</span>
+        }
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        for (idx = 0; idx &lt; numRead; idx++) {</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">          if (!SegmentedRaftLogFormat.isTerminator(temp[idx])) {</span>
+<span class="nc" id="L248">            throw new IOException(&quot;Read extra bytes after the terminator at position &quot;</span>
+<span class="nc" id="L249">                + (limiter.getPos() - numRead + idx) + &quot; in &quot; + file);</span>
+          }
+        }
+      } finally {
+        // After reading each group of bytes, we reposition the mark one
+        // byte before the next group. Similarly, if there is an error, we
+        // want to reposition the mark one byte before the error
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        if (numRead != -1) {</span>
+<span class="nc" id="L257">          in.reset();</span>
+<span class="nc" id="L258">          IOUtils.skipFully(in, idx);</span>
+<span class="nc" id="L259">          in.mark(temp.length + 1);</span>
+<span class="nc" id="L260">          IOUtils.skipFully(in, 1);</span>
+        }
+<span class="nc" id="L262">      }</span>
+    }
+  }
+
+  /**
+   * Decode the log entry &quot;frame&quot;. This includes reading the log entry, and
+   * validating the checksum.
+   *
+   * The input stream will be advanced to the end of the op at the end of this
+   * function.
+   *
+   * @return The log entry, or null if we hit EOF.
+   */
+  private LogEntryProto decodeEntry() throws IOException {
+<span class="nc" id="L276">    final int max = maxOpSize.getSizeInt();</span>
+<span class="nc" id="L277">    limiter.setLimit(max);</span>
+<span class="nc" id="L278">    in.mark(max);</span>
+
+    byte nextByte;
+    try {
+<span class="nc" id="L282">      nextByte = in.readByte();</span>
+<span class="nc" id="L283">    } catch (EOFException eof) {</span>
+      // EOF at an opcode boundary is expected.
+<span class="nc" id="L285">      return null;</span>
+<span class="nc" id="L286">    }</span>
+    // Each log entry starts with a var-int. Thus a valid entry's first byte
+    // should not be 0. So if the terminate byte is 0, we should hit the end
+    // of the segment.
+<span class="nc bnc" id="L290" title="All 2 branches missed.">    if (SegmentedRaftLogFormat.isTerminator(nextByte)) {</span>
+<span class="nc" id="L291">      verifyTerminator();</span>
+<span class="nc" id="L292">      return null;</span>
+    }
+
+    // Here, we verify that the Op size makes sense and that the
+    // data matches its checksum before attempting to construct an Op.
+<span class="nc" id="L297">    int entryLength = CodedInputStream.readRawVarint32(nextByte, in);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">    if (entryLength &gt; max) {</span>
+<span class="nc" id="L299">      throw new IOException(&quot;Entry has size &quot; + entryLength</span>
+          + &quot;, but MAX_OP_SIZE = &quot; + maxOpSize);
+    }
+
+<span class="nc" id="L303">    final int varintLength = CodedOutputStream.computeUInt32SizeNoTag(</span>
+        entryLength);
+<span class="nc" id="L305">    final int totalLength = varintLength + entryLength;</span>
+<span class="nc" id="L306">    checkBufferSize(totalLength, max);</span>
+<span class="nc" id="L307">    in.reset();</span>
+<span class="nc" id="L308">    in.mark(max);</span>
+<span class="nc" id="L309">    IOUtils.readFully(in, temp, 0, totalLength);</span>
+
+    // verify checksum
+<span class="nc" id="L312">    checksum.reset();</span>
+<span class="nc" id="L313">    checksum.update(temp, 0, totalLength);</span>
+<span class="nc" id="L314">    int expectedChecksum = in.readInt();</span>
+<span class="nc" id="L315">    int calculatedChecksum = (int) checksum.getValue();</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">    if (expectedChecksum != calculatedChecksum) {</span>
+<span class="nc" id="L317">      final String s = StringUtils.format(&quot;Log entry corrupted: Calculated checksum is %08X but read checksum is %08X.&quot;,</span>
+<span class="nc" id="L318">          calculatedChecksum, expectedChecksum);</span>
+<span class="nc" id="L319">      throw new ChecksumException(s, limiter.markPos);</span>
+    }
+
+    // parse the buffer
+<span class="nc" id="L323">    return LogEntryProto.parseFrom(</span>
+<span class="nc" id="L324">        CodedInputStream.newInstance(temp, varintLength, entryLength));</span>
+  }
+
+  private void checkBufferSize(int entryLength, int max) {
+<span class="nc bnc" id="L328" title="All 2 branches missed.">    Preconditions.assertTrue(entryLength &lt;= max);</span>
+<span class="nc" id="L329">    int length = temp.length;</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">    if (length &lt; entryLength) {</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">      while (length &lt; entryLength) {</span>
+<span class="nc" id="L332">        length = Math.min(length * 2, max);</span>
+      }
+<span class="nc" id="L334">      temp = new byte[length];</span>
+    }
+<span class="nc" id="L336">  }</span>
+
+  long getPos() {
+<span class="nc" id="L339">    return limiter.getPos();</span>
+  }
+
+  void skipFully(long length) throws IOException {
+<span class="nc" id="L343">    limiter.clearLimit();</span>
+<span class="nc" id="L344">    IOUtils.skipFully(limiter, length);</span>
+<span class="nc" id="L345">  }</span>
+
+  @Override
+  public void close() {
+<span class="nc" id="L349">    IOUtils.cleanup(LOG, in);</span>
+<span class="nc" id="L350">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

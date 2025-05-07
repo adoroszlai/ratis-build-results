@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftStorage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">RaftStorage.java</span></div><h1>RaftStorage.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import org.apache.ratis.server.RaftServerConfigKeys.Log.CorruptionPolicy;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.ReflectionUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+/** The storage of a raft server. */
+public interface RaftStorage extends Closeable {
+<span class="nc" id="L35">  Logger LOG = LoggerFactory.getLogger(RaftStorage.class);</span>
+
+  /** Initialize the storage. */
+  void initialize() throws IOException;
+
+  /** @return the storage directory. */
+  RaftStorageDirectory getStorageDir();
+
+  /** @return the metadata file. */
+  RaftStorageMetadataFile getMetadataFile();
+
+  /** @return the corruption policy for raft log. */
+  CorruptionPolicy getLogCorruptionPolicy();
+
+  static Builder newBuilder() {
+<span class="nc" id="L50">    return new Builder();</span>
+  }
+
+<span class="nc" id="L53">  enum StartupOption {</span>
+    /** Format the storage. */
+<span class="nc" id="L55">    FORMAT,</span>
+<span class="nc" id="L56">    RECOVER</span>
+  }
+
+<span class="nc" id="L59">  class Builder {</span>
+
+<span class="nc" id="L61">    private static final Method NEW_RAFT_STORAGE_METHOD = initNewRaftStorageMethod();</span>
+
+    private static Method initNewRaftStorageMethod() {
+<span class="nc" id="L64">      final String className = RaftStorage.class.getPackage().getName() + &quot;.StorageImplUtils&quot;;</span>
+<span class="nc" id="L65">      final Class&lt;?&gt;[] argClasses = {File.class, SizeInBytes.class, StartupOption.class, CorruptionPolicy.class};</span>
+      try {
+<span class="nc" id="L67">        final Class&lt;?&gt; clazz = ReflectionUtils.getClassByName(className);</span>
+<span class="nc" id="L68">        return clazz.getMethod(&quot;newRaftStorage&quot;, argClasses);</span>
+<span class="nc" id="L69">      } catch (Exception e) {</span>
+<span class="nc" id="L70">        throw new IllegalStateException(&quot;Failed to initNewRaftStorageMethod&quot;, e);</span>
+      }
+    }
+
+    private static RaftStorage newRaftStorage(File dir, CorruptionPolicy logCorruptionPolicy,
+        StartupOption option, SizeInBytes storageFreeSpaceMin) throws IOException {
+      try {
+<span class="nc" id="L77">        return (RaftStorage) NEW_RAFT_STORAGE_METHOD.invoke(null,</span>
+            dir, storageFreeSpaceMin, option, logCorruptionPolicy);
+<span class="nc" id="L79">      } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L80">        throw new IllegalStateException(&quot;Failed to build &quot; + dir, e);</span>
+<span class="nc" id="L81">      } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L82">        Throwable t = e.getTargetException();</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (t.getCause() instanceof IOException) {</span>
+<span class="nc" id="L84">          throw IOUtils.asIOException(t.getCause());</span>
+        }
+<span class="nc" id="L86">        throw IOUtils.asIOException(e.getCause());</span>
+      }
+    }
+
+
+    private File directory;
+    private CorruptionPolicy logCorruptionPolicy;
+    private StartupOption option;
+    private SizeInBytes storageFreeSpaceMin;
+
+    public Builder setDirectory(File directory) {
+<span class="nc" id="L97">      this.directory = directory;</span>
+<span class="nc" id="L98">      return this;</span>
+    }
+
+    public Builder setLogCorruptionPolicy(CorruptionPolicy logCorruptionPolicy) {
+<span class="nc" id="L102">      this.logCorruptionPolicy = logCorruptionPolicy;</span>
+<span class="nc" id="L103">      return this;</span>
+    }
+
+    public Builder setOption(StartupOption option) {
+<span class="nc" id="L107">      this.option = option;</span>
+<span class="nc" id="L108">      return this;</span>
+    }
+
+    public Builder setStorageFreeSpaceMin(SizeInBytes storageFreeSpaceMin) {
+<span class="nc" id="L112">      this.storageFreeSpaceMin = storageFreeSpaceMin;</span>
+<span class="nc" id="L113">      return this;</span>
+    }
+
+    public RaftStorage build() throws IOException {
+<span class="nc" id="L117">      return newRaftStorage(directory, logCorruptionPolicy, option, storageFreeSpaceMin);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

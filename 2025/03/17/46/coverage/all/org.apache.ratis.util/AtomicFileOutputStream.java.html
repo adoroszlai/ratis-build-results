@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AtomicFileOutputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">AtomicFileOutputStream.java</span></div><h1>AtomicFileOutputStream.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.FilterOutputStream;
+import java.io.IOException;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * A {@link FilterOutputStream} that writes to a file atomically.
+ * The output file will not show up until it has been entirely written and sync'ed to disk.
+ * It uses a temporary file when it is being written.
+ * The default temporary file has a .tmp suffix.
+ * &lt;p&gt;
+ * When the output stream is closed, it is
+ * (1) flushed
+ * (2) sync'ed, and
+ * (3) renamed/moved from the temporary file to the output file.
+ * If the output file already exists, it will be overwritten.
+ * &lt;p&gt;
+ * NOTE that on Windows platforms, the output file, if it exists, is deleted
+ * before the temporary file is moved.
+ */
+public class AtomicFileOutputStream extends FilterOutputStream {
+<span class="nc" id="L46">  static final Logger LOG = LoggerFactory.getLogger(AtomicFileOutputStream.class);</span>
+
+  public static final String TMP_EXTENSION = &quot;.tmp&quot;;
+
+  public static File getTemporaryFile(File outFile) {
+<span class="nc" id="L51">    return new File(outFile.getParentFile(), outFile.getName() + TMP_EXTENSION);</span>
+  }
+
+  private final File outFile;
+  private final File tmpFile;
+<span class="nc" id="L56">  private final AtomicBoolean isClosed = new AtomicBoolean();</span>
+
+  public AtomicFileOutputStream(File outFile) throws IOException {
+<span class="nc" id="L59">    this(outFile, getTemporaryFile(outFile));</span>
+<span class="nc" id="L60">  }</span>
+
+  public AtomicFileOutputStream(File outFile, File tmpFile) throws IOException {
+<span class="nc" id="L63">    super(FileUtils.newOutputStreamForceAtClose(tmpFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE));</span>
+<span class="nc" id="L64">    this.outFile = outFile.getAbsoluteFile();</span>
+<span class="nc" id="L65">    this.tmpFile = tmpFile.getAbsoluteFile();</span>
+<span class="nc" id="L66">  }</span>
+
+  public boolean isClosed() {
+<span class="nc" id="L69">    return isClosed.get();</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    if (!isClosed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L75">      return;</span>
+    }
+    try {
+<span class="nc" id="L78">      super.close();</span>
+<span class="nc" id="L79">      FileUtils.move(tmpFile, outFile, StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="nc" id="L80">    } catch (Exception e) {</span>
+      try {
+<span class="nc" id="L82">        FileUtils.deleteIfExists(tmpFile);</span>
+<span class="nc" id="L83">      } catch (IOException ioe) {</span>
+<span class="nc" id="L84">        e.addSuppressed(ioe);</span>
+<span class="nc" id="L85">      }</span>
+<span class="nc" id="L86">      throw e;</span>
+<span class="nc" id="L87">    }</span>
+<span class="nc" id="L88">  }</span>
+
+  /**
+   * Close the atomic file, but do not &quot;commit&quot; the temporary file
+   * on top of the destination. This should be used if there is a failure
+   * in writing.
+   */
+  public void abort() {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    if (isClosed.get()) {</span>
+<span class="nc" id="L97">      return;</span>
+    }
+    try {
+<span class="nc" id="L100">      super.close();</span>
+<span class="nc" id="L101">    } catch (IOException ioe) {</span>
+<span class="nc" id="L102">      LOG.warn(&quot;Unable to abort file &quot; + tmpFile, ioe);</span>
+    } finally {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      if (!tmpFile.delete()) {</span>
+<span class="nc" id="L105">        LOG.warn(&quot;Unable to delete tmp file during abort &quot; + tmpFile);</span>
+      }
+    }
+<span class="nc" id="L108">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

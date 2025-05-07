@@ -1,0 +1,659 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">SegmentedRaftLog.java</span></div><h1>SegmentedRaftLog.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.metrics.SegmentedRaftLogMetrics;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogEntryHeader;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLogBase;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.storage.RaftStorageMetadata;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.server.raftlog.segmented.LogSegment.LogRecord;
+import org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.TruncateIndices;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.statemachine.impl.TransactionContextImpl;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.AutoCloseableLock;
+import org.apache.ratis.util.AwaitToRun;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.StringUtils;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
+
+import org.apache.ratis.util.UncheckedAutoCloseable;
+
+/**
+ * The RaftLog implementation that writes log entries into segmented files in
+ * local disk.
+ *
+ * The max log segment size is 8MB. The real log segment size may not be
+ * exactly equal to this limit. If a log entry's size exceeds 8MB, this entry
+ * will be stored in a single segment.
+ *
+ * There are two types of segments: closed segment and open segment. The former
+ * is named as &quot;log_startindex-endindex&quot;, the later is named as
+ * &quot;log_inprogress_startindex&quot;.
+ *
+ * There can be multiple closed segments but there is at most one open segment.
+ * When the open segment reaches the size limit, or the log term increases, we
+ * close the open segment and start a new open segment. A closed segment cannot
+ * be appended anymore, but it can be truncated in case that a follower's log is
+ * inconsistent with the current leader.
+ *
+ * Every closed segment should be non-empty, i.e., it should contain at least
+ * one entry.
+ *
+ * There should not be any gap between segments. The first segment may not start
+ * from index 0 since there may be snapshots as log compaction. The last index
+ * in segments should be no smaller than the last index of snapshot, otherwise
+ * we may have hole when append further log.
+ */
+public final class SegmentedRaftLog extends RaftLogBase {
+  /**
+   * I/O task definitions.
+   */
+<span class="nc" id="L92">  abstract static class Task {</span>
+<span class="nc" id="L93">    private final CompletableFuture&lt;Long&gt; future = new CompletableFuture&lt;&gt;();</span>
+    private Timekeeper.Context queueTimerContext;
+
+    CompletableFuture&lt;Long&gt; getFuture() {
+<span class="nc" id="L97">      return future;</span>
+    }
+
+    void done() {
+<span class="nc" id="L101">      completeFuture();</span>
+<span class="nc" id="L102">    }</span>
+
+    void discard() {
+<span class="nc" id="L105">    }</span>
+
+    final void completeFuture() {
+<span class="nc" id="L108">      final boolean completed = future.complete(getEndIndex());</span>
+<span class="nc" id="L109">      Preconditions.assertTrue(completed,</span>
+<span class="nc" id="L110">          () -&gt; this + &quot; is already &quot; + StringUtils.completableFuture2String(future, false));</span>
+<span class="nc" id="L111">    }</span>
+
+    void failed(IOException e) {
+<span class="nc" id="L114">      this.getFuture().completeExceptionally(e);</span>
+<span class="nc" id="L115">    }</span>
+
+    abstract void execute() throws IOException;
+
+    abstract long getEndIndex();
+
+    void startTimerOnEnqueue(Timekeeper queueTimer) {
+<span class="nc" id="L122">      queueTimerContext = queueTimer.time();</span>
+<span class="nc" id="L123">    }</span>
+
+    void stopTimerOnDequeue() {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">      if (queueTimerContext != null) {</span>
+<span class="nc" id="L127">        queueTimerContext.stop();</span>
+      }
+<span class="nc" id="L129">    }</span>
+
+    int getSerializedSize() {
+<span class="nc" id="L132">      return 0;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L137">      return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + getEndIndex();</span>
+    }
+  }
+
+  /** The server methods used in {@link SegmentedRaftLog}. */
+  interface ServerLogMethods {
+<span class="nc" id="L143">    ServerLogMethods DUMMY = new ServerLogMethods() {};</span>
+
+    default long[] getFollowerNextIndices() {
+<span class="nc" id="L146">      return null;</span>
+    }
+
+    default long getLastAppliedIndex() {
+<span class="nc" id="L150">      return INVALID_LOG_INDEX;</span>
+    }
+
+    /** Notify the server that a log entry is being truncated. */
+    default void notifyTruncatedLogEntry(TermIndex ti) {
+<span class="nc" id="L155">    }</span>
+
+    default TransactionContext getTransactionContext(LogEntryProto entry, boolean createNew) {
+<span class="nc" id="L158">      return null;</span>
+    }
+  }
+
+  /**
+   * When the server is null, return the dummy instance of {@link ServerLogMethods}.
+   * Otherwise, the server is non-null, return the implementation using the given server.
+   */
+  private ServerLogMethods newServerLogMethods(RaftServer.Division impl,
+      Consumer&lt;LogEntryProto&gt; notifyTruncatedLogEntry,
+      BiFunction&lt;LogEntryProto, Boolean, TransactionContext&gt; getTransactionContext) {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    if (impl == null) {</span>
+<span class="nc" id="L170">      return ServerLogMethods.DUMMY;</span>
+    }
+
+<span class="nc" id="L173">    return new ServerLogMethods() {</span>
+      @Override
+      public long[] getFollowerNextIndices() {
+<span class="nc" id="L176">        return impl.getInfo().getFollowerNextIndices();</span>
+      }
+
+      @Override
+      public long getLastAppliedIndex() {
+<span class="nc" id="L181">        return impl.getInfo().getLastAppliedIndex();</span>
+      }
+
+      @Override
+      public void notifyTruncatedLogEntry(TermIndex ti) {
+<span class="nc" id="L186">        ReferenceCountedObject&lt;LogEntryProto&gt; ref = null;</span>
+        try {
+<span class="nc" id="L188">          ref = retainLog(ti.getIndex());</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">          final LogEntryProto entry = ref != null ? ref.get() : null;</span>
+<span class="nc" id="L190">          notifyTruncatedLogEntry.accept(entry);</span>
+<span class="nc" id="L191">        } catch (RaftLogIOException e) {</span>
+<span class="nc" id="L192">          LOG.error(&quot;{}: Failed to read log {}&quot;, getName(), ti, e);</span>
+        } finally {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">          if (ref != null) {</span>
+<span class="nc" id="L195">            ref.release();</span>
+          }
+        }
+<span class="nc" id="L198">      }</span>
+
+      @Override
+      public TransactionContext getTransactionContext(LogEntryProto entry, boolean createNew) {
+<span class="nc" id="L202">        return getTransactionContext.apply(entry, createNew);</span>
+      }
+    };
+  }
+
+  private final ServerLogMethods server;
+  private final RaftStorage storage;
+  private final StateMachine stateMachine;
+  private final SegmentedRaftLogCache cache;
+  private final AwaitToRun cacheEviction;
+  private final SegmentedRaftLogWorker fileLogWorker;
+  private final long segmentMaxSize;
+  private final boolean stateMachineCachingEnabled;
+  private final SegmentedRaftLogMetrics metrics;
+
+  @SuppressWarnings({&quot;squid:S2095&quot;}) // Suppress closeable  warning
+  private SegmentedRaftLog(Builder b) {
+<span class="nc" id="L219">    super(b.memberId, b.snapshotIndexSupplier, b.properties);</span>
+<span class="nc" id="L220">    this.metrics = new SegmentedRaftLogMetrics(b.memberId);</span>
+
+<span class="nc" id="L222">    this.server = newServerLogMethods(b.server, b.notifyTruncatedLogEntry, b.getTransactionContext);</span>
+<span class="nc" id="L223">    this.storage = b.storage;</span>
+<span class="nc" id="L224">    this.stateMachine = b.stateMachine;</span>
+<span class="nc" id="L225">    this.segmentMaxSize = RaftServerConfigKeys.Log.segmentSizeMax(b.properties).getSize();</span>
+<span class="nc" id="L226">    this.cache = new SegmentedRaftLogCache(b.memberId, storage, b.properties, getRaftLogMetrics());</span>
+<span class="nc" id="L227">    this.cacheEviction = new AwaitToRun(b.memberId + &quot;-cacheEviction&quot;, this::checkAndEvictCache).start();</span>
+<span class="nc" id="L228">    this.fileLogWorker = new SegmentedRaftLogWorker(b.memberId, stateMachine,</span>
+<span class="nc" id="L229">        b.submitUpdateCommitEvent, b.server, storage, b.properties, getRaftLogMetrics());</span>
+<span class="nc" id="L230">    stateMachineCachingEnabled = RaftServerConfigKeys.Log.StateMachineData.cachingEnabled(b.properties);</span>
+<span class="nc" id="L231">  }</span>
+
+  @Override
+  public SegmentedRaftLogMetrics getRaftLogMetrics() {
+<span class="nc" id="L235">    return metrics;</span>
+  }
+
+  @Override
+  protected void openImpl(long lastIndexInSnapshot, Consumer&lt;LogEntryProto&gt; consumer) throws IOException {
+<span class="nc" id="L240">    loadLogSegments(lastIndexInSnapshot, consumer);</span>
+<span class="nc" id="L241">    final File openSegmentFile = Optional.ofNullable(cache.getOpenSegment()).map(LogSegment::getFile).orElse(null);</span>
+<span class="nc" id="L242">    fileLogWorker.start(Math.max(cache.getEndIndex(), lastIndexInSnapshot),</span>
+<span class="nc" id="L243">        Math.min(cache.getLastIndexInClosedSegments(), lastIndexInSnapshot),</span>
+        openSegmentFile);
+<span class="nc" id="L245">  }</span>
+
+  @Override
+  public long getStartIndex() {
+<span class="nc" id="L249">    return cache.getStartIndex();</span>
+  }
+
+  private void loadLogSegments(long lastIndexInSnapshot,
+      Consumer&lt;LogEntryProto&gt; logConsumer) throws IOException {
+<span class="nc" id="L254">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L255">      final List&lt;LogSegmentPath&gt; paths = LogSegmentPath.getLogSegmentPaths(storage);</span>
+<span class="nc" id="L256">      int i = 0;</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">      for (LogSegmentPath pi : paths) {</span>
+        // During the initial loading, we can only confirm the committed
+        // index based on the snapshot. This means if a log segment is not kept
+        // in cache after the initial loading, later we have to load its content
+        // again for updating the state machine.
+        // TODO we should let raft peer persist its committed index periodically
+        // so that during the initial loading we can apply part of the log
+        // entries to the state machine
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        boolean keepEntryInCache = (paths.size() - i++) &lt;= cache.getMaxCachedSegments();</span>
+<span class="nc" id="L266">        try(UncheckedAutoCloseable ignored = getRaftLogMetrics().startLoadSegmentTimer()) {</span>
+<span class="nc" id="L267">          cache.loadSegment(pi, keepEntryInCache, logConsumer);</span>
+        }
+<span class="nc" id="L269">      }</span>
+
+      // if the largest index is smaller than the last index in snapshot, we do
+      // not load the log to avoid holes between log segments. This may happen
+      // when the local I/O worker is too slow to persist log (slower than
+      // committing the log and taking snapshot)
+<span class="nc bnc" id="L275" title="All 4 branches missed.">      if (!cache.isEmpty() &amp;&amp; cache.getEndIndex() &lt; lastIndexInSnapshot) {</span>
+<span class="nc" id="L276">        LOG.warn(&quot;End log index {} is smaller than last index in snapshot {}&quot;,</span>
+<span class="nc" id="L277">            cache.getEndIndex(), lastIndexInSnapshot);</span>
+<span class="nc" id="L278">        purgeImpl(lastIndexInSnapshot).whenComplete((purged, e) -&gt; updatePurgeIndex(purged));</span>
+      }
+    }
+<span class="nc" id="L281">  }</span>
+
+  @Override
+  public LogEntryProto get(long index) throws RaftLogIOException {
+<span class="nc" id="L285">    final ReferenceCountedObject&lt;LogEntryProto&gt; ref = retainLog(index);</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">    if (ref == null) {</span>
+<span class="nc" id="L287">      return null;</span>
+    }
+    try {
+<span class="nc" id="L290">      return LogProtoUtils.copy(ref.get());</span>
+    } finally {
+<span class="nc" id="L292">      ref.release();</span>
+    }
+  }
+
+  @Override
+  public ReferenceCountedObject&lt;LogEntryProto&gt; retainLog(long index) throws RaftLogIOException {
+<span class="nc" id="L298">    checkLogState();</span>
+<span class="nc" id="L299">    final LogSegment segment = cache.getSegment(index);</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">    if (segment == null) {</span>
+<span class="nc" id="L301">      return null;</span>
+    }
+<span class="nc" id="L303">    final LogRecord record = segment.getLogRecord(index);</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">    if (record == null) {</span>
+<span class="nc" id="L305">      return null;</span>
+    }
+<span class="nc" id="L307">    final TermIndex ti = record.getTermIndex();</span>
+<span class="nc" id="L308">    final ReferenceCountedObject&lt;LogEntryProto&gt; entry = segment.getEntryFromCache(ti);</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">    if (entry != null) {</span>
+      try {
+<span class="nc" id="L311">        entry.retain();</span>
+<span class="nc" id="L312">        getRaftLogMetrics().onRaftLogCacheHit();</span>
+<span class="nc" id="L313">        return entry;</span>
+<span class="nc" id="L314">      } catch (IllegalStateException ignored) {</span>
+        // The entry could be removed from the cache and released.
+        // The exception can be safely ignored since it is the same as cache miss.
+      }
+    }
+
+    // the entry is not in the segment's cache. Load the cache without holding the lock.
+<span class="nc" id="L321">    getRaftLogMetrics().onRaftLogCacheMiss();</span>
+<span class="nc" id="L322">    cacheEviction.signal();</span>
+<span class="nc" id="L323">    return segment.loadCache(ti);</span>
+  }
+
+  @Override
+  public EntryWithData getEntryWithData(long index) throws RaftLogIOException {
+<span class="nc" id="L328">    throw new UnsupportedOperationException(&quot;Use retainEntryWithData(&quot; + index + &quot;) instead.&quot;);</span>
+  }
+
+  @Override
+  public ReferenceCountedObject&lt;EntryWithData&gt; retainEntryWithData(long index) throws RaftLogIOException {
+<span class="nc" id="L333">    final ReferenceCountedObject&lt;LogEntryProto&gt; entryRef = retainLog(index);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">    if (entryRef == null) {</span>
+<span class="nc" id="L335">      throw new RaftLogIOException(&quot;Log entry not found: index = &quot; + index);</span>
+    }
+
+<span class="nc" id="L338">    final LogEntryProto entry = entryRef.get();</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">    if (!LogProtoUtils.isStateMachineDataEmpty(entry)) {</span>
+<span class="nc" id="L340">      return newEntryWithData(entryRef);</span>
+    }
+
+    try {
+<span class="nc" id="L344">      CompletableFuture&lt;ReferenceCountedObject&lt;ByteString&gt;&gt; future = null;</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">      if (stateMachine != null) {</span>
+<span class="nc" id="L346">        future = stateMachine.data().retainRead(entry, server.getTransactionContext(entry, false)).exceptionally(ex -&gt; {</span>
+<span class="nc" id="L347">          stateMachine.event().notifyLogFailed(ex, entry);</span>
+<span class="nc" id="L348">          throw new CompletionException(&quot;Failed to read state machine data for log entry &quot; + entry, ex);</span>
+        });
+      }
+<span class="nc bnc" id="L351" title="All 2 branches missed.">      return future != null? newEntryWithData(entryRef, future): newEntryWithData(entryRef);</span>
+<span class="nc" id="L352">    } catch (Exception e) {</span>
+<span class="nc" id="L353">      final String err = getName() + &quot;: Failed readStateMachineData for &quot; + toLogEntryString(entry);</span>
+<span class="nc" id="L354">      LOG.error(err, e);</span>
+<span class="nc" id="L355">      entryRef.release();</span>
+<span class="nc" id="L356">      throw new RaftLogIOException(err, JavaUtils.unwrapCompletionException(e));</span>
+    }
+  }
+
+  private void checkAndEvictCache() {
+<span class="nc bnc" id="L361" title="All 2 branches missed.">    if (cache.shouldEvict()) {</span>
+<span class="nc" id="L362">      try (AutoCloseableLock ignored = writeLock()){</span>
+        // TODO if the cache is hitting the maximum size and we cannot evict any
+        // segment's cache, should block the new entry appending or new segment
+        // allocation.
+<span class="nc" id="L366">        cache.evictCache(server.getFollowerNextIndices(), fileLogWorker.getSafeCacheEvictIndex(),</span>
+<span class="nc" id="L367">            server.getLastAppliedIndex());</span>
+      }
+    }
+<span class="nc" id="L370">  }</span>
+
+  @Override
+  public TermIndex getTermIndex(long index) {
+<span class="nc" id="L374">    checkLogState();</span>
+<span class="nc" id="L375">    return cache.getTermIndex(index);</span>
+  }
+
+  @Override
+  public LogEntryHeader[] getEntries(long startIndex, long endIndex) {
+<span class="nc" id="L380">    checkLogState();</span>
+<span class="nc" id="L381">    return cache.getTermIndices(startIndex, endIndex);</span>
+  }
+
+  @Override
+  public TermIndex getLastEntryTermIndex() {
+<span class="nc" id="L386">    checkLogState();</span>
+<span class="nc" id="L387">    return cache.getLastTermIndex();</span>
+  }
+
+  @Override
+  protected CompletableFuture&lt;Long&gt; truncateImpl(long index) {
+<span class="nc" id="L392">    checkLogState();</span>
+<span class="nc" id="L393">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L394">      SegmentedRaftLogCache.TruncationSegments ts = cache.truncate(index);</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">      if (ts != null) {</span>
+<span class="nc" id="L396">        Task task = fileLogWorker.truncate(ts, index);</span>
+<span class="nc" id="L397">        return task.getFuture();</span>
+      }
+    }
+<span class="nc" id="L400">    return CompletableFuture.completedFuture(index);</span>
+  }
+
+
+  @Override
+  protected CompletableFuture&lt;Long&gt; purgeImpl(long index) {
+<span class="nc" id="L406">    try (AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L407">      SegmentedRaftLogCache.TruncationSegments ts = cache.purge(index);</span>
+<span class="nc" id="L408">      updateSnapshotIndexFromStateMachine();</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">      if (ts != null) {</span>
+<span class="nc" id="L410">        LOG.info(&quot;{}: {}&quot;, getName(), ts);</span>
+<span class="nc" id="L411">        Task task = fileLogWorker.purge(ts);</span>
+<span class="nc" id="L412">        return task.getFuture();</span>
+      }
+    }
+<span class="nc" id="L415">    LOG.debug(&quot;{}: purge({}) found nothing to purge.&quot;, getName(), index);</span>
+<span class="nc" id="L416">    return CompletableFuture.completedFuture(index);</span>
+  }
+
+  @Override
+  protected CompletableFuture&lt;Long&gt; appendEntryImpl(ReferenceCountedObject&lt;LogEntryProto&gt; entryRef,
+      TransactionContext context) {
+<span class="nc" id="L422">    checkLogState();</span>
+<span class="nc" id="L423">    LogEntryProto entry = entryRef.retain();</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">    if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L425">      LOG.trace(&quot;{}: appendEntry {}&quot;, getName(), LogProtoUtils.toLogEntryString(entry));</span>
+    }
+<span class="nc" id="L427">    final LogEntryProto removedStateMachineData = LogProtoUtils.removeStateMachineData(entry);</span>
+<span class="nc" id="L428">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L429">      final Timekeeper.Context appendEntryTimerContext = getRaftLogMetrics().startAppendEntryTimer();</span>
+<span class="nc" id="L430">      validateLogEntry(entry);</span>
+<span class="nc" id="L431">      final LogSegment currentOpenSegment = cache.getOpenSegment();</span>
+<span class="nc" id="L432">      boolean rollOpenSegment = false;</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">      if (currentOpenSegment == null) {</span>
+<span class="nc" id="L434">        cache.addOpenSegment(entry.getIndex());</span>
+<span class="nc" id="L435">        fileLogWorker.startLogSegment(entry.getIndex());</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">      } else if (isSegmentFull(currentOpenSegment, removedStateMachineData)) {</span>
+<span class="nc" id="L437">        rollOpenSegment = true;</span>
+      } else {
+<span class="nc" id="L439">        final TermIndex last = currentOpenSegment.getLastTermIndex();</span>
+<span class="nc bnc" id="L440" title="All 4 branches missed.">        if (last != null &amp;&amp; last.getTerm() != entry.getTerm()) {</span>
+          // the term changes
+<span class="nc bnc" id="L442" title="All 2 branches missed.">          Preconditions.assertTrue(last.getTerm() &lt; entry.getTerm(),</span>
+              &quot;open segment's term %s is larger than the new entry's term %s&quot;,
+<span class="nc" id="L444">              last.getTerm(), entry.getTerm());</span>
+<span class="nc" id="L445">          rollOpenSegment = true;</span>
+        }
+      }
+
+<span class="nc bnc" id="L449" title="All 2 branches missed.">      if (rollOpenSegment) {</span>
+<span class="nc" id="L450">        cache.rollOpenSegment(true);</span>
+<span class="nc" id="L451">        fileLogWorker.rollLogSegment(currentOpenSegment);</span>
+<span class="nc" id="L452">        cacheEviction.signal();</span>
+      }
+
+      // If the entry has state machine data, then the entry should be inserted
+      // to statemachine first and then to the cache. Not following the order
+      // will leave a spurious entry in the cache.
+<span class="nc" id="L458">      final Task write = fileLogWorker.writeLogEntry(entryRef, removedStateMachineData, context);</span>
+<span class="nc bnc" id="L459" title="All 2 branches missed.">      if (stateMachineCachingEnabled) {</span>
+        // The stateMachineData will be cached inside the StateMachine itself.
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        if (removedStateMachineData != entry) {</span>
+<span class="nc" id="L462">          cache.appendEntry(LogSegment.Op.WRITE_CACHE_WITH_STATE_MACHINE_CACHE,</span>
+<span class="nc" id="L463">              ReferenceCountedObject.wrap(removedStateMachineData));</span>
+        } else {
+<span class="nc" id="L465">          cache.appendEntry(LogSegment.Op.WRITE_CACHE_WITH_STATE_MACHINE_CACHE,</span>
+<span class="nc" id="L466">              ReferenceCountedObject.wrap(LogProtoUtils.copy(removedStateMachineData)));</span>
+        }
+      } else {
+<span class="nc" id="L469">        cache.appendEntry(LogSegment.Op.WRITE_CACHE_WITHOUT_STATE_MACHINE_CACHE, entryRef);</span>
+      }
+<span class="nc" id="L471">      return write.getFuture().whenComplete((clientReply, exception) -&gt; appendEntryTimerContext.stop());</span>
+<span class="nc" id="L472">    } catch (Exception e) {</span>
+<span class="nc" id="L473">      LOG.error(&quot;{}: Failed to append {}&quot;, getName(), toLogEntryString(entry), e);</span>
+<span class="nc" id="L474">      throw e;</span>
+    } finally {
+<span class="nc" id="L476">      entryRef.release();</span>
+    }
+  }
+
+  private boolean isSegmentFull(LogSegment segment, LogEntryProto entry) {
+<span class="nc bnc" id="L481" title="All 2 branches missed.">    if (segment.getTotalFileSize() &gt;= segmentMaxSize) {</span>
+<span class="nc" id="L482">      return true;</span>
+    } else {
+<span class="nc" id="L484">      final long entrySize = LogSegment.getEntrySize(entry, LogSegment.Op.CHECK_SEGMENT_FILE_FULL);</span>
+      // if entry size is greater than the max segment size, write it directly
+      // into the current segment
+<span class="nc bnc" id="L487" title="All 2 branches missed.">      return entrySize &lt;= segmentMaxSize &amp;&amp;</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">          segment.getTotalFileSize() + entrySize &gt; segmentMaxSize;</span>
+    }
+  }
+
+  @Override
+  protected List&lt;CompletableFuture&lt;Long&gt;&gt; appendImpl(ReferenceCountedObject&lt;List&lt;LogEntryProto&gt;&gt; entriesRef) {
+<span class="nc" id="L494">    checkLogState();</span>
+<span class="nc" id="L495">    final List&lt;LogEntryProto&gt; entries = entriesRef.retain();</span>
+<span class="nc bnc" id="L496" title="All 4 branches missed.">    if (entries == null || entries.isEmpty()) {</span>
+<span class="nc" id="L497">      entriesRef.release();</span>
+<span class="nc" id="L498">      return Collections.emptyList();</span>
+    }
+<span class="nc" id="L500">    try (AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L501">      final TruncateIndices ti = cache.computeTruncateIndices(server::notifyTruncatedLogEntry, entries);</span>
+<span class="nc" id="L502">      final long truncateIndex = ti.getTruncateIndex();</span>
+<span class="nc" id="L503">      final int index = ti.getArrayIndex();</span>
+<span class="nc" id="L504">      LOG.debug(&quot;truncateIndex={}, arrayIndex={}&quot;, truncateIndex, index);</span>
+
+      final List&lt;CompletableFuture&lt;Long&gt;&gt; futures;
+<span class="nc bnc" id="L507" title="All 2 branches missed.">      if (truncateIndex != -1) {</span>
+<span class="nc" id="L508">        futures = new ArrayList&lt;&gt;(entries.size() - index + 1);</span>
+<span class="nc" id="L509">        futures.add(truncate(truncateIndex));</span>
+      } else {
+<span class="nc" id="L511">        futures = new ArrayList&lt;&gt;(entries.size() - index);</span>
+      }
+<span class="nc bnc" id="L513" title="All 2 branches missed.">      for (int i = index; i &lt; entries.size(); i++) {</span>
+<span class="nc" id="L514">        final LogEntryProto entry = entries.get(i);</span>
+<span class="nc" id="L515">        TransactionContextImpl transactionContext = (TransactionContextImpl) server.getTransactionContext(entry, true);</span>
+<span class="nc" id="L516">        futures.add(appendEntry(entriesRef.delegate(entry), transactionContext));</span>
+      }
+<span class="nc" id="L518">      return futures;</span>
+    } finally {
+<span class="nc" id="L520">      entriesRef.release();</span>
+    }
+  }
+
+
+  @Override
+  public long getFlushIndex() {
+<span class="nc" id="L527">    return fileLogWorker.getFlushIndex();</span>
+  }
+
+  @Override
+  public void persistMetadata(RaftStorageMetadata metadata) throws IOException {
+<span class="nc" id="L532">    storage.getMetadataFile().persist(metadata);</span>
+<span class="nc" id="L533">  }</span>
+
+  @Override
+  public RaftStorageMetadata loadMetadata() throws IOException {
+<span class="nc" id="L537">    return storage.getMetadataFile().getMetadata();</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;Long&gt; onSnapshotInstalled(long lastSnapshotIndex) {
+<span class="nc" id="L542">    updateSnapshotIndex(lastSnapshotIndex);</span>
+<span class="nc" id="L543">    fileLogWorker.syncWithSnapshot(lastSnapshotIndex);</span>
+    // TODO purge normal/tmp/corrupt snapshot files
+    // if the last index in snapshot is larger than the index of the last
+    // log entry, we should delete all the log entries and their cache to avoid
+    // gaps between log segments.
+
+    // Close open log segment if entries are already included in snapshot
+<span class="nc" id="L550">    LogSegment openSegment = cache.getOpenSegment();</span>
+<span class="nc bnc" id="L551" title="All 4 branches missed.">    if (openSegment != null &amp;&amp; openSegment.hasEntries()) {</span>
+<span class="nc bnc" id="L552" title="All 2 branches missed.">      if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L553">        LOG.debug(&quot;syncWithSnapshot : Found open segment {}, with end index {},&quot;</span>
+<span class="nc" id="L554">                + &quot; snapshotIndex {}&quot;, openSegment, openSegment.getEndIndex(),</span>
+<span class="nc" id="L555">            lastSnapshotIndex);</span>
+      }
+<span class="nc bnc" id="L557" title="All 2 branches missed.">      if (openSegment.getEndIndex() &lt;= lastSnapshotIndex) {</span>
+<span class="nc" id="L558">        fileLogWorker.closeLogSegment(openSegment);</span>
+<span class="nc" id="L559">        cache.rollOpenSegment(false);</span>
+<span class="nc" id="L560">        cacheEviction.signal();</span>
+      }
+    }
+<span class="nc" id="L563">    return purgeImpl(lastSnapshotIndex).whenComplete((purged, e) -&gt; updatePurgeIndex(purged));</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc" id="L568">    try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="nc" id="L569">      LOG.info(&quot;Start closing {}&quot;, this);</span>
+<span class="nc" id="L570">      super.close();</span>
+<span class="nc" id="L571">      cacheEviction.close();</span>
+<span class="nc" id="L572">      cache.close();</span>
+    }
+<span class="nc" id="L574">    fileLogWorker.close();</span>
+<span class="nc" id="L575">    storage.close();</span>
+<span class="nc" id="L576">    getRaftLogMetrics().unregister();</span>
+<span class="nc" id="L577">    LOG.info(&quot;Successfully closed {}&quot;, this);</span>
+<span class="nc" id="L578">  }</span>
+
+  SegmentedRaftLogCache getRaftLogCache() {
+<span class="nc" id="L581">    return cache;</span>
+  }
+
+  @Override
+  public String toLogEntryString(LogEntryProto logEntry) {
+<span class="nc bnc" id="L586" title="All 2 branches missed.">    return LogProtoUtils.toLogEntryString(logEntry, stateMachine != null ?</span>
+        stateMachine::toStateMachineLogEntryString : null);
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L591">    return new Builder();</span>
+  }
+
+  public static final class Builder {
+    private RaftGroupMemberId memberId;
+    private RaftServer.Division server;
+    private StateMachine stateMachine;
+    private Consumer&lt;LogEntryProto&gt; notifyTruncatedLogEntry;
+    private BiFunction&lt;LogEntryProto, Boolean, TransactionContext&gt; getTransactionContext;
+    private Runnable submitUpdateCommitEvent;
+    private RaftStorage storage;
+<span class="nc" id="L602">    private LongSupplier snapshotIndexSupplier = () -&gt; RaftLog.INVALID_LOG_INDEX;</span>
+    private RaftProperties properties;
+
+<span class="nc" id="L605">    private Builder() {}</span>
+
+    public Builder setMemberId(RaftGroupMemberId memberId) {
+<span class="nc" id="L608">      this.memberId = memberId;</span>
+<span class="nc" id="L609">      return this;</span>
+    }
+
+    public Builder setServer(RaftServer.Division server) {
+<span class="nc" id="L613">      this.server = server;</span>
+<span class="nc" id="L614">      this.stateMachine = server.getStateMachine();</span>
+<span class="nc" id="L615">      return this;</span>
+    }
+
+    public Builder setStateMachine(StateMachine stateMachine) {
+<span class="nc" id="L619">      this.stateMachine = stateMachine;</span>
+<span class="nc" id="L620">      return this;</span>
+    }
+
+    public Builder setNotifyTruncatedLogEntry(Consumer&lt;LogEntryProto&gt; notifyTruncatedLogEntry) {
+<span class="nc" id="L624">      this.notifyTruncatedLogEntry = notifyTruncatedLogEntry;</span>
+<span class="nc" id="L625">      return this;</span>
+    }
+
+    public Builder setGetTransactionContext(
+        BiFunction&lt;LogEntryProto, Boolean, TransactionContext&gt; getTransactionContext) {
+<span class="nc" id="L630">      this.getTransactionContext = getTransactionContext;</span>
+<span class="nc" id="L631">      return this;</span>
+    }
+
+    public Builder setSubmitUpdateCommitEvent(Runnable submitUpdateCommitEvent) {
+<span class="nc" id="L635">      this.submitUpdateCommitEvent = submitUpdateCommitEvent;</span>
+<span class="nc" id="L636">      return this;</span>
+    }
+
+    public Builder setStorage(RaftStorage storage) {
+<span class="nc" id="L640">      this.storage = storage;</span>
+<span class="nc" id="L641">      return this;</span>
+    }
+
+    public Builder setSnapshotIndexSupplier(LongSupplier snapshotIndexSupplier) {
+<span class="nc" id="L645">      this.snapshotIndexSupplier = snapshotIndexSupplier;</span>
+<span class="nc" id="L646">      return this;</span>
+    }
+
+    public Builder setProperties(RaftProperties properties) {
+<span class="nc" id="L650">      this.properties = properties;</span>
+<span class="nc" id="L651">      return this;</span>
+    }
+
+    public SegmentedRaftLog build() {
+<span class="nc" id="L655">      return new SegmentedRaftLog(this);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

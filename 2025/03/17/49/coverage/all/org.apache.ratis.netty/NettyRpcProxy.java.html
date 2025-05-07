@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyRpcProxy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty</a> &gt; <span class="el_source">NettyRpcProxy.java</span></div><h1>NettyRpcProxy.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.netty;
+
+import org.apache.ratis.client.RaftClientConfigKeys;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.thirdparty.io.netty.channel.*;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufEncoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerReplyProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerRequestProto;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.PeerProxyMap;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.TimeDuration;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import static org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerReplyProto.RaftNettyServerReplyCase.EXCEPTIONREPLY;
+
+public class NettyRpcProxy implements Closeable {
+  public static class PeerMap extends PeerProxyMap&lt;NettyRpcProxy&gt; {
+    private final EventLoopGroup group;
+
+    public PeerMap(String name, RaftProperties properties) {
+<span class="nc" id="L54">      this(name, properties, NettyUtils.newEventLoopGroup(name, 0,</span>
+<span class="nc" id="L55">          NettyConfigKeys.Client.useEpoll(properties)));</span>
+<span class="nc" id="L56">    }</span>
+
+    private PeerMap(String name, RaftProperties properties, EventLoopGroup group) {
+<span class="nc" id="L59">      super(name, peer -&gt; {</span>
+        try {
+<span class="nc" id="L61">          return new NettyRpcProxy(peer, properties, group);</span>
+<span class="nc" id="L62">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L63">          Thread.currentThread().interrupt();</span>
+<span class="nc" id="L64">          throw IOUtils.toInterruptedIOException(&quot;Failed connecting to &quot; + peer, e);</span>
+        }
+      });
+<span class="nc" id="L67">      this.group = group;</span>
+<span class="nc" id="L68">    }</span>
+
+    @Override
+    public void close() {
+<span class="nc" id="L72">      super.close();</span>
+<span class="nc" id="L73">      group.shutdownGracefully();</span>
+<span class="nc" id="L74">    }</span>
+  }
+
+  public static long getCallId(RaftNettyServerReplyProto proto) {
+<span class="nc bnc" id="L78" title="All 8 branches missed.">    switch (proto.getRaftNettyServerReplyCase()) {</span>
+      case REQUESTVOTEREPLY:
+<span class="nc" id="L80">        return proto.getRequestVoteReply().getServerReply().getCallId();</span>
+      case STARTLEADERELECTIONREPLY:
+<span class="nc" id="L82">        return proto.getStartLeaderElectionReply().getServerReply().getCallId();</span>
+      case APPENDENTRIESREPLY:
+<span class="nc" id="L84">        return proto.getAppendEntriesReply().getServerReply().getCallId();</span>
+      case INSTALLSNAPSHOTREPLY:
+<span class="nc" id="L86">        return proto.getInstallSnapshotReply().getServerReply().getCallId();</span>
+      case RAFTCLIENTREPLY:
+<span class="nc" id="L88">        return proto.getRaftClientReply().getRpcReply().getCallId();</span>
+      case EXCEPTIONREPLY:
+<span class="nc" id="L90">        return proto.getExceptionReply().getRpcReply().getCallId();</span>
+      case RAFTNETTYSERVERREPLY_NOT_SET:
+<span class="nc" id="L92">        throw new IllegalArgumentException(&quot;Reply case not set in proto: &quot;</span>
+<span class="nc" id="L93">            + proto.getRaftNettyServerReplyCase());</span>
+      default:
+<span class="nc" id="L95">        throw new UnsupportedOperationException(&quot;Reply case not supported: &quot;</span>
+<span class="nc" id="L96">            + proto.getRaftNettyServerReplyCase());</span>
+    }
+  }
+
+
+  class Connection implements Closeable {
+<span class="nc" id="L102">    private final NettyClient client = new NettyClient(peer.getAddress());</span>
+<span class="nc" id="L103">    private final Queue&lt;CompletableFuture&lt;RaftNettyServerReplyProto&gt;&gt; replies</span>
+        = new LinkedList&lt;&gt;();
+
+<span class="nc" id="L106">    Connection(EventLoopGroup group) throws InterruptedException {</span>
+<span class="nc" id="L107">      final ChannelInboundHandler inboundHandler</span>
+<span class="nc" id="L108">          = new SimpleChannelInboundHandler&lt;RaftNettyServerReplyProto&gt;() {</span>
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx,
+                                    RaftNettyServerReplyProto proto) {
+<span class="nc" id="L112">          final CompletableFuture&lt;RaftNettyServerReplyProto&gt; future = pollReply();</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">          if (future == null) {</span>
+<span class="nc" id="L114">            throw new IllegalStateException(&quot;Request #&quot; + getCallId(proto)</span>
+                + &quot; not found&quot;);
+          }
+<span class="nc bnc" id="L117" title="All 2 branches missed.">          if (proto.getRaftNettyServerReplyCase() == EXCEPTIONREPLY) {</span>
+<span class="nc" id="L118">            final Object ioe = ProtoUtils.toObject(proto.getExceptionReply().getException());</span>
+<span class="nc" id="L119">            future.completeExceptionally((IOException)ioe);</span>
+<span class="nc" id="L120">          } else {</span>
+<span class="nc" id="L121">            future.complete(proto);</span>
+          }
+<span class="nc" id="L123">        }</span>
+      };
+<span class="nc" id="L125">      final ChannelInitializer&lt;SocketChannel&gt; initializer</span>
+<span class="nc" id="L126">          = new ChannelInitializer&lt;SocketChannel&gt;() {</span>
+        @Override
+        protected void initChannel(SocketChannel ch) throws Exception {
+<span class="nc" id="L129">          final ChannelPipeline p = ch.pipeline();</span>
+
+<span class="nc" id="L131">          p.addLast(new ProtobufVarint32FrameDecoder());</span>
+<span class="nc" id="L132">          p.addLast(new ProtobufDecoder(RaftNettyServerReplyProto.getDefaultInstance()));</span>
+<span class="nc" id="L133">          p.addLast(new ProtobufVarint32LengthFieldPrepender());</span>
+<span class="nc" id="L134">          p.addLast(new ProtobufEncoder());</span>
+
+<span class="nc" id="L136">          p.addLast(inboundHandler);</span>
+<span class="nc" id="L137">        }</span>
+      };
+
+<span class="nc" id="L140">      client.connect(group, initializer);</span>
+<span class="nc" id="L141">    }</span>
+
+    synchronized ChannelFuture offer(RaftNettyServerRequestProto request,
+        CompletableFuture&lt;RaftNettyServerReplyProto&gt; reply) {
+<span class="nc" id="L145">      replies.offer(reply);</span>
+<span class="nc" id="L146">      return client.writeAndFlush(request);</span>
+    }
+
+    synchronized CompletableFuture&lt;RaftNettyServerReplyProto&gt; pollReply() {
+<span class="nc" id="L150">      return replies.poll();</span>
+    }
+
+    @Override
+    public synchronized void close() {
+<span class="nc" id="L155">      client.close();</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">      if (!replies.isEmpty()) {</span>
+<span class="nc" id="L157">        final IOException e = new IOException(&quot;Connection to &quot; + peer + &quot; is closed.&quot;);</span>
+<span class="nc" id="L158">        replies.stream().forEach(f -&gt; f.completeExceptionally(e));</span>
+<span class="nc" id="L159">        replies.clear();</span>
+      }
+<span class="nc" id="L161">    }</span>
+  }
+
+  private final RaftPeer peer;
+  private final Connection connection;
+  private final TimeDuration requestTimeoutDuration;
+
+<span class="nc" id="L168">  public NettyRpcProxy(RaftPeer peer, RaftProperties properties, EventLoopGroup group) throws InterruptedException {</span>
+<span class="nc" id="L169">    this.peer = peer;</span>
+<span class="nc" id="L170">    this.connection = new Connection(group);</span>
+<span class="nc" id="L171">    this.requestTimeoutDuration = RaftClientConfigKeys.Rpc.requestTimeout(properties);</span>
+<span class="nc" id="L172">  }</span>
+
+  @Override
+  public void close() {
+<span class="nc" id="L176">    connection.close();</span>
+<span class="nc" id="L177">  }</span>
+
+  public CompletableFuture&lt;RaftNettyServerReplyProto&gt; sendAsync(RaftNettyServerRequestProto proto) {
+<span class="nc" id="L180">    final CompletableFuture&lt;RaftNettyServerReplyProto&gt; reply = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L181">    connection.offer(proto, reply);</span>
+<span class="nc" id="L182">    return reply;</span>
+  }
+
+  public RaftNettyServerReplyProto send(
+      RaftRpcRequestProto request, RaftNettyServerRequestProto proto)
+      throws IOException {
+<span class="nc" id="L188">    final CompletableFuture&lt;RaftNettyServerReplyProto&gt; reply = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L189">    final ChannelFuture channelFuture = connection.offer(proto, reply);</span>
+
+    try {
+<span class="nc" id="L192">      channelFuture.sync();</span>
+<span class="nc" id="L193">      TimeDuration newDuration = requestTimeoutDuration.add(request.getTimeoutMs(), TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L194">      return reply.get(newDuration.getDuration(), newDuration.getUnit());</span>
+<span class="nc" id="L195">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L196">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L197">      throw IOUtils.toInterruptedIOException(ProtoUtils.toString(request)</span>
+          + &quot; sending from &quot; + peer + &quot; is interrupted.&quot;, e);
+<span class="nc" id="L199">    } catch (ExecutionException e) {</span>
+<span class="nc" id="L200">      throw IOUtils.toIOException(e);</span>
+<span class="nc" id="L201">    } catch (TimeoutException e) {</span>
+<span class="nc" id="L202">      throw new TimeoutIOException(e.getMessage(), e);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

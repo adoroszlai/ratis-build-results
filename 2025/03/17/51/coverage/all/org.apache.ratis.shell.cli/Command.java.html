@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Command.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli</a> &gt; <span class="el_source">Command.java</span></div><h1>Command.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * An interface for all the commands that can be run from a shell.
+ */
+public interface Command extends Comparable&lt;Command&gt;, Closeable {
+
+  /**
+   * Gets the command name as input from the shell.
+   *
+   * @return the command name
+   */
+  String getCommandName();
+
+  @Override
+  default int compareTo(Command that) {
+<span class="nc" id="L46">    return this.getCommandName().compareTo(that.getCommandName());</span>
+  }
+
+  /**
+   * @return the supported {@link Options} of the command
+   */
+  default Options getOptions() {
+<span class="nc" id="L53">    return new Options();</span>
+  }
+
+  /**
+   * If a command has sub-commands, the first argument should be the sub-command's name,
+   * all arguments and options will be parsed for the sub-command.
+   *
+   * @return whether this command has sub-commands
+   */
+  default boolean hasSubCommand() {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">    return Optional.ofNullable(getSubCommands()).filter(subs -&gt; !subs.isEmpty()).isPresent();</span>
+  }
+
+  /**
+   * @return a map from sub-command names to sub-command instances
+   */
+  default Map&lt;String, Command&gt; getSubCommands() {
+<span class="nc" id="L70">    return Collections.emptyMap();</span>
+  }
+
+  /**
+   * Parses and validates the arguments.
+   *
+   * @param args the arguments for the command, excluding the command name
+   * @return the parsed command line object
+   * @throws IllegalArgumentException when arguments are not valid
+   */
+  default CommandLine parseAndValidateArgs(String... args) throws IllegalArgumentException {
+    CommandLine cmdline;
+<span class="nc" id="L82">    Options opts = getOptions();</span>
+<span class="nc" id="L83">    CommandLineParser parser = new DefaultParser();</span>
+    try {
+<span class="nc" id="L85">      cmdline = parser.parse(opts, args);</span>
+<span class="nc" id="L86">    } catch (ParseException e) {</span>
+<span class="nc" id="L87">      throw new IllegalArgumentException(</span>
+<span class="nc" id="L88">          String.format(&quot;Failed to parse args for %s: %s&quot;, getCommandName(), e.getMessage()), e);</span>
+<span class="nc" id="L89">    }</span>
+<span class="nc" id="L90">    validateArgs(cmdline);</span>
+<span class="nc" id="L91">    return cmdline;</span>
+  }
+
+  /**
+   * Checks if the arguments are valid or throw InvalidArgumentException.
+   *
+   * @param cl the parsed command line for the arguments
+   * @throws IllegalArgumentException when arguments are not valid
+   */
+<span class="nc" id="L100">  default void validateArgs(CommandLine cl) throws IllegalArgumentException {}</span>
+
+  /**
+   * Runs the command.
+   *
+   * @param cl the parsed command line for the arguments
+   * @return the result of running the command
+   */
+  default int run(CommandLine cl) throws IOException {
+<span class="nc" id="L109">    return 0;</span>
+  }
+
+  /**
+   * @return the usage information of the command
+   */
+  String getUsage();
+
+  /**
+   * @return the description information of the command
+   */
+  String getDescription();
+
+  /**
+   * Used to close resources created by commands.
+   *
+   * @throws IOException if closing resources fails
+   */
+<span class="nc" id="L127">  default void close() throws IOException {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

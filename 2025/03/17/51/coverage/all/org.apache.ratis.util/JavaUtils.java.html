@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JavaUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">JavaUtils.java</span></div><h1>JavaUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedFunction;
+import org.apache.ratis.util.function.CheckedRunnable;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.text.SimpleDateFormat;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/**
+ * General Java utility methods.
+ */
+public interface JavaUtils {
+<span class="nc" id="L53">  Logger LOG = LoggerFactory.getLogger(JavaUtils.class);</span>
+
+<span class="nc" id="L55">  CompletableFuture&lt;?&gt;[] EMPTY_COMPLETABLE_FUTURE_ARRAY = {};</span>
+
+<span class="nc" id="L57">  ConcurrentMap&lt;Class&lt;?&gt;, String&gt; CLASS_SIMPLE_NAMES = new ConcurrentHashMap&lt;&gt;();</span>
+  static String getClassSimpleName(Class&lt;?&gt; clazz) {
+<span class="nc" id="L59">    return CLASS_SIMPLE_NAMES.computeIfAbsent(clazz, Class::getSimpleName);</span>
+  }
+
+  static String date() {
+<span class="nc" id="L63">    return new SimpleDateFormat(&quot;yyyy-MM-dd hh:mm:ss,SSS&quot;).format(new Date());</span>
+  }
+
+  /**
+   * The same as {@link Class#cast(Object)} except that
+   * this method returns null (but not throw {@link ClassCastException})
+   * if the given object is not an instance of the given class.
+   */
+  static &lt;T&gt; T cast(Object obj, Class&lt;T&gt; clazz) {
+<span class="nc bnc" id="L72" title="All 2 branches missed.">    return clazz.isInstance(obj)? clazz.cast(obj): null;</span>
+  }
+
+  static &lt;T&gt; T cast(Object obj) {
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L77">    final T t = (T)obj;</span>
+<span class="nc" id="L78">    return t;</span>
+  }
+
+  static StackTraceElement getCallerStackTraceElement() {
+<span class="nc" id="L82">    final StackTraceElement[] trace = Thread.currentThread().getStackTrace();</span>
+<span class="nc" id="L83">    return trace[3];</span>
+  }
+
+  static StackTraceElement getCurrentStackTraceElement() {
+<span class="nc" id="L87">    final StackTraceElement[] trace = Thread.currentThread().getStackTrace();</span>
+<span class="nc" id="L88">    return trace[2];</span>
+  }
+
+  static &lt;T extends Throwable&gt; void runAsUnchecked(CheckedRunnable&lt;T&gt; runnable) {
+<span class="nc" id="L92">    runAsUnchecked(runnable, RuntimeException::new);</span>
+<span class="nc" id="L93">  }</span>
+
+  static &lt;THROWABLE extends Throwable&gt; void runAsUnchecked(
+      CheckedRunnable&lt;THROWABLE&gt; runnable, Function&lt;THROWABLE, ? extends RuntimeException&gt; converter) {
+    try {
+<span class="nc" id="L98">      runnable.run();</span>
+<span class="nc" id="L99">    } catch(RuntimeException | Error e) {</span>
+<span class="nc" id="L100">      throw e;</span>
+<span class="nc" id="L101">    } catch(Throwable t) {</span>
+<span class="nc" id="L102">      throw converter.apply(cast(t));</span>
+<span class="nc" id="L103">    }</span>
+<span class="nc" id="L104">  }</span>
+
+  /**
+   * Invoke {@link Callable#call()} and, if there any,
+   * wrap the checked exception by {@link RuntimeException}.
+   */
+  static &lt;T&gt; T callAsUnchecked(Callable&lt;T&gt; callable) {
+<span class="nc" id="L111">    return callAsUnchecked(callable::call, RuntimeException::new);</span>
+  }
+
+  static &lt;OUTPUT, THROWABLE extends Throwable&gt; OUTPUT callAsUnchecked(
+      CheckedSupplier&lt;OUTPUT, THROWABLE&gt; checkedSupplier,
+      Function&lt;THROWABLE, ? extends RuntimeException&gt; converter) {
+    try {
+<span class="nc" id="L118">      return checkedSupplier.get();</span>
+<span class="nc" id="L119">    } catch(RuntimeException | Error e) {</span>
+<span class="nc" id="L120">      throw e;</span>
+<span class="nc" id="L121">    } catch(Throwable t) {</span>
+<span class="nc" id="L122">      throw converter.apply(cast(t));</span>
+    }
+  }
+
+  static &lt;T&gt; T doPrivileged(Supplier&lt;T&gt; action, Function&lt;SecurityException, T&gt; exceptionHandler) {
+    try {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      return System.getSecurityManager() == null? action.get()</span>
+<span class="nc" id="L129">          : AccessController.doPrivileged((PrivilegedAction&lt;T&gt;) action::get);</span>
+<span class="nc" id="L130">    } catch (SecurityException e) {</span>
+<span class="nc" id="L131">      return exceptionHandler.apply(e);</span>
+    }
+  }
+
+  static &lt;T&gt; T doPrivileged(Supplier&lt;T&gt; action, Supplier&lt;String&gt; name) {
+<span class="nc" id="L136">    return doPrivileged(action, e -&gt; {</span>
+<span class="nc" id="L137">      LOG.warn(&quot;Failed to &quot; + name.get(), e);</span>
+<span class="nc" id="L138">      return null;</span>
+    });
+  }
+
+  /**
+   * Similar to {@link System#getProperty(String)}
+   * except that this method may invoke {@link AccessController#doPrivileged(PrivilegedAction)}
+   * if there is a {@link SecurityManager}.
+   *
+   * @return null if either the property is not set or there is a {@link SecurityException};
+   *         otherwise, return system property value.
+   */
+  static String getSystemProperty(final String key) {
+<span class="nc" id="L151">    Preconditions.assertNotNull(key, &quot;key&quot;);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">    Preconditions.assertTrue(!key.isEmpty(), &quot;key is empty.&quot;);</span>
+<span class="nc" id="L153">    return doPrivileged(() -&gt; System.getProperty(key), () -&gt; &quot;get system property &quot; + key);</span>
+  }
+
+  static String getEnv(String variable) {
+<span class="nc" id="L157">    final String value = System.getenv().get(variable);</span>
+<span class="nc" id="L158">    LOG.info(&quot;ENV: {} = {}&quot;, variable, value);</span>
+<span class="nc" id="L159">    return value;</span>
+  }
+
+  /**
+   * Similar to {@link System#setProperty(String, String)}
+   * except that this method may invoke {@link AccessController#doPrivileged(PrivilegedAction)}
+   * if there is a {@link SecurityManager}.
+   * When there is a {@link SecurityException}, this becomes a NOOP.
+   */
+  static void setSystemProperty(String key, String value) {
+<span class="nc" id="L169">    Preconditions.assertNotNull(key, &quot;key&quot;);</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">    Preconditions.assertTrue(!key.isEmpty(), &quot;key is empty.&quot;);</span>
+<span class="nc" id="L171">    Preconditions.assertNotNull(value, &quot;value&quot;);</span>
+<span class="nc" id="L172">    doPrivileged(() -&gt; System.setProperty(key, value), () -&gt; &quot;set system property &quot; + key + &quot; to &quot; + value);</span>
+<span class="nc" id="L173">  }</span>
+
+  /**
+   * Create a memoized supplier which gets a value by invoking the initializer once
+   * and then keeps returning the same value as its supplied results.
+   *
+   * @param initializer to supply at most one non-null value.
+   * @param &lt;T&gt; The supplier result type.
+   * @return a memoized supplier which is thread-safe.
+   */
+  static &lt;T&gt; MemoizedSupplier&lt;T&gt; memoize(Supplier&lt;T&gt; initializer) {
+<span class="nc" id="L184">    return MemoizedSupplier.valueOf(initializer);</span>
+  }
+
+<span class="nc" id="L187">  Supplier&lt;ThreadGroup&gt; ROOT_THREAD_GROUP = memoize(() -&gt; {</span>
+<span class="nc" id="L188">    for (ThreadGroup g = Thread.currentThread().getThreadGroup(), p;; g = p) {</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">      if ((p = g.getParent()) == null) {</span>
+<span class="nc" id="L190">        return g;</span>
+      }
+    }
+  });
+
+  static ThreadGroup getRootThreadGroup() {
+<span class="nc" id="L196">    return ROOT_THREAD_GROUP.get();</span>
+  }
+
+  /** Attempt to get a return value from the given supplier multiple times. */
+  static &lt;RETURN, THROWABLE extends Throwable&gt; RETURN attemptRepeatedly(
+      CheckedSupplier&lt;RETURN, THROWABLE&gt; supplier,
+      int numAttempts, TimeDuration sleepTime, String name, Logger log)
+      throws THROWABLE, InterruptedException {
+<span class="nc" id="L204">    return attempt(supplier, numAttempts, sleepTime, () -&gt; name, log);</span>
+  }
+
+  /** Attempt to get a return value from the given supplier multiple times. */
+  static &lt;RETURN, THROWABLE extends Throwable&gt; RETURN attempt(
+      CheckedSupplier&lt;RETURN, THROWABLE&gt; supplier,
+      int numAttempts, TimeDuration sleepTime, Supplier&lt;?&gt; name, Logger log)
+      throws THROWABLE, InterruptedException {
+<span class="nc" id="L212">    return attempt(i -&gt; supplier.get(), numAttempts, sleepTime, name, log);</span>
+  }
+
+  static &lt;RETURN, THROWABLE extends Throwable&gt; RETURN attempt(
+      CheckedFunction&lt;Integer, RETURN, THROWABLE&gt; attemptMethod,
+      int numAttempts, TimeDuration sleepTime, Supplier&lt;?&gt; name, Logger log)
+      throws THROWABLE, InterruptedException {
+<span class="nc" id="L219">    Objects.requireNonNull(attemptMethod, &quot;attemptMethod == null&quot;);</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">    Preconditions.assertTrue(numAttempts &gt; 0, () -&gt; &quot;numAttempts = &quot; + numAttempts + &quot; &lt;= 0&quot;);</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">    Preconditions.assertTrue(!sleepTime.isNegative(), () -&gt; &quot;sleepTime = &quot; + sleepTime + &quot; &lt; 0&quot;);</span>
+
+<span class="nc bnc" id="L223" title="All 2 branches missed.">    for(int i = 1; i &lt;= numAttempts; i++) {</span>
+      try {
+<span class="nc" id="L225">        return attemptMethod.apply(i);</span>
+<span class="nc" id="L226">      } catch (Throwable t) {</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (i == numAttempts) {</span>
+<span class="nc" id="L228">          throw t;</span>
+        }
+<span class="nc bnc" id="L230" title="All 4 branches missed.">        if (log != null &amp;&amp; log.isWarnEnabled()) {</span>
+<span class="nc" id="L231">          log.warn(&quot;FAILED \&quot;&quot; + name.get() + &quot;\&quot;, attempt #&quot; + i + &quot;/&quot; + numAttempts</span>
+              + &quot;, sleep &quot; + sleepTime + &quot; and then retry: &quot; + t);
+        }
+      }
+
+<span class="nc" id="L236">      sleepTime.sleep();</span>
+    }
+<span class="nc" id="L238">    throw new IllegalStateException(&quot;BUG: this line should be unreachable.&quot;);</span>
+  }
+
+  /** Attempt to run the given op multiple times. */
+  static &lt;THROWABLE extends Throwable&gt; void attempt(
+      CheckedRunnable&lt;THROWABLE&gt; runnable, int numAttempts, TimeDuration sleepTime, String name, Logger log)
+      throws THROWABLE, InterruptedException {
+<span class="nc" id="L245">    attemptRepeatedly(CheckedRunnable.asCheckedSupplier(runnable), numAttempts, sleepTime, name, log);</span>
+<span class="nc" id="L246">  }</span>
+
+  /** Attempt to wait the given condition to return true multiple times. */
+  static void attemptUntilTrue(
+      BooleanSupplier condition, int numAttempts, TimeDuration sleepTime, String name, Logger log)
+      throws InterruptedException {
+<span class="nc" id="L252">    Objects.requireNonNull(condition, &quot;condition == null&quot;);</span>
+<span class="nc" id="L253">    attempt(() -&gt; {</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">      if (!condition.getAsBoolean()) {</span>
+<span class="nc" id="L255">        throw new IllegalStateException(&quot;Condition &quot; + name + &quot; is false.&quot;);</span>
+      }
+<span class="nc" id="L257">    }, numAttempts, sleepTime, name, log);</span>
+<span class="nc" id="L258">  }</span>
+
+  static Timer runRepeatedly(Runnable runnable, long delay, long period, TimeUnit unit) {
+<span class="nc" id="L261">    final Timer timer = new Timer(true);</span>
+<span class="nc" id="L262">    timer.schedule(new TimerTask() {</span>
+      @Override
+      public void run() {
+<span class="nc" id="L265">        runnable.run();</span>
+<span class="nc" id="L266">      }</span>
+<span class="nc" id="L267">    }, unit.toMillis(delay), unit.toMillis(period));</span>
+
+<span class="nc" id="L269">    return timer;</span>
+  }
+
+  static void dumpAllThreads(Consumer&lt;String&gt; println) {
+<span class="nc" id="L273">    final ThreadMXBean threadMxBean = ManagementFactory.getThreadMXBean();</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">    for (ThreadInfo ti : threadMxBean.dumpAllThreads(true, true)) {</span>
+<span class="nc" id="L275">      println.accept(ti.toString());</span>
+    }
+<span class="nc" id="L277">  }</span>
+
+  static &lt;E&gt; CompletableFuture&lt;E&gt; completeExceptionally(Throwable t) {
+<span class="nc" id="L280">    final CompletableFuture&lt;E&gt; future = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L281">    future.completeExceptionally(t);</span>
+<span class="nc" id="L282">    return future;</span>
+  }
+
+  static boolean isCompletedNormally(CompletableFuture&lt;?&gt; future) {
+<span class="nc bnc" id="L286" title="All 6 branches missed.">    return future.isDone() &amp;&amp; !future.isCancelled() &amp;&amp; !future.isCompletedExceptionally();</span>
+  }
+
+  static Throwable unwrapCompletionException(Throwable t) {
+<span class="nc" id="L290">    Objects.requireNonNull(t, &quot;t == null&quot;);</span>
+<span class="nc bnc" id="L291" title="All 4 branches missed.">    return t instanceof CompletionException &amp;&amp; t.getCause() != null? t.getCause(): t;</span>
+  }
+
+  static &lt;T&gt; CompletableFuture&lt;Void&gt; allOf(Collection&lt;CompletableFuture&lt;T&gt;&gt; futures) {
+<span class="nc bnc" id="L295" title="All 4 branches missed.">    if (futures == null || futures.isEmpty()) {</span>
+<span class="nc" id="L296">      return CompletableFuture.completedFuture(null);</span>
+    }
+<span class="nc" id="L298">    return CompletableFuture.allOf(futures.toArray(EMPTY_COMPLETABLE_FUTURE_ARRAY));</span>
+  }
+
+  static &lt;V&gt; BiConsumer&lt;V, Throwable&gt; asBiConsumer(CompletableFuture&lt;V&gt; future) {
+<span class="nc" id="L302">    return (v, t) -&gt; {</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">      if (t != null) {</span>
+<span class="nc" id="L304">        future.completeExceptionally(t);</span>
+      } else {
+<span class="nc" id="L306">        future.complete(v);</span>
+      }
+<span class="nc" id="L308">    };</span>
+  }
+
+  static &lt;OUTPUT, THROWABLE extends Throwable&gt; OUTPUT supplyAndWrapAsCompletionException(
+      CheckedSupplier&lt;OUTPUT, THROWABLE&gt; supplier) {
+    try {
+<span class="nc" id="L314">      return supplier.get();</span>
+<span class="nc" id="L315">    } catch (RuntimeException e) {</span>
+<span class="nc" id="L316">      throw e;</span>
+<span class="nc" id="L317">    } catch (Throwable t) {</span>
+<span class="nc" id="L318">      throw new CompletionException(t);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

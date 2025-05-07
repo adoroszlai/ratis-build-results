@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyDataStreamUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty</a> &gt; <span class="el_source">NettyDataStreamUtils.java</span></div><h1>NettyDataStreamUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.netty;
+
+import org.apache.ratis.datastream.impl.DataStreamReplyByteBuffer;
+import org.apache.ratis.datastream.impl.DataStreamRequestByteBuffer;
+import org.apache.ratis.datastream.impl.DataStreamRequestFilePositionCount;
+import org.apache.ratis.io.FilePositionCount;
+import org.apache.ratis.io.StandardWriteOption;
+import org.apache.ratis.io.WriteOption;
+import org.apache.ratis.datastream.impl.DataStreamRequestByteBuf;
+import org.apache.ratis.proto.RaftProtos.DataStreamReplyHeaderProto;
+import org.apache.ratis.proto.RaftProtos.DataStreamRequestHeaderProto;
+import org.apache.ratis.proto.RaftProtos.DataStreamPacketHeaderProto;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.DataStreamPacketHeader;
+import org.apache.ratis.protocol.DataStreamReplyHeader;
+import org.apache.ratis.protocol.DataStreamRequest;
+import org.apache.ratis.protocol.DataStreamRequestHeader;
+import org.apache.ratis.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.ratis.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.ratis.thirdparty.io.netty.buffer.ByteBufAllocator;
+import org.apache.ratis.thirdparty.io.netty.buffer.Unpooled;
+import org.apache.ratis.thirdparty.io.netty.channel.DefaultFileRegion;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.ByteBuffer;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+public interface NettyDataStreamUtils {
+<span class="nc" id="L50">  Logger LOG = LoggerFactory.getLogger(NettyDataStreamUtils.class);</span>
+
+  static DataStreamPacketHeaderProto.Option getOption(WriteOption option) {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    if (option == StandardWriteOption.FLUSH) {</span>
+      // FLUSH is a local option which should not be included in the header.
+<span class="nc" id="L55">      return null;</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    } else if (option instanceof StandardWriteOption) {</span>
+<span class="nc" id="L57">      return DataStreamPacketHeaderProto.Option.forNumber(((StandardWriteOption) option).ordinal());</span>
+    }
+<span class="nc" id="L59">    throw new IllegalArgumentException(&quot;Unexpected WriteOption &quot; + option);</span>
+  }
+
+  static ByteBuffer getDataStreamRequestHeaderProtoByteBuffer(DataStreamRequest request) {
+<span class="nc" id="L63">    final DataStreamPacketHeaderProto.Builder b = DataStreamPacketHeaderProto.newBuilder()</span>
+<span class="nc" id="L64">        .setClientId(request.getClientId().toByteString())</span>
+<span class="nc" id="L65">        .setStreamId(request.getStreamId())</span>
+<span class="nc" id="L66">        .setStreamOffset(request.getStreamOffset())</span>
+<span class="nc" id="L67">        .setType(request.getType())</span>
+<span class="nc" id="L68">        .setDataLength(request.getDataLength());</span>
+
+<span class="nc" id="L70">    request.getWriteOptionList().stream()</span>
+<span class="nc" id="L71">        .map(NettyDataStreamUtils::getOption)</span>
+<span class="nc" id="L72">        .filter(Objects::nonNull)</span>
+<span class="nc" id="L73">        .forEach(b::addOptions);</span>
+
+<span class="nc" id="L75">    return DataStreamRequestHeaderProto</span>
+<span class="nc" id="L76">        .newBuilder()</span>
+<span class="nc" id="L77">        .setPacketHeader(b)</span>
+<span class="nc" id="L78">        .build()</span>
+<span class="nc" id="L79">        .toByteString()</span>
+<span class="nc" id="L80">        .asReadOnlyByteBuffer();</span>
+  }
+
+  static ByteBuffer getDataStreamReplyHeaderProtoByteBuf(DataStreamReplyByteBuffer reply) {
+    DataStreamPacketHeaderProto.Builder b = DataStreamPacketHeaderProto
+<span class="nc" id="L85">        .newBuilder()</span>
+<span class="nc" id="L86">        .setClientId(reply.getClientId().toByteString())</span>
+<span class="nc" id="L87">        .setStreamId(reply.getStreamId())</span>
+<span class="nc" id="L88">        .setStreamOffset(reply.getStreamOffset())</span>
+<span class="nc" id="L89">        .setType(reply.getType())</span>
+<span class="nc" id="L90">        .setDataLength(reply.getDataLength());</span>
+<span class="nc" id="L91">    return DataStreamReplyHeaderProto</span>
+<span class="nc" id="L92">        .newBuilder()</span>
+<span class="nc" id="L93">        .setPacketHeader(b)</span>
+<span class="nc" id="L94">        .setBytesWritten(reply.getBytesWritten())</span>
+<span class="nc" id="L95">        .setSuccess(reply.isSuccess())</span>
+<span class="nc" id="L96">        .addAllCommitInfos(reply.getCommitInfos())</span>
+<span class="nc" id="L97">        .build()</span>
+<span class="nc" id="L98">        .toByteString()</span>
+<span class="nc" id="L99">        .asReadOnlyByteBuffer();</span>
+  }
+
+  static void encodeDataStreamRequestHeader(DataStreamRequest request, Consumer&lt;Object&gt; out,
+      ByteBufAllocator allocator) {
+<span class="nc" id="L104">    final ByteBuffer headerBuf = getDataStreamRequestHeaderProtoByteBuffer(request);</span>
+
+<span class="nc" id="L106">    final ByteBuf headerBodyLenBuf = allocator.ioBuffer(DataStreamPacketHeader.getSizeOfHeaderBodyLen());</span>
+<span class="nc" id="L107">    headerBodyLenBuf.writeLong(headerBuf.remaining() + request.getDataLength());</span>
+<span class="nc" id="L108">    out.accept(headerBodyLenBuf);</span>
+
+<span class="nc" id="L110">    final ByteBuf headerLenBuf = allocator.ioBuffer(DataStreamPacketHeader.getSizeOfHeaderLen());</span>
+<span class="nc" id="L111">    headerLenBuf.writeInt(headerBuf.remaining());</span>
+<span class="nc" id="L112">    out.accept(headerLenBuf);</span>
+
+<span class="nc" id="L114">    out.accept(Unpooled.wrappedBuffer(headerBuf));</span>
+<span class="nc" id="L115">  }</span>
+
+  static void encodeDataStreamRequestByteBuffer(DataStreamRequestByteBuffer request, Consumer&lt;Object&gt; out,
+      ByteBufAllocator allocator) {
+<span class="nc" id="L119">    encodeDataStreamRequestHeader(request, out, allocator);</span>
+<span class="nc" id="L120">    encodeByteBuffer(request.slice(), out);</span>
+<span class="nc" id="L121">  }</span>
+
+  static void encodeByteBuffer(ByteBuffer buffer, Consumer&lt;Object&gt; out) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (buffer.remaining() == 0) {</span>
+<span class="nc" id="L125">      out.accept(Unpooled.EMPTY_BUFFER); // to avoid EncoderException: must produce at least one message</span>
+<span class="nc" id="L126">      return;</span>
+    }
+<span class="nc" id="L128">    out.accept(Unpooled.wrappedBuffer(buffer));</span>
+<span class="nc" id="L129">  }</span>
+
+  static void encodeDataStreamRequestByteBuf(DataStreamRequestByteBuf request, Consumer&lt;Object&gt; out,
+      ByteBufAllocator allocator) {
+<span class="nc" id="L133">    encodeDataStreamRequestHeader(request, out, allocator);</span>
+<span class="nc" id="L134">    encodeByteBuf(request.slice(), out);</span>
+<span class="nc" id="L135">  }</span>
+
+  static void encodeByteBuf(ByteBuf buffer, Consumer&lt;Object&gt; out) {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">    if (buffer.readableBytes() == 0) {</span>
+<span class="nc" id="L139">      out.accept(Unpooled.EMPTY_BUFFER); // to avoid EncoderException: must produce at least one message</span>
+<span class="nc" id="L140">      return;</span>
+    }
+<span class="nc" id="L142">    out.accept(buffer);</span>
+<span class="nc" id="L143">  }</span>
+
+  static void encodeDataStreamRequestFilePositionCount(
+      DataStreamRequestFilePositionCount request, Consumer&lt;Object&gt; out, ByteBufAllocator allocator) {
+<span class="nc" id="L147">    encodeDataStreamRequestHeader(request, out, allocator);</span>
+<span class="nc" id="L148">    final FilePositionCount f = request.getFile();</span>
+<span class="nc" id="L149">    out.accept(new DefaultFileRegion(f.getFile(), f.getPosition(), f.getCount()));</span>
+<span class="nc" id="L150">  }</span>
+
+  static void encodeDataStreamReplyByteBuffer(DataStreamReplyByteBuffer reply, Consumer&lt;ByteBuf&gt; out,
+      ByteBufAllocator allocator) {
+<span class="nc" id="L154">    ByteBuffer headerBuf = getDataStreamReplyHeaderProtoByteBuf(reply);</span>
+<span class="nc" id="L155">    final ByteBuf headerLenBuf = allocator.ioBuffer(DataStreamPacketHeader.getSizeOfHeaderLen());</span>
+<span class="nc" id="L156">    headerLenBuf.writeInt(headerBuf.remaining());</span>
+<span class="nc" id="L157">    out.accept(headerLenBuf);</span>
+<span class="nc" id="L158">    out.accept(Unpooled.wrappedBuffer(headerBuf));</span>
+<span class="nc" id="L159">    out.accept(Unpooled.wrappedBuffer(reply.slice()));</span>
+<span class="nc" id="L160">  }</span>
+
+  static DataStreamRequestByteBuf decodeDataStreamRequestByteBuf(ByteBuf buf) {
+<span class="nc" id="L163">    return Optional.ofNullable(decodeDataStreamRequestHeader(buf))</span>
+<span class="nc" id="L164">        .map(header -&gt; checkHeader(header, buf))</span>
+<span class="nc" id="L165">        .map(header -&gt; new DataStreamRequestByteBuf(header, decodeData(buf, header, ByteBuf::retain)))</span>
+<span class="nc" id="L166">        .orElse(null);</span>
+  }
+
+  static DataStreamRequestHeader decodeDataStreamRequestHeader(ByteBuf buf) {
+<span class="nc bnc" id="L170" title="All 2 branches missed.">    if (DataStreamPacketHeader.getSizeOfHeaderBodyLen() &gt; buf.readableBytes()) {</span>
+<span class="nc" id="L171">      return null;</span>
+    }
+
+<span class="nc" id="L174">    long headerBodyBufLen = buf.readLong();</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (headerBodyBufLen &gt; buf.readableBytes()) {</span>
+<span class="nc" id="L176">      buf.resetReaderIndex();</span>
+<span class="nc" id="L177">      return null;</span>
+    }
+
+<span class="nc" id="L180">    int headerBufLen = buf.readInt();</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">    if (headerBufLen &gt; buf.readableBytes()) {</span>
+<span class="nc" id="L182">      buf.resetReaderIndex();</span>
+<span class="nc" id="L183">      return null;</span>
+    }
+
+    try {
+<span class="nc" id="L187">      ByteBuf headerBuf = buf.slice(buf.readerIndex(), headerBufLen);</span>
+<span class="nc" id="L188">      DataStreamRequestHeaderProto header = DataStreamRequestHeaderProto.parseFrom(headerBuf.nioBuffer());</span>
+
+<span class="nc" id="L190">      final DataStreamPacketHeaderProto h = header.getPacketHeader();</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">      if (h.getDataLength() + headerBufLen &lt;= buf.readableBytes()) {</span>
+<span class="nc" id="L192">        buf.readerIndex(buf.readerIndex() + headerBufLen);</span>
+<span class="nc" id="L193">        WriteOption[] options = new WriteOption[h.getOptionsCount()];</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        for (int i = 0; i &lt; options.length; i++) {</span>
+<span class="nc" id="L195">          options[i] = StandardWriteOption.values()[h.getOptions(i).ordinal()];</span>
+        }
+
+<span class="nc" id="L198">        return new DataStreamRequestHeader(ClientId.valueOf(h.getClientId()), h.getType(), h.getStreamId(),</span>
+<span class="nc" id="L199">            h.getStreamOffset(), h.getDataLength(), options);</span>
+      } else {
+<span class="nc" id="L201">        buf.resetReaderIndex();</span>
+<span class="nc" id="L202">        return null;</span>
+      }
+<span class="nc" id="L204">    } catch (InvalidProtocolBufferException e) {</span>
+<span class="nc" id="L205">      LOG.error(&quot;Fail to decode request header:&quot;, e);</span>
+<span class="nc" id="L206">      buf.resetReaderIndex();</span>
+<span class="nc" id="L207">      return null;</span>
+    }
+  }
+
+  static ByteBuffer copy(ByteBuf buf) {
+<span class="nc" id="L212">    final byte[] bytes = new byte[buf.readableBytes()];</span>
+<span class="nc" id="L213">    buf.readBytes(bytes);</span>
+<span class="nc" id="L214">    return ByteBuffer.wrap(bytes);</span>
+  }
+
+  static DataStreamReplyByteBuffer decodeDataStreamReplyByteBuffer(ByteBuf buf) {
+<span class="nc" id="L218">    return Optional.ofNullable(decodeDataStreamReplyHeader(buf))</span>
+<span class="nc" id="L219">        .map(header -&gt; checkHeader(header, buf))</span>
+<span class="nc" id="L220">        .map(header -&gt; DataStreamReplyByteBuffer.newBuilder()</span>
+<span class="nc" id="L221">            .setDataStreamReplyHeader(header)</span>
+<span class="nc" id="L222">            .setBuffer(decodeData(buf, header, NettyDataStreamUtils::copy))</span>
+<span class="nc" id="L223">            .build())</span>
+<span class="nc" id="L224">        .orElse(null);</span>
+  }
+
+  static DataStreamReplyHeader decodeDataStreamReplyHeader(ByteBuf buf) {
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    if (DataStreamPacketHeader.getSizeOfHeaderLen() &gt; buf.readableBytes()) {</span>
+<span class="nc" id="L229">      return null;</span>
+    }
+
+<span class="nc" id="L232">    int headerBufLen = buf.readInt();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">    if (headerBufLen &gt; buf.readableBytes()) {</span>
+<span class="nc" id="L234">      buf.resetReaderIndex();</span>
+<span class="nc" id="L235">      return null;</span>
+    }
+
+    try {
+<span class="nc" id="L239">      ByteBuf headerBuf = buf.slice(buf.readerIndex(), headerBufLen);</span>
+<span class="nc" id="L240">      DataStreamReplyHeaderProto header = DataStreamReplyHeaderProto.parseFrom(headerBuf.nioBuffer());</span>
+
+<span class="nc" id="L242">      final DataStreamPacketHeaderProto h = header.getPacketHeader();</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">      if (header.getPacketHeader().getDataLength() + headerBufLen &lt;= buf.readableBytes()) {</span>
+<span class="nc" id="L244">        buf.readerIndex(buf.readerIndex() + headerBufLen);</span>
+<span class="nc" id="L245">        return new DataStreamReplyHeader(ClientId.valueOf(h.getClientId()), h.getType(), h.getStreamId(),</span>
+<span class="nc" id="L246">            h.getStreamOffset(), h.getDataLength(), header.getBytesWritten(), header.getSuccess(),</span>
+<span class="nc" id="L247">            header.getCommitInfosList());</span>
+      } else {
+<span class="nc" id="L249">        buf.resetReaderIndex();</span>
+<span class="nc" id="L250">        return null;</span>
+      }
+<span class="nc" id="L252">    } catch (InvalidProtocolBufferException e) {</span>
+<span class="nc" id="L253">      LOG.error(&quot;Fail to decode reply header:&quot;, e);</span>
+<span class="nc" id="L254">      buf.resetReaderIndex();</span>
+<span class="nc" id="L255">      return null;</span>
+    }
+  }
+
+  static &lt;HEADER extends DataStreamPacketHeader&gt; HEADER checkHeader(HEADER header, ByteBuf buf) {
+<span class="nc bnc" id="L260" title="All 2 branches missed.">    if (header == null) {</span>
+<span class="nc" id="L261">      return null;</span>
+    }
+<span class="nc bnc" id="L263" title="All 2 branches missed.">    if (buf.readableBytes() &lt; header.getDataLength()) {</span>
+<span class="nc" id="L264">      buf.resetReaderIndex();</span>
+<span class="nc" id="L265">      return null;</span>
+    }
+<span class="nc" id="L267">    return header;</span>
+  }
+
+  static &lt;DATA&gt; DATA decodeData(ByteBuf buf, DataStreamPacketHeader header, Function&lt;ByteBuf, DATA&gt; toData) {
+<span class="nc" id="L271">    final int dataLength = Math.toIntExact(header.getDataLength());</span>
+    final DATA data;
+<span class="nc bnc" id="L273" title="All 2 branches missed.">    if (dataLength &gt; 0) {</span>
+<span class="nc" id="L274">      data = toData.apply(buf.slice(buf.readerIndex(), dataLength));</span>
+<span class="nc" id="L275">      buf.readerIndex(buf.readerIndex() + dataLength);</span>
+    } else {
+<span class="nc" id="L277">      data = null;</span>
+    }
+<span class="nc" id="L279">    buf.markReaderIndex();</span>
+<span class="nc" id="L280">    return data;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

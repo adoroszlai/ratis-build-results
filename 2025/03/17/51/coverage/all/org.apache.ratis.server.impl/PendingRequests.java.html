@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PendingRequests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">PendingRequests.java</span></div><h1>PendingRequests.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.SetConfigurationRequest;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.metrics.RaftServerMetricsImpl;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ResourceSemaphore;
+import org.apache.ratis.util.SizeInBytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+
+class PendingRequests {
+<span class="nc" id="L52">  public static final Logger LOG = LoggerFactory.getLogger(PendingRequests.class);</span>
+
+<span class="nc" id="L54">  private static final int ONE_MB = SizeInBytes.ONE_MB.getSizeInt();</span>
+
+  /**
+   * Round up to the nearest MB.
+   */
+  static int roundUpMb(long bytes) {
+<span class="nc" id="L60">    return Math.toIntExact((bytes - 1) / ONE_MB + 1);</span>
+  }
+
+<span class="nc" id="L63">  static class Permit {}</span>
+
+  /**
+   * The return type of {@link RequestLimits#tryAcquire(int)}.
+   * The order of the enum value must match the order in {@link RequestLimits}.
+   */
+<span class="nc" id="L69">  enum Acquired { FAILED_IN_ELEMENT_LIMIT, FAILED_IN_BYTE_SIZE_LIMIT, SUCCESS }</span>
+
+  static class RequestLimits extends ResourceSemaphore.Group {
+    RequestLimits(int elementLimit, int megabyteLimit) {
+<span class="nc" id="L73">      super(elementLimit, megabyteLimit);</span>
+<span class="nc" id="L74">    }</span>
+
+    int getElementCount() {
+<span class="nc" id="L77">      return get(0).used();</span>
+    }
+
+    int getMegaByteSize() {
+<span class="nc" id="L81">      return get(1).used();</span>
+    }
+
+    Acquired tryAcquire(int messageSizeMb) {
+<span class="nc" id="L85">      final int acquired = tryAcquire(1, messageSizeMb);</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">      return acquired == SUCCESS? PendingRequests.Acquired.SUCCESS: PendingRequests.Acquired.values()[acquired];</span>
+    }
+
+    void releaseExtraMb(int extraMb) {
+<span class="nc" id="L90">      release(0, extraMb);</span>
+<span class="nc" id="L91">    }</span>
+
+    void release(int diffMb) {
+<span class="nc" id="L94">      release(1, diffMb);</span>
+<span class="nc" id="L95">    }</span>
+  }
+
+  private static class RequestMap {
+    private final Object name;
+<span class="nc" id="L100">    private final ConcurrentMap&lt;TermIndex, PendingRequest&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+    private final RaftServerMetricsImpl raftServerMetrics;
+
+    /** Permits to put new requests, always synchronized. */
+<span class="nc" id="L104">    private final Map&lt;Permit, Permit&gt; permits = new HashMap&lt;&gt;();</span>
+    /** Track and limit the number of requests and the total message size. */
+    private final RequestLimits resource;
+    /** The size (in byte) of all the requests in this map. */
+<span class="nc" id="L108">    private final AtomicLong requestSize = new AtomicLong();</span>
+
+
+<span class="nc" id="L111">    RequestMap(Object name, int elementLimit, int megabyteLimit, RaftServerMetricsImpl raftServerMetrics) {</span>
+<span class="nc" id="L112">      this.name = name;</span>
+<span class="nc" id="L113">      this.resource = new RequestLimits(elementLimit, megabyteLimit);</span>
+<span class="nc" id="L114">      this.raftServerMetrics = raftServerMetrics;</span>
+
+<span class="nc" id="L116">      raftServerMetrics.addNumPendingRequestsGauge(resource::getElementCount);</span>
+<span class="nc" id="L117">      raftServerMetrics.addNumPendingRequestsMegaByteSize(resource::getMegaByteSize);</span>
+<span class="nc" id="L118">    }</span>
+
+    Permit tryAcquire(Message message) {
+<span class="nc" id="L121">      final int messageSize = Message.getSize(message);</span>
+<span class="nc" id="L122">      final int messageSizeMb = roundUpMb(messageSize );</span>
+<span class="nc" id="L123">      final Acquired acquired = resource.tryAcquire(messageSizeMb);</span>
+<span class="nc" id="L124">      LOG.trace(&quot;tryAcquire {} MB? {}&quot;, messageSizeMb, acquired);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">      if (acquired == Acquired.FAILED_IN_ELEMENT_LIMIT) {</span>
+<span class="nc" id="L126">        raftServerMetrics.onRequestQueueLimitHit();</span>
+<span class="nc" id="L127">        raftServerMetrics.onResourceLimitHit();</span>
+<span class="nc" id="L128">        return null;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      } else if (acquired == Acquired.FAILED_IN_BYTE_SIZE_LIMIT) {</span>
+<span class="nc" id="L130">        raftServerMetrics.onRequestByteSizeLimitHit();</span>
+<span class="nc" id="L131">        raftServerMetrics.onResourceLimitHit();</span>
+<span class="nc" id="L132">        return null;</span>
+      }
+
+      // release extra MB
+<span class="nc" id="L136">      final long oldSize = requestSize.getAndAdd(messageSize);</span>
+<span class="nc" id="L137">      final long newSize = oldSize + messageSize;</span>
+<span class="nc" id="L138">      final int diffMb = roundUpMb(newSize) - roundUpMb(oldSize);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">      if (messageSizeMb &gt; diffMb) {</span>
+<span class="nc" id="L140">        resource.releaseExtraMb(messageSizeMb - diffMb);</span>
+      }
+<span class="nc" id="L142">      return putPermit();</span>
+    }
+
+    private synchronized Permit putPermit() {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">      if (resource.isClosed()) {</span>
+<span class="nc" id="L147">        return null;</span>
+      }
+<span class="nc" id="L149">      final Permit permit = new Permit();</span>
+<span class="nc" id="L150">      permits.put(permit, permit);</span>
+<span class="nc" id="L151">      return permit;</span>
+    }
+
+    synchronized PendingRequest put(Permit permit, PendingRequest p) {
+<span class="nc" id="L155">      LOG.debug(&quot;{}: PendingRequests.put {}&quot;, name, p);</span>
+<span class="nc" id="L156">      final Permit removed = permits.remove(permit);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">      if (removed == null) {</span>
+<span class="nc" id="L158">        return null;</span>
+      }
+<span class="nc bnc" id="L160" title="All 2 branches missed.">      Preconditions.assertTrue(removed == permit);</span>
+<span class="nc" id="L161">      final PendingRequest previous = map.put(p.getTermIndex(), p);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">      Preconditions.assertTrue(previous == null);</span>
+<span class="nc" id="L163">      return p;</span>
+    }
+
+    PendingRequest get(TermIndex termIndex) {
+<span class="nc" id="L167">      final PendingRequest r = map.get(termIndex);</span>
+<span class="nc" id="L168">      LOG.debug(&quot;{}: PendingRequests.get {} returns {}&quot;, name, termIndex, r);</span>
+<span class="nc" id="L169">      return r;</span>
+    }
+
+    PendingRequest remove(TermIndex termIndex) {
+<span class="nc" id="L173">      final PendingRequest r = map.remove(termIndex);</span>
+<span class="nc" id="L174">      LOG.debug(&quot;{}: PendingRequests.remove {} returns {}&quot;, name, termIndex, r);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">      if (r == null) {</span>
+<span class="nc" id="L176">        return null;</span>
+      }
+<span class="nc" id="L178">      final int messageSize = Message.getSize(r.getRequest().getMessage());</span>
+<span class="nc" id="L179">      final long oldSize = requestSize.getAndAdd(-messageSize);</span>
+<span class="nc" id="L180">      final long newSize = oldSize - messageSize;</span>
+<span class="nc" id="L181">      final int diffMb = roundUpMb(oldSize) - roundUpMb(newSize);</span>
+<span class="nc" id="L182">      resource.release(diffMb);</span>
+<span class="nc" id="L183">      LOG.trace(&quot;release {} MB&quot;, diffMb);</span>
+<span class="nc" id="L184">      return r;</span>
+    }
+
+    Collection&lt;TransactionContext&gt; setNotLeaderException(NotLeaderException nle,
+                                                         Collection&lt;CommitInfoProto&gt; commitInfos) {
+<span class="nc" id="L189">      synchronized (this) {</span>
+<span class="nc" id="L190">        resource.close();</span>
+<span class="nc" id="L191">        permits.clear();</span>
+<span class="nc" id="L192">      }</span>
+
+<span class="nc" id="L194">      LOG.debug(&quot;{}: PendingRequests.setNotLeaderException&quot;, name);</span>
+<span class="nc" id="L195">      final List&lt;TransactionContext&gt; transactions = new ArrayList&lt;&gt;(map.size());</span>
+      for(;;) {
+<span class="nc" id="L197">        final Iterator&lt;TermIndex&gt; i = map.keySet().iterator();</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (!i.hasNext()) { // the map is empty</span>
+<span class="nc" id="L199">          return transactions;</span>
+        }
+
+<span class="nc" id="L202">        final PendingRequest pending = map.remove(i.next());</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (pending != null) {</span>
+<span class="nc" id="L204">          transactions.add(pending.setNotLeaderException(nle, commitInfos));</span>
+        }
+<span class="nc" id="L206">      }</span>
+    }
+
+    void close() {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">      if (raftServerMetrics != null) {</span>
+<span class="nc" id="L211">        raftServerMetrics.removeNumPendingRequestsGauge();</span>
+<span class="nc" id="L212">        raftServerMetrics.removeNumPendingRequestsByteSize();</span>
+      }
+<span class="nc" id="L214">    }</span>
+  }
+
+  private PendingRequest pendingSetConf;
+  private final String name;
+  private final RequestMap pendingRequests;
+
+<span class="nc" id="L221">  PendingRequests(RaftGroupMemberId id, RaftProperties properties, RaftServerMetricsImpl raftServerMetrics) {</span>
+<span class="nc" id="L222">    this.name = id + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L223">    this.pendingRequests = new RequestMap(id,</span>
+<span class="nc" id="L224">        RaftServerConfigKeys.Write.elementLimit(properties),</span>
+<span class="nc" id="L225">        Math.toIntExact(</span>
+<span class="nc" id="L226">            RaftServerConfigKeys.Write.byteLimit(properties).getSize()</span>
+<span class="nc" id="L227">                / SizeInBytes.ONE_MB.getSize()), //round down</span>
+        raftServerMetrics);
+<span class="nc" id="L229">  }</span>
+
+  Permit tryAcquire(Message message) {
+<span class="nc" id="L232">    return pendingRequests.tryAcquire(message);</span>
+  }
+
+  PendingRequest add(Permit permit, RaftClientRequest request, TransactionContext entry) {
+<span class="nc" id="L236">    final PendingRequest pending = new PendingRequest(request, entry);</span>
+<span class="nc" id="L237">    return pendingRequests.put(permit, pending);</span>
+  }
+
+  PendingRequest addConfRequest(SetConfigurationRequest request) {
+<span class="nc bnc" id="L241" title="All 2 branches missed.">    Preconditions.assertTrue(pendingSetConf == null);</span>
+<span class="nc" id="L242">    pendingSetConf = new PendingRequest(request);</span>
+<span class="nc" id="L243">    return pendingSetConf;</span>
+  }
+
+  void replySetConfiguration(Function&lt;RaftClientRequest, RaftClientReply&gt; newSuccessReply) {
+    // we allow the pendingRequest to be null in case that the new leader
+    // commits the new configuration while it has not received the retry
+    // request from the client
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    if (pendingSetConf != null) {</span>
+<span class="nc" id="L251">      final RaftClientRequest request = pendingSetConf.getRequest();</span>
+<span class="nc" id="L252">      LOG.debug(&quot;{}: sends success for {}&quot;, name, request);</span>
+      // for setConfiguration we do not need to wait for statemachine. send back
+      // reply after it's committed.
+<span class="nc" id="L255">      pendingSetConf.setReply(newSuccessReply.apply(request));</span>
+<span class="nc" id="L256">      pendingSetConf = null;</span>
+    }
+<span class="nc" id="L258">  }</span>
+
+  void failSetConfiguration(RaftException e) {
+<span class="nc bnc" id="L261" title="All 2 branches missed.">    Preconditions.assertTrue(pendingSetConf != null);</span>
+<span class="nc" id="L262">    pendingSetConf.setException(e);</span>
+<span class="nc" id="L263">    pendingSetConf = null;</span>
+<span class="nc" id="L264">  }</span>
+
+  TransactionContext getTransactionContext(TermIndex termIndex) {
+<span class="nc" id="L267">    final PendingRequest pendingRequest = pendingRequests.get(termIndex);</span>
+    // it is possible that the pendingRequest is null if this peer just becomes
+    // the new leader and commits transactions received by the previous leader
+<span class="nc bnc" id="L270" title="All 2 branches missed.">    return pendingRequest != null ? pendingRequest.getEntry() : null;</span>
+  }
+
+  void replyPendingRequest(TermIndex termIndex, RaftClientReply reply) {
+<span class="nc" id="L274">    final PendingRequest pending = pendingRequests.remove(termIndex);</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">    if (pending != null) {</span>
+<span class="nc" id="L276">      Preconditions.assertEquals(termIndex, pending.getTermIndex(), &quot;termIndex&quot;);</span>
+<span class="nc" id="L277">      pending.setReply(reply);</span>
+    }
+<span class="nc" id="L279">  }</span>
+
+  /**
+   * The leader state is stopped. Send NotLeaderException to all the pending
+   * requests since they have not got applied to the state machine yet.
+   */
+  Collection&lt;TransactionContext&gt; sendNotLeaderResponses(NotLeaderException nle,
+                                                        Collection&lt;CommitInfoProto&gt; commitInfos) {
+<span class="nc" id="L287">    LOG.info(&quot;{}: sendNotLeaderResponses&quot;, name);</span>
+
+<span class="nc" id="L289">    final Collection&lt;TransactionContext&gt; transactions = pendingRequests.setNotLeaderException(nle, commitInfos);</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">    if (pendingSetConf != null) {</span>
+<span class="nc" id="L291">      pendingSetConf.setNotLeaderException(nle, commitInfos);</span>
+    }
+<span class="nc" id="L293">    return transactions;</span>
+  }
+
+  void close() {
+<span class="nc bnc" id="L297" title="All 2 branches missed.">    if (pendingRequests != null) {</span>
+<span class="nc" id="L298">      pendingRequests.close();</span>
+    }
+<span class="nc" id="L300">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

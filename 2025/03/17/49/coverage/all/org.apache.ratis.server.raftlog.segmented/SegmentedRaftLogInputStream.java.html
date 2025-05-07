@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLogInputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">SegmentedRaftLogInputStream.java</span></div><h1>SegmentedRaftLogInputStream.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import java.io.Closeable;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.util.Optional;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.metrics.SegmentedRaftLogMetrics;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.OpenCloseState;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.SizeInBytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static org.apache.ratis.server.raftlog.RaftLog.INVALID_LOG_INDEX;
+import static org.apache.ratis.server.raftlog.RaftLog.LEAST_VALID_LOG_INDEX;
+
+public class SegmentedRaftLogInputStream implements Closeable {
+<span class="nc" id="L39">  static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogInputStream.class);</span>
+
+  static class LogValidation {
+    private final long validLength;
+    private final long endIndex;
+    private final boolean hasCorruptHeader;
+
+<span class="nc" id="L46">    LogValidation(long validLength, long endIndex, boolean hasCorruptHeader) {</span>
+<span class="nc" id="L47">      this.validLength = validLength;</span>
+<span class="nc" id="L48">      this.endIndex = endIndex;</span>
+<span class="nc" id="L49">      this.hasCorruptHeader = hasCorruptHeader;</span>
+<span class="nc" id="L50">    }</span>
+
+    long getValidLength() {
+<span class="nc" id="L53">      return validLength;</span>
+    }
+
+    long getEndIndex() {
+<span class="nc" id="L57">      return endIndex;</span>
+    }
+
+    boolean hasCorruptHeader() {
+<span class="nc" id="L61">      return hasCorruptHeader;</span>
+    }
+  }
+
+  private final File logFile;
+  private final LogSegmentStartEnd startEnd;
+  private final OpenCloseState state;
+  private SegmentedRaftLogReader reader;
+  private final SizeInBytes maxOpSize;
+  private final SegmentedRaftLogMetrics raftLogMetrics;
+
+  SegmentedRaftLogInputStream(File log, LogSegmentStartEnd startEnd,
+<span class="nc" id="L73">      SizeInBytes maxOpSize, SegmentedRaftLogMetrics raftLogMetrics) {</span>
+<span class="nc" id="L74">    this.maxOpSize = maxOpSize;</span>
+<span class="nc" id="L75">    this.logFile = log;</span>
+<span class="nc" id="L76">    this.startEnd = startEnd;</span>
+<span class="nc" id="L77">    this.state = new OpenCloseState(getName());</span>
+<span class="nc" id="L78">    this.raftLogMetrics = raftLogMetrics;</span>
+<span class="nc" id="L79">  }</span>
+
+  private void init() throws IOException {
+<span class="nc" id="L82">    state.open();</span>
+<span class="nc" id="L83">    boolean initSuccess = false;</span>
+    try {
+<span class="nc" id="L85">      reader = new SegmentedRaftLogReader(logFile, maxOpSize, raftLogMetrics);</span>
+<span class="nc" id="L86">      initSuccess = reader.verifyHeader();</span>
+    } finally {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      if (!initSuccess) {</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if(reader != null) {</span>
+<span class="nc" id="L90">          reader.close();</span>
+<span class="nc" id="L91">          reader = null;</span>
+        }
+<span class="nc" id="L93">        state.close();</span>
+      }
+    }
+<span class="nc" id="L96">  }</span>
+
+  String getName() {
+<span class="nc" id="L99">    return logFile.getName();</span>
+  }
+
+  public LogEntryProto nextEntry() throws IOException {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (state.isUnopened()) {</span>
+        try {
+<span class="nc" id="L105">          init();</span>
+<span class="nc" id="L106">        } catch (Exception e) {</span>
+<span class="nc" id="L107">          LOG.error(&quot;caught exception initializing &quot; + this, e);</span>
+<span class="nc" id="L108">          throw IOUtils.asIOException(e);</span>
+<span class="nc" id="L109">        }</span>
+    }
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    Preconditions.assertTrue(!state.isUnopened());</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (state.isOpened()) {</span>
+<span class="nc" id="L114">        final LogEntryProto entry = reader.readEntry();</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        if (entry != null) {</span>
+<span class="nc" id="L116">          long index = entry.getIndex();</span>
+<span class="nc bnc" id="L117" title="All 4 branches missed.">          if (!startEnd.isOpen() &amp;&amp; index &gt;= startEnd.getEndIndex()) {</span>
+            /*
+             * The end index may be derived from the segment recovery
+             * process. It is possible that we still have some uncleaned garbage
+             * in the end. We should skip them.
+             */
+<span class="nc" id="L123">            long skipAmt = logFile.length() - reader.getPos();</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">            if (skipAmt &gt; 0) {</span>
+<span class="nc" id="L125">              LOG.info(&quot;Skipping {} bytes at the end of log '{}': reached entry {} out of [{}]&quot;,</span>
+<span class="nc" id="L126">                  skipAmt, getName(), index, startEnd);</span>
+<span class="nc" id="L127">              reader.skipFully(skipAmt);</span>
+            }
+          }
+        }
+<span class="nc" id="L131">        return entry;</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">    } else if (state.isClosed()) {</span>
+<span class="nc" id="L133">      return null;</span>
+    }
+<span class="nc" id="L135">    throw new IOException(&quot;Failed to get next entry from &quot; + this, state.getThrowable());</span>
+  }
+
+  long scanNextEntry() throws IOException {
+<span class="nc" id="L139">    state.assertOpen();</span>
+<span class="nc" id="L140">    return reader.scanEntry();</span>
+  }
+
+  long getPosition() {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">    if (state.isOpened()) {</span>
+<span class="nc" id="L145">      return reader.getPos();</span>
+    } else {
+<span class="nc" id="L147">      return 0;</span>
+    }
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    if (state.close()) {</span>
+<span class="nc" id="L154">      Optional.ofNullable(reader).ifPresent(SegmentedRaftLogReader::close);</span>
+    }
+<span class="nc" id="L156">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L160">    return getName();</span>
+  }
+
+  /**
+   * @param file          File being scanned and validated.
+   * @param maxTxIdToScan Maximum Tx ID to try to scan.
+   *                      The scan returns after reading this or a higher
+   *                      ID. The file portion beyond this ID is
+   *                      potentially being updated.
+   * @return Result of the validation
+   */
+  static LogValidation scanEditLog(File file, long maxTxIdToScan, SizeInBytes maxOpSize)
+      throws IOException {
+<span class="nc" id="L173">    final LogSegmentStartEnd startEnd = LogSegmentStartEnd.valueOf(LEAST_VALID_LOG_INDEX);</span>
+<span class="nc" id="L174">    try(SegmentedRaftLogInputStream in = new SegmentedRaftLogInputStream(file, startEnd, maxOpSize, null)) {</span>
+      try {
+<span class="nc" id="L176">        in.init();</span>
+<span class="nc" id="L177">      } catch (EOFException e) {</span>
+<span class="nc" id="L178">        LOG.warn(&quot;Invalid header for RaftLog segment {}&quot;, file, e);</span>
+<span class="nc" id="L179">        return new LogValidation(0, INVALID_LOG_INDEX, true);</span>
+<span class="nc" id="L180">      }</span>
+<span class="nc" id="L181">      return scanEditLog(in, maxTxIdToScan);</span>
+    }
+  }
+
+  /**
+   * Find the last valid entry index in the stream.
+   * If there are invalid or corrupt entries in the middle of the stream,
+   * scanEditLog will skip over them.
+   *
+   * This reads through the stream but does not close it.
+   *
+   * @param maxIndexToScan Maximum entry index to try to scan. The scan returns
+   *                       after reading this or a higher index. The file
+   *                       portion beyond this index is potentially being
+   *                       updated.
+   */
+  static LogValidation scanEditLog(SegmentedRaftLogInputStream in, long maxIndexToScan) {
+<span class="nc" id="L198">    long lastPos = 0;</span>
+<span class="nc" id="L199">    long end = INVALID_LOG_INDEX;</span>
+<span class="nc" id="L200">    long numValid = 0;</span>
+<span class="nc" id="L201">    boolean hitError = false;</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    while (end &lt; maxIndexToScan) {</span>
+      long index;
+<span class="nc" id="L204">      lastPos = in.getPosition();</span>
+      try {
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (hitError) {</span>
+<span class="nc" id="L207">          LogEntryProto entry = in.nextEntry();</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">          index = entry != null ? entry.getIndex() : INVALID_LOG_INDEX;</span>
+<span class="nc" id="L209">          LOG.warn(&quot;After resync, position is &quot; + in.getPosition());</span>
+<span class="nc" id="L210">        } else {</span>
+<span class="nc" id="L211">          index = in.scanNextEntry();</span>
+        }
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (index == INVALID_LOG_INDEX) {</span>
+<span class="nc" id="L214">          break;</span>
+        } else {
+<span class="nc" id="L216">          hitError = false;</span>
+        }
+<span class="nc" id="L218">      } catch (Exception e) {</span>
+<span class="nc" id="L219">        LOG.warn(&quot;Caught exception after scanning through {} ops from {}&quot;</span>
+            + &quot; while determining its valid length. Position was &quot;
+<span class="nc" id="L221">            + lastPos, numValid, in, e);</span>
+<span class="nc" id="L222">        hitError = true;</span>
+<span class="nc" id="L223">        continue;</span>
+<span class="nc" id="L224">      }</span>
+<span class="nc bnc" id="L225" title="All 4 branches missed.">      if (end == INVALID_LOG_INDEX || index &gt; end) {</span>
+<span class="nc" id="L226">        end = index;</span>
+      }
+<span class="nc" id="L228">      numValid++;</span>
+<span class="nc" id="L229">    }</span>
+<span class="nc" id="L230">    return new LogValidation(lastPos, end, false);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

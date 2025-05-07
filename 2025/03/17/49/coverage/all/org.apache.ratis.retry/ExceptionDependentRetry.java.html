@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExceptionDependentRetry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.retry</a> &gt; <span class="el_source">ExceptionDependentRetry.java</span></div><h1>ExceptionDependentRetry.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.retry;
+
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.function.Supplier;
+
+/**
+ * Exception dependent retry policy.
+ *
+ * If exception is defined in policyMap, will use the retry policy
+ * configured to that exception or else will use the default policy.
+ */
+public final class ExceptionDependentRetry implements RetryPolicy {
+
+<span class="nc" id="L37">  public static class Builder {</span>
+    private RetryPolicy defaultPolicy;
+<span class="nc" id="L39">    private final Map&lt;String, RetryPolicy&gt; exceptionNameToPolicyMap =</span>
+        new TreeMap&lt;&gt;();
+<span class="nc" id="L41">    private int maxAttempts = Integer.MAX_VALUE;</span>
+
+    public Builder setExceptionToPolicy(Class&lt;? extends Throwable&gt; exception,
+        RetryPolicy retryPolicy) {
+<span class="nc bnc" id="L45" title="All 2 branches missed.">      Preconditions.assertTrue(retryPolicy != null, &quot;Exception to policy should not be null&quot;);</span>
+<span class="nc" id="L46">      final RetryPolicy previous = exceptionNameToPolicyMap.put(exception.getName(), retryPolicy);</span>
+<span class="nc" id="L47">      Preconditions.assertNull(previous, () -&gt; &quot;The exception &quot; + exception + &quot; is already set to &quot; + previous);</span>
+<span class="nc" id="L48">      return this;</span>
+    }
+
+    public Builder setDefaultPolicy(RetryPolicy retryPolicy) {
+<span class="nc bnc" id="L52" title="All 2 branches missed.">      Preconditions.assertTrue(retryPolicy != null, &quot;Default Policy should not be null&quot;);</span>
+<span class="nc" id="L53">      this.defaultPolicy = retryPolicy;</span>
+<span class="nc" id="L54">      return this;</span>
+    }
+
+    public Builder setMaxAttempts(int attempts) {
+<span class="nc" id="L58">      this.maxAttempts = attempts;</span>
+<span class="nc" id="L59">      return this;</span>
+    }
+
+    public ExceptionDependentRetry build() {
+<span class="nc" id="L63">      return new ExceptionDependentRetry(defaultPolicy, exceptionNameToPolicyMap, maxAttempts);</span>
+    }
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L68">    return new Builder();</span>
+  }
+
+  private final RetryPolicy defaultPolicy;
+  private final Map&lt;String, RetryPolicy&gt; exceptionNameToPolicyMap;
+  private final int maxAttempts;
+  private final Supplier&lt;String&gt; toStringSupplier;
+
+  private ExceptionDependentRetry(RetryPolicy defaultPolicy,
+<span class="nc" id="L77">      Map&lt;String, RetryPolicy&gt; policyMap, int maxAttempts) {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">    Preconditions.assertTrue(defaultPolicy != null, &quot;Default Policy should not be null&quot;);</span>
+<span class="nc" id="L79">    this.defaultPolicy = defaultPolicy;</span>
+<span class="nc" id="L80">    this.exceptionNameToPolicyMap = Collections.unmodifiableMap(policyMap);</span>
+<span class="nc" id="L81">    this.maxAttempts = maxAttempts;</span>
+<span class="nc" id="L82">    this.toStringSupplier = JavaUtils.memoize(() -&gt; {</span>
+<span class="nc" id="L83">      final StringBuilder b = new StringBuilder(JavaUtils.getClassSimpleName(getClass())).append(&quot;(&quot;)</span>
+<span class="nc" id="L84">          .append(&quot;maxAttempts=&quot;).append(maxAttempts).append(&quot;; &quot;)</span>
+<span class="nc" id="L85">          .append(&quot;defaultPolicy=&quot;).append(defaultPolicy).append(&quot;; &quot;)</span>
+<span class="nc" id="L86">          .append(&quot;map={&quot;);</span>
+<span class="nc" id="L87">      policyMap.forEach((key, value) -&gt; b.append(key).append(&quot;-&gt;&quot;).append(value).append(&quot;, &quot;));</span>
+<span class="nc" id="L88">      b.setLength(b.length() - 2);</span>
+<span class="nc" id="L89">      return b.append(&quot;})&quot;).toString();</span>
+    });
+<span class="nc" id="L91">  }</span>
+
+  @Override
+  public Action handleAttemptFailure(Event event) {
+<span class="nc" id="L95">    RetryPolicy policy = null;</span>
+
+    // If exception is defined in policy map use that or else go with the
+    // default one. We go with default one in 2 cases.
+    // 1. If policy map does not have exception mapped to policy.
+    // 2. If event has exception value null.
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    if (event.getCause() != null) {</span>
+<span class="nc" id="L102">      policy = exceptionNameToPolicyMap.get(event.getCause().getClass().getName());</span>
+    }
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    if (policy == null) {</span>
+<span class="nc" id="L106">      policy = defaultPolicy;</span>
+    }
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    return event.getAttemptCount() &lt; maxAttempts ? policy.handleAttemptFailure(event::getCauseCount) :</span>
+        NO_RETRY_ACTION;
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L115">    return toStringSupplier.get();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

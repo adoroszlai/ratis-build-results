@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProtoUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ProtoUtils.java</span></div><h1>ProtoUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.proto.RaftProtos.RaftPeerIdProto;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.proto.RaftProtos.RouteProto;
+import org.apache.ratis.proto.RaftProtos.ThrowableProto;
+import org.apache.ratis.proto.RaftProtos.RaftGroupIdProto;
+import org.apache.ratis.proto.RaftProtos.RaftGroupMemberIdProto;
+import org.apache.ratis.proto.RaftProtos.RaftGroupProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerProto;
+import org.apache.ratis.proto.RaftProtos.RaftRpcReplyProto;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.RaftProtos.SlidingWindowEntry;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+public interface ProtoUtils {
+  static ByteString writeObject2ByteString(Object obj) {
+<span class="nc" id="L51">    final ByteString.Output byteOut = ByteString.newOutput();</span>
+<span class="nc" id="L52">    try(ObjectOutputStream objOut = new ObjectOutputStream(byteOut)) {</span>
+<span class="nc" id="L53">      objOut.writeObject(obj);</span>
+<span class="nc" id="L54">    } catch (IOException e) {</span>
+<span class="nc" id="L55">      throw new IllegalStateException(</span>
+          &quot;Unexpected IOException when writing an object to a ByteString.&quot;, e);
+<span class="nc" id="L57">    }</span>
+<span class="nc" id="L58">    return byteOut.toByteString();</span>
+  }
+
+  static Object toObject(ByteString bytes) {
+<span class="nc" id="L62">    return IOUtils.readObject(bytes.newInput(), Object.class);</span>
+  }
+
+  static ThrowableProto toThrowableProto(Throwable t) {
+<span class="nc" id="L66">    final ThrowableProto.Builder builder = ThrowableProto.newBuilder()</span>
+<span class="nc" id="L67">        .setClassName(t.getClass().getName())</span>
+<span class="nc" id="L68">        .setErrorMessage(t.getMessage())</span>
+<span class="nc" id="L69">        .setStackTrace(writeObject2ByteString(t.getStackTrace()));</span>
+<span class="nc" id="L70">    Optional.ofNullable(t.getCause())</span>
+<span class="nc" id="L71">        .map(ProtoUtils::writeObject2ByteString)</span>
+<span class="nc" id="L72">        .ifPresent(builder::setCause);</span>
+<span class="nc" id="L73">    return builder.build();</span>
+  }
+
+  static &lt;T extends Throwable&gt; T toThrowable(ThrowableProto proto, Class&lt;T&gt; clazz) {
+<span class="nc" id="L77">    Preconditions.assertTrue(clazz.getName().equals(proto.getClassName()),</span>
+<span class="nc" id="L78">        () -&gt; &quot;Unexpected class &quot; + proto.getClassName() + &quot;, expecting &quot; + clazz + &quot;, proto=&quot; + proto);</span>
+
+    final T throwable ;
+    try {
+<span class="nc" id="L82">      throwable = ReflectionUtils.instantiateException(clazz, proto.getErrorMessage());</span>
+<span class="nc" id="L83">    } catch(Exception e) {</span>
+<span class="nc" id="L84">      throw new IllegalStateException(&quot;Failed to create a new object from &quot; + clazz + &quot;, proto=&quot; + proto, e);</span>
+<span class="nc" id="L85">    }</span>
+
+<span class="nc" id="L87">    Optional.ofNullable(proto.getStackTrace())</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        .filter(b -&gt; !b.isEmpty())</span>
+<span class="nc" id="L89">        .map(ProtoUtils::toObject)</span>
+<span class="nc" id="L90">        .map(obj -&gt; JavaUtils.cast(obj, StackTraceElement[].class))</span>
+<span class="nc" id="L91">        .ifPresent(throwable::setStackTrace);</span>
+<span class="nc" id="L92">    Optional.ofNullable(proto.getCause())</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        .filter(b -&gt; !b.isEmpty())</span>
+<span class="nc" id="L94">        .map(ProtoUtils::toObject)</span>
+<span class="nc" id="L95">        .map(obj -&gt; JavaUtils.cast(obj, Throwable.class))</span>
+<span class="nc" id="L96">        .ifPresent(throwable::initCause);</span>
+<span class="nc" id="L97">    return throwable;</span>
+  }
+
+  static ByteString toByteString(String string) {
+<span class="nc" id="L101">    return ByteString.copyFromUtf8(string);</span>
+  }
+
+  static ByteString toByteString(byte[] bytes) {
+<span class="nc" id="L105">    return toByteString(bytes, 0, bytes.length);</span>
+  }
+
+  static ByteString toByteString(byte[] bytes, int offset, int size) {
+    // return singleton to reduce object allocation
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    return bytes.length == 0 ?</span>
+<span class="nc" id="L111">        ByteString.EMPTY : ByteString.copyFrom(bytes, offset, size);</span>
+  }
+
+  static RaftPeer toRaftPeer(RaftPeerProto p) {
+<span class="nc" id="L115">    return RaftPeer.newBuilder()</span>
+<span class="nc" id="L116">        .setId(RaftPeerId.valueOf(p.getId()))</span>
+<span class="nc" id="L117">        .setAddress(p.getAddress())</span>
+<span class="nc" id="L118">        .setDataStreamAddress(p.getDataStreamAddress())</span>
+<span class="nc" id="L119">        .setClientAddress(p.getClientAddress())</span>
+<span class="nc" id="L120">        .setAdminAddress(p.getAdminAddress())</span>
+<span class="nc" id="L121">        .setPriority(p.getPriority())</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        .setStartupRole(p.hasStartupRole() ? p.getStartupRole() : RaftProtos.RaftPeerRole.FOLLOWER)</span>
+<span class="nc" id="L123">        .build();</span>
+  }
+
+  static List&lt;RaftPeer&gt; toRaftPeers(List&lt;RaftPeerProto&gt; protos) {
+<span class="nc" id="L127">    return protos.stream().map(ProtoUtils::toRaftPeer).collect(Collectors.toList());</span>
+  }
+
+  static Iterable&lt;RaftPeerProto&gt; toRaftPeerProtos(
+      final Collection&lt;RaftPeer&gt; peers) {
+<span class="nc" id="L132">    return () -&gt; new Iterator&lt;RaftPeerProto&gt;() {</span>
+<span class="nc" id="L133">      private final Iterator&lt;RaftPeer&gt; i = peers.iterator();</span>
+
+      @Override
+      public boolean hasNext() {
+<span class="nc" id="L137">        return i.hasNext();</span>
+      }
+
+      @Override
+      public RaftPeerProto next() {
+<span class="nc" id="L142">        return i.next().getRaftPeerProto();</span>
+      }
+    };
+  }
+
+  static Iterable&lt;RaftPeerIdProto&gt; toRaftPeerIdProtos(
+      final Collection&lt;RaftPeerId&gt; peers) {
+<span class="nc" id="L149">    return () -&gt; new Iterator&lt;RaftPeerIdProto&gt;() {</span>
+<span class="nc" id="L150">      private final Iterator&lt;RaftPeerId&gt; i = peers.iterator();</span>
+
+      @Override
+      public boolean hasNext() {
+<span class="nc" id="L154">        return i.hasNext();</span>
+      }
+
+      @Override
+      public RaftPeerIdProto next() {
+<span class="nc" id="L159">        return i.next().getRaftPeerIdProto();</span>
+      }
+    };
+  }
+
+  static Iterable&lt;RouteProto&gt; toRouteProtos(
+      final Map&lt;RaftPeerId, Set&lt;RaftPeerId&gt;&gt; routingTable) {
+<span class="nc" id="L166">    return () -&gt; new Iterator&lt;RouteProto&gt;() {</span>
+<span class="nc" id="L167">      private final Iterator&lt;Map.Entry&lt;RaftPeerId, Set&lt;RaftPeerId&gt;&gt;&gt; i = routingTable.entrySet().iterator();</span>
+
+      @Override
+      public boolean hasNext() {
+<span class="nc" id="L171">        return i.hasNext();</span>
+      }
+
+      @Override
+      public RouteProto next() {
+<span class="nc" id="L176">        Map.Entry&lt;RaftPeerId, Set&lt;RaftPeerId&gt;&gt; entry = i.next();</span>
+<span class="nc" id="L177">        return RouteProto.newBuilder()</span>
+<span class="nc" id="L178">            .setPeerId(entry.getKey().getRaftPeerIdProto())</span>
+<span class="nc" id="L179">            .addAllSuccessors(toRaftPeerIdProtos(entry.getValue()))</span>
+<span class="nc" id="L180">            .build();</span>
+      }
+    };
+  }
+
+  static RaftGroupId toRaftGroupId(RaftGroupIdProto proto) {
+<span class="nc" id="L186">    return RaftGroupId.valueOf(proto.getId());</span>
+  }
+
+  static RaftGroupIdProto.Builder toRaftGroupIdProtoBuilder(RaftGroupId id) {
+<span class="nc" id="L190">    return RaftGroupIdProto.newBuilder().setId(id.toByteString());</span>
+  }
+
+  static RaftGroup toRaftGroup(RaftGroupProto proto) {
+<span class="nc" id="L194">    return RaftGroup.valueOf(toRaftGroupId(proto.getGroupId()), toRaftPeers(proto.getPeersList()));</span>
+  }
+
+  static RaftGroupProto.Builder toRaftGroupProtoBuilder(RaftGroup group) {
+<span class="nc" id="L198">    return RaftGroupProto.newBuilder()</span>
+<span class="nc" id="L199">        .setGroupId(toRaftGroupIdProtoBuilder(group.getGroupId()))</span>
+<span class="nc" id="L200">        .addAllPeers(toRaftPeerProtos(group.getPeers()));</span>
+  }
+
+  static RaftGroupMemberId toRaftGroupMemberId(ByteString peerId, RaftGroupIdProto groupId) {
+<span class="nc" id="L204">    return RaftGroupMemberId.valueOf(RaftPeerId.valueOf(peerId), ProtoUtils.toRaftGroupId(groupId));</span>
+  }
+
+  static RaftGroupMemberId toRaftGroupMemberId(RaftGroupMemberIdProto memberId) {
+<span class="nc" id="L208">    return toRaftGroupMemberId(memberId.getPeerId(), memberId.getGroupId());</span>
+  }
+
+  static RaftGroupMemberIdProto.Builder toRaftGroupMemberIdProtoBuilder(RaftGroupMemberId memberId) {
+<span class="nc" id="L212">    return RaftGroupMemberIdProto.newBuilder()</span>
+<span class="nc" id="L213">        .setPeerId(memberId.getPeerId().toByteString())</span>
+<span class="nc" id="L214">        .setGroupId(toRaftGroupIdProtoBuilder(memberId.getGroupId()));</span>
+  }
+
+  static CommitInfoProto toCommitInfoProto(RaftPeer peer, long commitIndex) {
+<span class="nc" id="L218">    return CommitInfoProto.newBuilder()</span>
+<span class="nc" id="L219">        .setServer(peer.getRaftPeerProto())</span>
+<span class="nc" id="L220">        .setCommitIndex(commitIndex)</span>
+<span class="nc" id="L221">        .build();</span>
+  }
+
+  static String toString(CommitInfoProto proto) {
+<span class="nc" id="L225">    return RaftPeerId.valueOf(proto.getServer().getId()) + &quot;:c&quot; + proto.getCommitIndex();</span>
+  }
+
+  static String toString(Collection&lt;CommitInfoProto&gt; protos) {
+<span class="nc" id="L229">    return protos.stream().map(ProtoUtils::toString).collect(Collectors.toList()).toString();</span>
+  }
+
+  static SlidingWindowEntry toSlidingWindowEntry(long seqNum, boolean isFirst) {
+<span class="nc" id="L233">    return SlidingWindowEntry.newBuilder().setSeqNum(seqNum).setIsFirst(isFirst).build();</span>
+  }
+
+  static String toString(SlidingWindowEntry proto) {
+<span class="nc bnc" id="L237" title="All 2 branches missed.">    if (proto == null) {</span>
+<span class="nc" id="L238">      return null;</span>
+    }
+<span class="nc bnc" id="L240" title="All 2 branches missed.">    return proto.getSeqNum() + (proto.getIsFirst()? &quot;*&quot;: &quot;&quot;);</span>
+  }
+
+  static String toString(RaftRpcRequestProto proto) {
+<span class="nc" id="L244">    return proto.getRequestorId().toStringUtf8() + &quot;-&gt;&quot; + proto.getReplyId().toStringUtf8()</span>
+<span class="nc" id="L245">        + &quot;#&quot; + proto.getCallId();</span>
+  }
+
+  static String toString(RaftRpcReplyProto proto) {
+<span class="nc" id="L249">    return proto.getRequestorId().toStringUtf8() + &quot;&lt;-&quot; + proto.getReplyId().toStringUtf8()</span>
+<span class="nc" id="L250">        + &quot;#&quot; + proto.getCallId() + &quot;:&quot;</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        + (proto.getSuccess()? &quot;OK&quot;: &quot;FAIL&quot;);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

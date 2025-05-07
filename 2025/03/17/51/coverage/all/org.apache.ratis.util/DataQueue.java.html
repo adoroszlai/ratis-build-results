@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">DataQueue.java</span></div><h1>DataQueue.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedFunctionWithTimeout;
+import org.apache.ratis.util.function.TriConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.ToLongFunction;
+
+/**
+ * A queue for data elements
+ * such that the queue imposes limits on both number of elements and the data size in bytes.
+ *
+ * Null element is NOT supported.
+ *
+ * This class is NOT threadsafe.
+ */
+public class DataQueue&lt;E&gt; implements Iterable&lt;E&gt; {
+<span class="nc" id="L46">  public static final Logger LOG = LoggerFactory.getLogger(DataQueue.class);</span>
+
+  private final Object name;
+  private final long byteLimit;
+  private final int elementLimit;
+  private final ToLongFunction&lt;E&gt; getNumBytes;
+
+  private final Queue&lt;E&gt; q;
+
+<span class="nc" id="L55">  private long numBytes = 0;</span>
+
+  public DataQueue(Object name, SizeInBytes byteLimit, int elementLimit,
+<span class="nc" id="L58">      ToLongFunction&lt;E&gt; getNumBytes) {</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">    this.name = name != null? name: this;</span>
+<span class="nc" id="L60">    this.byteLimit = byteLimit.getSize();</span>
+<span class="nc" id="L61">    this.elementLimit = elementLimit;</span>
+<span class="nc" id="L62">    this.getNumBytes = getNumBytes;</span>
+<span class="nc" id="L63">    this.q = new LinkedList&lt;&gt;();</span>
+<span class="nc" id="L64">  }</span>
+
+  public int getElementLimit() {
+<span class="nc" id="L67">    return elementLimit;</span>
+  }
+
+  public long getByteLimit() {
+<span class="nc" id="L71">    return byteLimit;</span>
+  }
+
+  public long getNumBytes() {
+<span class="nc" id="L75">    return numBytes;</span>
+  }
+
+  public int getNumElements() {
+<span class="nc" id="L79">    return q.size();</span>
+  }
+
+  /** The same as {@link java.util.Collection#isEmpty()}. */
+  public final boolean isEmpty() {
+<span class="nc bnc" id="L84" title="All 2 branches missed.">    return getNumElements() == 0;</span>
+  }
+
+  /** The same as {@link java.util.Collection#clear()}. */
+  public void clear() {
+<span class="nc" id="L89">    q.clear();</span>
+<span class="nc" id="L90">    numBytes = 0;</span>
+<span class="nc" id="L91">  }</span>
+
+  /**
+   * Adds an element to this queue.
+   *
+   * @return true if the element is added successfully;
+   *         otherwise, the element is not added, return false.
+   */
+  public boolean offer(E element) {
+<span class="nc" id="L100">    Objects.requireNonNull(element, &quot;element == null&quot;);</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">    if (elementLimit &gt; 0 &amp;&amp; q.size() &gt;= elementLimit) {</span>
+<span class="nc" id="L102">      return false;</span>
+    }
+<span class="nc" id="L104">    final long elementNumBytes = getNumBytes.applyAsLong(element);</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    Preconditions.assertTrue(elementNumBytes &gt;= 0,</span>
+<span class="nc" id="L106">        () -&gt; name + &quot;: elementNumBytes = &quot; + elementNumBytes + &quot; &lt; 0&quot;);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">    if (byteLimit &gt; 0) {</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">      Preconditions.assertTrue(elementNumBytes &lt;= byteLimit,</span>
+<span class="nc" id="L109">          () -&gt; name + &quot;: elementNumBytes = &quot; + elementNumBytes + &quot; &gt; byteLimit = &quot; + byteLimit);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">      if (numBytes &gt; byteLimit - elementNumBytes) {</span>
+<span class="nc" id="L111">        return false;</span>
+      }
+    }
+<span class="nc" id="L114">    q.offer(element);</span>
+<span class="nc" id="L115">    numBytes += elementNumBytes;</span>
+<span class="nc" id="L116">    return true;</span>
+  }
+
+  /** Poll a list of the results within the given timeout. */
+  public &lt;RESULT, THROWABLE extends Throwable&gt; List&lt;RESULT&gt; pollList(long timeoutMs,
+      CheckedFunctionWithTimeout&lt;E, RESULT, THROWABLE&gt; getResult,
+      TriConsumer&lt;E, TimeDuration, TimeoutException&gt; timeoutHandler) throws THROWABLE {
+<span class="nc bnc" id="L123" title="All 4 branches missed.">    if (timeoutMs &lt;= 0 || q.isEmpty()) {</span>
+<span class="nc" id="L124">      return Collections.emptyList();</span>
+    }
+
+<span class="nc" id="L127">    final Timestamp startTime = Timestamp.currentTime();</span>
+<span class="nc" id="L128">    final TimeDuration limit = TimeDuration.valueOf(timeoutMs, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L129">    for(final List&lt;RESULT&gt; results = new ArrayList&lt;&gt;();;) {</span>
+<span class="nc" id="L130">      final E peeked = q.peek();</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">      if (peeked == null) { // q is empty</span>
+<span class="nc" id="L132">        return results;</span>
+      }
+
+<span class="nc" id="L135">      final TimeDuration remaining = limit.subtract(startTime.elapsedTime());</span>
+      try {
+<span class="nc" id="L137">        results.add(getResult.apply(peeked, remaining));</span>
+<span class="nc" id="L138">      } catch (TimeoutException e) {</span>
+<span class="nc" id="L139">        Optional.ofNullable(timeoutHandler).ifPresent(h -&gt; h.accept(peeked, remaining, e));</span>
+<span class="nc" id="L140">        return results;</span>
+<span class="nc" id="L141">      }</span>
+
+<span class="nc" id="L143">      final E polled = poll();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      Preconditions.assertTrue(polled == peeked);</span>
+<span class="nc" id="L145">    }</span>
+  }
+
+  /** Poll out the head element from this queue. */
+  public E poll() {
+<span class="nc" id="L150">    final E polled = q.poll();</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">    if (polled != null) {</span>
+<span class="nc" id="L152">      numBytes -= getNumBytes.applyAsLong(polled);</span>
+    }
+<span class="nc" id="L154">    return polled;</span>
+  }
+
+  /** Peek the head element from this queue. */
+  public E peek() {
+<span class="nc" id="L159">    return q.peek();</span>
+  }
+
+  /** The same as {@link java.util.Collection#remove(Object)}. */
+  public boolean remove(E e) {
+<span class="nc" id="L164">    final boolean removed = q.remove(e);</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    if (removed) {</span>
+<span class="nc" id="L166">      numBytes -= getNumBytes.applyAsLong(e);</span>
+    }
+<span class="nc" id="L168">    return removed;</span>
+  }
+
+  @Override
+  public Iterator&lt;E&gt; iterator() {
+<span class="nc" id="L173">    final Iterator&lt;E&gt; i = q.iterator();</span>
+    // Do not support the remove() method.
+<span class="nc" id="L175">    return new Iterator&lt;E&gt;() {</span>
+      @Override
+      public boolean hasNext() {
+<span class="nc" id="L178">        return i.hasNext();</span>
+      }
+
+      @Override
+      public E next() {
+<span class="nc" id="L183">        return i.next();</span>
+      }
+    };
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

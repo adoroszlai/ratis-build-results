@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SizeInBytes.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">SizeInBytes.java</span></div><h1>SizeInBytes.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.Objects;
+
+/**
+ * Size which may be constructed with a {@link TraditionalBinaryPrefix}.
+ */
+public final class SizeInBytes {
+<span class="nc" id="L26">  public static final SizeInBytes ZERO = valueOf(0);</span>
+<span class="nc" id="L27">  public static final SizeInBytes ONE_KB = valueOf(&quot;1k&quot;);</span>
+<span class="nc" id="L28">  public static final SizeInBytes ONE_MB = valueOf(&quot;1m&quot;);</span>
+
+  public static SizeInBytes valueOf(long size) {
+<span class="nc" id="L31">    final String s = String.valueOf(size);</span>
+<span class="nc" id="L32">    return new SizeInBytes(size, s, s);</span>
+  }
+
+  public static SizeInBytes valueOf(long n, TraditionalBinaryPrefix prefix) {
+<span class="nc" id="L36">    final long size = Objects.requireNonNull(prefix, &quot;prefix == null&quot;).toLong(n);</span>
+<span class="nc" id="L37">    final String input = n + &quot; &quot; + prefix.getSymbol();</span>
+<span class="nc" id="L38">    final String description = input + &quot; (=&quot; + size + &quot;)&quot;;</span>
+<span class="nc" id="L39">    return new SizeInBytes(size, input, description);</span>
+  }
+
+  public static SizeInBytes valueOf(String input) {
+<span class="nc" id="L43">    input = Objects.requireNonNull(input, &quot;input == null&quot;).trim();</span>
+
+<span class="nc" id="L45">    final int last = input.length() - 1;</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">    final String s = &quot;b&quot;.equalsIgnoreCase(input.substring(last))?</span>
+<span class="nc" id="L47">        input.substring(0, last): input;</span>
+    final long size;
+    try {
+<span class="nc" id="L50">      size = TraditionalBinaryPrefix.string2long(s);</span>
+<span class="nc" id="L51">    } catch(NumberFormatException e) {</span>
+<span class="nc" id="L52">      throw new IllegalArgumentException(&quot;Failed to parse input &quot; + input, e);</span>
+<span class="nc" id="L53">    }</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">    final String description = input.equals(String.valueOf(size))?</span>
+        input: input + &quot; (=&quot; + size + &quot;)&quot;;
+
+<span class="nc" id="L57">    return new SizeInBytes(size, input, description);</span>
+  }
+
+  private final long size;
+  private final String input;
+  private final String description;
+
+<span class="nc" id="L64">  private SizeInBytes(long size, String input, String description) {</span>
+<span class="nc" id="L65">    this.size = size;</span>
+<span class="nc" id="L66">    this.input = input;</span>
+<span class="nc" id="L67">    this.description = description;</span>
+<span class="nc" id="L68">  }</span>
+
+  public long getSize() {
+<span class="nc" id="L71">    return size;</span>
+  }
+
+  public int getSizeInt() {
+<span class="nc" id="L75">    return Math.toIntExact(getSize());</span>
+  }
+
+  public String getInput() {
+<span class="nc" id="L79">    return input;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L84">    return description;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

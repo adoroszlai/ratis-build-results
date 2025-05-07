@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty</a> &gt; <span class="el_source">NettyUtils.java</span></div><h1>NettyUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.netty;
+
+import org.apache.ratis.security.TlsConf;
+import org.apache.ratis.security.TlsConf.CertificatesConf;
+import org.apache.ratis.security.TlsConf.KeyManagerConf;
+import org.apache.ratis.security.TlsConf.PrivateKeyConf;
+import org.apache.ratis.security.TlsConf.TrustManagerConf;
+import org.apache.ratis.thirdparty.io.netty.channel.Channel;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelFuture;
+import org.apache.ratis.thirdparty.io.netty.channel.EventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.ServerChannel;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.Epoll;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollEventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollServerSocketChannel;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollSocketChannel;
+import org.apache.ratis.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.nio.NioServerSocketChannel;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.nio.NioSocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContextBuilder;
+import org.apache.ratis.util.ConcurrentUtils;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.TrustManager;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+
+public interface NettyUtils {
+<span class="nc" id="L51">  Logger LOG = LoggerFactory.getLogger(NettyUtils.class);</span>
+<span class="nc" id="L52">  TimeDuration CLOSE_TIMEOUT = TimeDuration.valueOf(5, TimeUnit.SECONDS);</span>
+
+  class Print {
+<span class="nc" id="L55">    private static final AtomicBoolean PRINTED_EPOLL_UNAVAILABILITY_CAUSE = new AtomicBoolean();</span>
+
+    private Print() {}
+
+    static void epollUnavailability(String message) {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">      if (!LOG.isWarnEnabled()) {</span>
+<span class="nc" id="L61">        return;</span>
+      }
+<span class="nc bnc" id="L63" title="All 2 branches missed.">      if (PRINTED_EPOLL_UNAVAILABILITY_CAUSE.compareAndSet(false, true)) {</span>
+<span class="nc" id="L64">        LOG.warn(message, new IllegalStateException(&quot;Epoll is unavailable.&quot;, Epoll.unavailabilityCause()));</span>
+      } else {
+<span class="nc" id="L66">        LOG.warn(message);</span>
+      }
+<span class="nc" id="L68">    }</span>
+  }
+
+  static EventLoopGroup newEventLoopGroup(String name, int size, boolean useEpoll) {
+<span class="nc bnc" id="L72" title="All 2 branches missed.">    if (useEpoll) {</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">      if (Epoll.isAvailable()) {</span>
+<span class="nc" id="L74">        LOG.info(&quot;Create EpollEventLoopGroup for {}; Thread size is {}.&quot;, name, size);</span>
+<span class="nc" id="L75">        return new EpollEventLoopGroup(size, ConcurrentUtils.newThreadFactory(name + &quot;-&quot;));</span>
+      } else {
+<span class="nc" id="L77">        Print.epollUnavailability(&quot;Failed to create EpollEventLoopGroup for &quot; + name</span>
+            + &quot;; fall back on NioEventLoopGroup.&quot;);
+      }
+    }
+<span class="nc" id="L81">    return new NioEventLoopGroup(size, ConcurrentUtils.newThreadFactory(name + &quot;-&quot;));</span>
+  }
+
+  static void setTrustManager(SslContextBuilder b, TrustManagerConf trustManagerConfig) {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    if (trustManagerConfig == null) {</span>
+<span class="nc" id="L86">      return;</span>
+    }
+<span class="nc" id="L88">    final TrustManager trustManager = trustManagerConfig.getTrustManager();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    if (trustManager != null) {</span>
+<span class="nc" id="L90">      b.trustManager(trustManager);</span>
+<span class="nc" id="L91">      return;</span>
+    }
+<span class="nc" id="L93">    final CertificatesConf certificates = trustManagerConfig.getTrustCertificates();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">    if (certificates.isFileBased()) {</span>
+<span class="nc" id="L95">      b.trustManager(certificates.getFile());</span>
+    } else {
+<span class="nc" id="L97">      b.trustManager(certificates.get());</span>
+    }
+<span class="nc" id="L99">  }</span>
+
+  static void setKeyManager(SslContextBuilder b, KeyManagerConf keyManagerConfig) {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">    if (keyManagerConfig == null) {</span>
+<span class="nc" id="L103">      return;</span>
+    }
+<span class="nc" id="L105">    final KeyManager keyManager = keyManagerConfig.getKeyManager();</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    if (keyManager != null) {</span>
+<span class="nc" id="L107">      b.keyManager(keyManager);</span>
+<span class="nc" id="L108">      return;</span>
+    }
+<span class="nc" id="L110">    final PrivateKeyConf privateKey = keyManagerConfig.getPrivateKey();</span>
+<span class="nc" id="L111">    final CertificatesConf certificates = keyManagerConfig.getKeyCertificates();</span>
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (keyManagerConfig.isFileBased()) {</span>
+<span class="nc" id="L114">      b.keyManager(certificates.getFile(), privateKey.getFile());</span>
+    } else {
+<span class="nc" id="L116">      b.keyManager(privateKey.get(), certificates.get());</span>
+    }
+<span class="nc" id="L118">  }</span>
+
+  static SslContextBuilder initSslContextBuilderForServer(KeyManagerConf keyManagerConfig) {
+<span class="nc" id="L121">    final KeyManager keyManager = keyManagerConfig.getKeyManager();</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    if (keyManager != null) {</span>
+<span class="nc" id="L123">      return SslContextBuilder.forServer(keyManager);</span>
+    }
+<span class="nc" id="L125">    final PrivateKeyConf privateKey = keyManagerConfig.getPrivateKey();</span>
+<span class="nc" id="L126">    final CertificatesConf certificates = keyManagerConfig.getKeyCertificates();</span>
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    if (keyManagerConfig.isFileBased()) {</span>
+<span class="nc" id="L129">      return SslContextBuilder.forServer(certificates.getFile(), privateKey.getFile());</span>
+    } else {
+<span class="nc" id="L131">      return SslContextBuilder.forServer(privateKey.get(), certificates.get());</span>
+    }
+  }
+
+  static SslContextBuilder initSslContextBuilderForServer(TlsConf tlsConf) {
+<span class="nc" id="L136">    final SslContextBuilder b = initSslContextBuilderForServer(tlsConf.getKeyManager());</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (tlsConf.isMutualTls()) {</span>
+<span class="nc" id="L138">      setTrustManager(b, tlsConf.getTrustManager());</span>
+    }
+<span class="nc" id="L140">    return b;</span>
+  }
+
+  static SslContext buildSslContextForServer(TlsConf tlsConf) {
+<span class="nc" id="L144">    return buildSslContext(&quot;server&quot;, tlsConf, NettyUtils::initSslContextBuilderForServer);</span>
+  }
+
+  static SslContextBuilder initSslContextBuilderForClient(TlsConf tlsConf) {
+<span class="nc" id="L148">    final SslContextBuilder b = SslContextBuilder.forClient();</span>
+<span class="nc" id="L149">    setTrustManager(b, tlsConf.getTrustManager());</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    if (tlsConf.isMutualTls()) {</span>
+<span class="nc" id="L151">      setKeyManager(b, tlsConf.getKeyManager());</span>
+    }
+<span class="nc" id="L153">    return b;</span>
+  }
+
+  static SslContext buildSslContextForClient(TlsConf tlsConf) {
+<span class="nc" id="L157">    return buildSslContext(&quot;client&quot;, tlsConf, NettyUtils::initSslContextBuilderForClient);</span>
+  }
+
+  static SslContext buildSslContext(String name, TlsConf tlsConf, Function&lt;TlsConf, SslContextBuilder&gt; builder) {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">    if (tlsConf == null) {</span>
+<span class="nc" id="L162">      return null;</span>
+    }
+    final SslContext sslContext;
+    try {
+<span class="nc" id="L166">      sslContext = builder.apply(tlsConf).build();</span>
+<span class="nc" id="L167">    } catch (Exception e) {</span>
+<span class="nc" id="L168">      final String message = &quot;Failed to buildSslContext for &quot; + name + &quot; from &quot; + tlsConf;</span>
+<span class="nc" id="L169">      throw new IllegalArgumentException(message, e);</span>
+<span class="nc" id="L170">    }</span>
+<span class="nc" id="L171">    LOG.debug(&quot;buildSslContext for {} from {} returns {}&quot;, name, tlsConf, sslContext.getClass().getName());</span>
+<span class="nc" id="L172">    return sslContext;</span>
+  }
+
+  static Class&lt;? extends SocketChannel&gt; getSocketChannelClass(EventLoopGroup eventLoopGroup) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    return eventLoopGroup instanceof EpollEventLoopGroup ?</span>
+        EpollSocketChannel.class : NioSocketChannel.class;
+  }
+
+  static Class&lt;? extends ServerChannel&gt; getServerChannelClass(EventLoopGroup eventLoopGroup) {
+<span class="nc bnc" id="L181" title="All 2 branches missed.">    return eventLoopGroup instanceof EpollEventLoopGroup ?</span>
+        EpollServerSocketChannel.class : NioServerSocketChannel.class;
+  }
+
+  static void closeChannel(Channel channel, String name) {
+<span class="nc" id="L186">    final ChannelFuture f = channel.close();</span>
+    final boolean completed;
+    try {
+<span class="nc" id="L189">      completed = f.await(CLOSE_TIMEOUT.getDuration(), CLOSE_TIMEOUT.getUnit());</span>
+<span class="nc" id="L190">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L191">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L192">      LOG.info(&quot;Interrupted closeChannel {} &quot;, name, e);</span>
+<span class="nc" id="L193">      return;</span>
+<span class="nc" id="L194">    }</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">    if (!completed) {</span>
+<span class="nc" id="L196">      LOG.warn(&quot;closeChannel {} is not yet completed in {}&quot;, name, CLOSE_TIMEOUT);</span>
+    }
+<span class="nc" id="L198">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

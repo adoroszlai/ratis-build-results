@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc</a> &gt; <span class="el_source">GrpcUtil.java</span></div><h1>GrpcUtil.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc;
+
+import java.util.function.Consumer;
+import org.apache.ratis.protocol.exceptions.ServerNotReadyException;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.security.TlsConf.TrustManagerConf;
+import org.apache.ratis.security.TlsConf.CertificatesConf;
+import org.apache.ratis.security.TlsConf.PrivateKeyConf;
+import org.apache.ratis.security.TlsConf.KeyManagerConf;
+import org.apache.ratis.thirdparty.com.google.protobuf.MessageLite;
+import org.apache.ratis.thirdparty.io.grpc.ManagedChannel;
+import org.apache.ratis.thirdparty.io.grpc.Metadata;
+import org.apache.ratis.thirdparty.io.grpc.MethodDescriptor;
+import org.apache.ratis.thirdparty.io.grpc.ServerCallHandler;
+import org.apache.ratis.thirdparty.io.grpc.ServerServiceDefinition;
+import org.apache.ratis.thirdparty.io.grpc.Status;
+import org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContextBuilder;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LogUtils;
+import org.apache.ratis.util.ReflectionUtils;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.TrustManager;
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public interface GrpcUtil {
+<span class="nc" id="L54">  Logger LOG = LoggerFactory.getLogger(GrpcUtil.class);</span>
+
+<span class="nc" id="L56">  Metadata.Key&lt;String&gt; EXCEPTION_TYPE_KEY =</span>
+<span class="nc" id="L57">      Metadata.Key.of(&quot;exception-type&quot;, Metadata.ASCII_STRING_MARSHALLER);</span>
+<span class="nc" id="L58">  Metadata.Key&lt;byte[]&gt; EXCEPTION_OBJECT_KEY =</span>
+<span class="nc" id="L59">      Metadata.Key.of(&quot;exception-object-bin&quot;, Metadata.BINARY_BYTE_MARSHALLER);</span>
+<span class="nc" id="L60">  Metadata.Key&lt;String&gt; CALL_ID =</span>
+<span class="nc" id="L61">      Metadata.Key.of(&quot;call-id&quot;, Metadata.ASCII_STRING_MARSHALLER);</span>
+<span class="nc" id="L62">  Metadata.Key&lt;String&gt; HEARTBEAT =</span>
+<span class="nc" id="L63">      Metadata.Key.of(&quot;heartbeat&quot;, Metadata.ASCII_STRING_MARSHALLER);</span>
+
+  static StatusRuntimeException wrapException(Throwable t) {
+<span class="nc" id="L66">    t = JavaUtils.unwrapCompletionException(t);</span>
+<span class="nc" id="L67">    Metadata trailers = new StatusRuntimeExceptionMetadataBuilder(t).build();</span>
+<span class="nc" id="L68">    return wrapException(t, trailers);</span>
+  }
+
+  static StatusRuntimeException wrapException(Throwable t, long callId, boolean isHeartbeat) {
+<span class="nc" id="L72">    t = JavaUtils.unwrapCompletionException(t);</span>
+<span class="nc" id="L73">    Metadata trailers = new StatusRuntimeExceptionMetadataBuilder(t)</span>
+<span class="nc" id="L74">        .addCallId(callId)</span>
+<span class="nc" id="L75">        .addIsHeartbeat(isHeartbeat)</span>
+<span class="nc" id="L76">        .build();</span>
+<span class="nc" id="L77">    return wrapException(t, trailers);</span>
+  }
+
+  static StatusRuntimeException wrapException(Throwable t, Metadata trailers) {
+<span class="nc" id="L81">    return new StatusRuntimeException(</span>
+<span class="nc" id="L82">        Status.INTERNAL.withCause(t).withDescription(t.getMessage()), trailers);</span>
+  }
+
+  static Throwable unwrapThrowable(Throwable t) {
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    if (t instanceof StatusRuntimeException) {</span>
+<span class="nc" id="L87">      final Throwable unwrapped = tryUnwrapThrowable((StatusRuntimeException)t);</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      if (unwrapped != null) {</span>
+<span class="nc" id="L89">        return unwrapped;</span>
+      }
+    }
+<span class="nc" id="L92">    return t;</span>
+  }
+
+  static IOException unwrapException(StatusRuntimeException se) {
+<span class="nc" id="L96">    final Throwable t = tryUnwrapThrowable(se);</span>
+<span class="nc bnc" id="L97" title="All 4 branches missed.">    return t instanceof IOException? (IOException) t: new IOException(t != null? t: se);</span>
+  }
+
+  static Throwable tryUnwrapThrowable(StatusRuntimeException se) {
+<span class="nc" id="L101">    final Status status = se.getStatus();</span>
+<span class="nc bnc" id="L102" title="All 4 branches missed.">    if (status != null &amp;&amp; status.getCode() == Status.Code.DEADLINE_EXCEEDED) {</span>
+<span class="nc" id="L103">      return new TimeoutIOException(status.getDescription(), se);</span>
+    }
+
+<span class="nc" id="L106">    final Metadata trailers = se.getTrailers();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">    if (trailers == null) {</span>
+<span class="nc" id="L108">      return null;</span>
+    }
+
+<span class="nc" id="L111">    final byte[] bytes = trailers.get(EXCEPTION_OBJECT_KEY);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (bytes != null) {</span>
+      try {
+<span class="nc" id="L114">        return IOUtils.bytes2Object(bytes, Throwable.class);</span>
+<span class="nc" id="L115">      } catch (Exception e) {</span>
+<span class="nc" id="L116">        se.addSuppressed(e);</span>
+      }
+    }
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (status != null) {</span>
+<span class="nc" id="L121">      final String className = trailers.get(EXCEPTION_TYPE_KEY);</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">      if (className != null) {</span>
+        try {
+<span class="nc" id="L124">          final Class&lt;? extends Throwable&gt; clazz = Class.forName(className).asSubclass(Throwable.class);</span>
+<span class="nc" id="L125">          final Throwable unwrapped = ReflectionUtils.instantiateException(clazz, status.getDescription());</span>
+<span class="nc" id="L126">          return unwrapped.initCause(se);</span>
+<span class="nc" id="L127">        } catch (Throwable e) {</span>
+<span class="nc" id="L128">          se.addSuppressed(e);</span>
+<span class="nc" id="L129">          return new IOException(se);</span>
+        }
+      }
+    }
+<span class="nc" id="L133">    return null;</span>
+  }
+
+  static long getCallId(Throwable t) {
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (t instanceof StatusRuntimeException) {</span>
+<span class="nc" id="L138">      final Metadata trailers = ((StatusRuntimeException)t).getTrailers();</span>
+<span class="nc" id="L139">      String callId = trailers.get(CALL_ID);</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">      return callId != null ? Integer.parseInt(callId) : -1;</span>
+    }
+<span class="nc" id="L142">    return -1;</span>
+  }
+
+  static boolean isHeartbeat(Throwable t) {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    if (t instanceof StatusRuntimeException) {</span>
+<span class="nc" id="L147">      final Metadata trailers = ((StatusRuntimeException)t).getTrailers();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">      String isHeartbeat = trailers != null ? trailers.get(HEARTBEAT) : null;</span>
+<span class="nc bnc" id="L149" title="All 4 branches missed.">      return isHeartbeat != null &amp;&amp; Boolean.valueOf(isHeartbeat);</span>
+    }
+<span class="nc" id="L151">    return false;</span>
+  }
+
+  static IOException unwrapIOException(Throwable t) {
+    final IOException e;
+<span class="nc bnc" id="L156" title="All 2 branches missed.">    if (t instanceof StatusRuntimeException) {</span>
+<span class="nc" id="L157">      e = GrpcUtil.unwrapException((StatusRuntimeException) t);</span>
+    } else {
+<span class="nc" id="L159">      e = IOUtils.asIOException(t);</span>
+    }
+<span class="nc" id="L161">    return e;</span>
+  }
+
+  static &lt;REPLY, REPLY_PROTO&gt; void asyncCall(
+          StreamObserver&lt;REPLY_PROTO&gt; responseObserver,
+          CheckedSupplier&lt;CompletableFuture&lt;REPLY&gt;, IOException&gt; supplier,
+          Function&lt;REPLY, REPLY_PROTO&gt; toProto,
+          Consumer&lt;Throwable&gt; warning) {
+    try {
+<span class="nc" id="L170">      supplier.get().whenComplete((reply, exception) -&gt; {</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (exception != null) {</span>
+<span class="nc" id="L172">          warning.accept(exception);</span>
+<span class="nc" id="L173">          responseObserver.onError(GrpcUtil.wrapException(exception));</span>
+        } else {
+<span class="nc" id="L175">          responseObserver.onNext(toProto.apply(reply));</span>
+<span class="nc" id="L176">          responseObserver.onCompleted();</span>
+        }
+<span class="nc" id="L178">      });</span>
+<span class="nc" id="L179">    } catch (Exception e) {</span>
+<span class="nc" id="L180">      warning.accept(e);</span>
+<span class="nc" id="L181">      responseObserver.onError(GrpcUtil.wrapException(e));</span>
+<span class="nc" id="L182">    }</span>
+<span class="nc" id="L183">  }</span>
+
+  static void warn(Logger log, Supplier&lt;String&gt; message, Throwable t) {
+<span class="nc" id="L186">    LogUtils.warn(log, message, unwrapThrowable(t), StatusRuntimeException.class, ServerNotReadyException.class);</span>
+<span class="nc" id="L187">  }</span>
+
+  class StatusRuntimeExceptionMetadataBuilder {
+<span class="nc" id="L190">    private Metadata trailers = new Metadata();</span>
+
+<span class="nc" id="L192">    StatusRuntimeExceptionMetadataBuilder(Throwable t) {</span>
+<span class="nc" id="L193">      trailers.put(EXCEPTION_TYPE_KEY, t.getClass().getCanonicalName());</span>
+<span class="nc" id="L194">      trailers.put(EXCEPTION_OBJECT_KEY, IOUtils.object2Bytes(t));</span>
+<span class="nc" id="L195">    }</span>
+
+    StatusRuntimeExceptionMetadataBuilder addCallId(long callId) {
+<span class="nc bnc" id="L198" title="All 2 branches missed.">      if (callId &gt; 0) {</span>
+<span class="nc" id="L199">        trailers.put(CALL_ID, String.valueOf(callId));</span>
+      }
+<span class="nc" id="L201">      return this;</span>
+    }
+
+    StatusRuntimeExceptionMetadataBuilder addIsHeartbeat(boolean isHeartbeat) {
+<span class="nc" id="L205">      trailers.put(HEARTBEAT, String.valueOf(isHeartbeat));</span>
+<span class="nc" id="L206">      return this;</span>
+    }
+
+    Metadata build() {
+<span class="nc" id="L210">      return trailers;</span>
+    }
+  }
+
+  /**
+   * Tries to gracefully shut down the managed channel. Falls back to forceful shutdown if
+   * graceful shutdown times out.
+   */
+  static void shutdownManagedChannel(ManagedChannel managedChannel) {
+    // Close the gRPC managed-channel if not shut down already.
+<span class="nc bnc" id="L220" title="All 2 branches missed.">    if (!managedChannel.isShutdown()) {</span>
+      try {
+<span class="nc" id="L222">        managedChannel.shutdown();</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (!managedChannel.awaitTermination(3, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L224">          LOG.warn(&quot;Timed out gracefully shutting down connection: {}. &quot;, managedChannel);</span>
+        }
+<span class="nc" id="L226">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L227">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L228">      } catch (Exception e) {</span>
+<span class="nc" id="L229">        LOG.error(&quot;Unexpected exception while waiting for channel termination&quot;, e);</span>
+<span class="nc" id="L230">      }</span>
+    }
+
+    // Forceful shut down if still not terminated.
+<span class="nc bnc" id="L234" title="All 2 branches missed.">    if (!managedChannel.isTerminated()) {</span>
+      try {
+<span class="nc" id="L236">        managedChannel.shutdownNow();</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        if (!managedChannel.awaitTermination(2, TimeUnit.SECONDS)) {</span>
+<span class="nc" id="L238">          LOG.warn(&quot;Timed out forcefully shutting down connection: {}. &quot;, managedChannel);</span>
+        }
+<span class="nc" id="L240">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L241">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L242">      } catch (Exception e) {</span>
+<span class="nc" id="L243">        LOG.error(&quot;Unexpected exception while waiting for channel termination&quot;, e);</span>
+<span class="nc" id="L244">      }</span>
+    }
+<span class="nc" id="L246">  }</span>
+
+  static SslContextBuilder initSslContextBuilderForServer(KeyManagerConf keyManagerConfig) {
+<span class="nc" id="L249">    final KeyManager keyManager = keyManagerConfig.getKeyManager();</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    if (keyManager != null) {</span>
+<span class="nc" id="L251">      return SslContextBuilder.forServer(keyManager);</span>
+    }
+<span class="nc" id="L253">    final PrivateKeyConf privateKey = keyManagerConfig.getPrivateKey();</span>
+<span class="nc" id="L254">    final CertificatesConf certificates = keyManagerConfig.getKeyCertificates();</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">    if (keyManagerConfig.isFileBased()) {</span>
+<span class="nc" id="L257">      return SslContextBuilder.forServer(certificates.getFile(), privateKey.getFile());</span>
+    } else {
+<span class="nc" id="L259">      return SslContextBuilder.forServer(privateKey.get(), certificates.get());</span>
+    }
+  }
+
+  static void setTrustManager(SslContextBuilder b, TrustManagerConf trustManagerConfig) {
+<span class="nc bnc" id="L264" title="All 2 branches missed.">    if (trustManagerConfig == null) {</span>
+<span class="nc" id="L265">      return;</span>
+    }
+<span class="nc" id="L267">    final TrustManager trustManager = trustManagerConfig.getTrustManager();</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">    if (trustManager != null) {</span>
+<span class="nc" id="L269">      b.trustManager(trustManager);</span>
+<span class="nc" id="L270">      return;</span>
+    }
+<span class="nc" id="L272">    final CertificatesConf certificates = trustManagerConfig.getTrustCertificates();</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">    if (certificates.isFileBased()) {</span>
+<span class="nc" id="L274">      b.trustManager(certificates.getFile());</span>
+    } else {
+<span class="nc" id="L276">      b.trustManager(certificates.get());</span>
+    }
+<span class="nc" id="L278">  }</span>
+
+  static void setKeyManager(SslContextBuilder b, KeyManagerConf keyManagerConfig) {
+<span class="nc bnc" id="L281" title="All 2 branches missed.">    if (keyManagerConfig == null) {</span>
+<span class="nc" id="L282">      return;</span>
+    }
+<span class="nc" id="L284">    final KeyManager keyManager = keyManagerConfig.getKeyManager();</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">    if (keyManager != null) {</span>
+<span class="nc" id="L286">      b.keyManager(keyManager);</span>
+<span class="nc" id="L287">      return;</span>
+    }
+<span class="nc" id="L289">    final PrivateKeyConf privateKey = keyManagerConfig.getPrivateKey();</span>
+<span class="nc" id="L290">    final CertificatesConf certificates = keyManagerConfig.getKeyCertificates();</span>
+
+<span class="nc bnc" id="L292" title="All 2 branches missed.">    if (keyManagerConfig.isFileBased()) {</span>
+<span class="nc" id="L293">      b.keyManager(certificates.getFile(), privateKey.getFile());</span>
+    } else {
+<span class="nc" id="L295">      b.keyManager(privateKey.get(), certificates.get());</span>
+    }
+<span class="nc" id="L297">  }</span>
+
+  /**
+   * Used to add a method to Service definition with a custom request marshaller.
+   *
+   * @param orig original service definition.
+   * @param newServiceBuilder builder of the new service definition.
+   * @param origMethod the original method definition.
+   * @param customMarshaller custom marshaller to be set for the method.
+   * @param &lt;Req&gt;
+   * @param &lt;Resp&gt;
+   */
+  static &lt;Req extends MessageLite, Resp&gt; void addMethodWithCustomMarshaller(
+      ServerServiceDefinition orig, ServerServiceDefinition.Builder newServiceBuilder,
+      MethodDescriptor&lt;Req, Resp&gt; origMethod, MethodDescriptor.PrototypeMarshaller&lt;Req&gt; customMarshaller) {
+<span class="nc" id="L312">    MethodDescriptor&lt;Req, Resp&gt; newMethod = origMethod.toBuilder()</span>
+<span class="nc" id="L313">        .setRequestMarshaller(customMarshaller)</span>
+<span class="nc" id="L314">        .build();</span>
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L316">    ServerCallHandler&lt;Req, Resp&gt; serverCallHandler =</span>
+<span class="nc" id="L317">        (ServerCallHandler&lt;Req, Resp&gt;) orig.getMethod(newMethod.getFullMethodName()).getServerCallHandler();</span>
+<span class="nc" id="L318">    newServiceBuilder.addMethod(newMethod, serverCallHandler);</span>
+<span class="nc" id="L319">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

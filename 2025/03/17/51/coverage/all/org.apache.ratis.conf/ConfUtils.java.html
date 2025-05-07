@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.conf</a> &gt; <span class="el_source">ConfUtils.java</span></div><h1>ConfUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.conf;
+
+import org.apache.ratis.security.TlsConf;
+import org.apache.ratis.util.NetUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.function.CheckedBiConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+public interface ConfUtils {
+<span class="nc" id="L44">  Logger LOG = LoggerFactory.getLogger(ConfUtils.class);</span>
+
+<span class="nc" id="L46">  class Utils {</span>
+<span class="nc" id="L47">    private static final ConcurrentMap&lt;String, Object&gt; CACHE = new ConcurrentHashMap&lt;&gt;();</span>
+
+    private static &lt;T&gt; boolean isNew(String key, T value) {
+<span class="nc bnc" id="L50" title="All 2 branches missed.">      if (value == null) {</span>
+<span class="nc" id="L51">        final Object previous = CACHE.remove(key);</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        return previous != null;</span>
+      } else {
+<span class="nc" id="L54">        final Object previous = CACHE.put(key, value);</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        return !value.equals(previous);</span>
+      }
+    }
+  }
+
+  static &lt;T&gt; void logGet(String key, T value, T defaultValue, Consumer&lt;String&gt; logger) {
+<span class="nc bnc" id="L61" title="All 4 branches missed.">    if (logger != null &amp;&amp; Utils.isNew(key, value)) {</span>
+<span class="nc" id="L62">      logger.accept(String.format(&quot;%s = %s (%s)&quot;, key, value,</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">          Objects.equals(value, defaultValue)? &quot;default&quot;: &quot;custom&quot;));</span>
+    }
+<span class="nc" id="L65">  }</span>
+
+  static &lt;T&gt; void logFallback(String key, String fallbackKey, T fallbackValue, Consumer&lt;String&gt; logger) {
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (logger != null) {</span>
+<span class="nc" id="L69">      logger.accept(String.format(&quot;%s = %s (fallback to %s)&quot;, key, fallbackValue, fallbackKey));</span>
+    }
+<span class="nc" id="L71">  }</span>
+
+  static void logSet(String key, Object value) {
+<span class="nc" id="L74">    LOG.debug(&quot;set {} = {}&quot;, key, value);</span>
+<span class="nc" id="L75">  }</span>
+
+  static BiConsumer&lt;String, Integer&gt; requireMin(int min) {
+<span class="nc" id="L78">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">      if (value &lt; min) {</span>
+<span class="nc" id="L80">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &lt; min = &quot; + min);
+      }
+<span class="nc" id="L83">    };</span>
+  }
+
+  static BiConsumer&lt;String, Integer&gt; requireMax(int max) {
+<span class="nc" id="L87">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      if (value &gt; max) {</span>
+<span class="nc" id="L89">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &gt; max = &quot; + max);
+      }
+<span class="nc" id="L92">    };</span>
+  }
+
+  static BiConsumer&lt;String, Double&gt; requireMin(double min) {
+<span class="nc" id="L96">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">      if (value &lt; min) {</span>
+<span class="nc" id="L98">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &lt; min = &quot; + min);
+      }
+<span class="nc" id="L101">    };</span>
+  }
+
+  static BiConsumer&lt;String, Double&gt; requireMax(double max) {
+<span class="nc" id="L105">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (value &gt; max) {</span>
+<span class="nc" id="L107">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &gt; max = &quot; + max);
+      }
+<span class="nc" id="L110">    };</span>
+  }
+
+  static BiConsumer&lt;String, Long&gt; requireMin(SizeInBytes min) {
+<span class="nc" id="L114">    return requireMin(min.getSize());</span>
+  }
+
+  static BiConsumer&lt;String, Long&gt; requireMin(long min) {
+<span class="nc" id="L118">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      if (value &lt; min) {</span>
+<span class="nc" id="L120">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &lt; min = &quot; + min);
+      }
+<span class="nc" id="L123">    };</span>
+  }
+
+  static BiConsumer&lt;String, SizeInBytes&gt; requireMinSizeInByte(SizeInBytes min) {
+<span class="nc" id="L127">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      if (value.getSize() &lt; min.getSize()) {</span>
+<span class="nc" id="L129">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &lt; min = &quot; + min);
+      }
+<span class="nc" id="L132">    };</span>
+  }
+
+  static BiConsumer&lt;String, Long&gt; requireMax(long max) {
+<span class="nc" id="L136">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      if (value &gt; max) {</span>
+<span class="nc" id="L138">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; &gt; max = &quot; + max);
+      }
+<span class="nc" id="L141">    };</span>
+  }
+
+  static BiConsumer&lt;String, TimeDuration&gt; requireNonNegativeTimeDuration() {
+<span class="nc" id="L145">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">      if (value.isNegative()) {</span>
+<span class="nc" id="L147">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; is negative.&quot;);
+      }
+<span class="nc" id="L150">    };</span>
+  }
+
+  static BiConsumer&lt;String, TimeDuration&gt; requirePositive() {
+<span class="nc" id="L154">    return (key, value) -&gt; {</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">      if (value.getDuration() &lt;= 0) {</span>
+<span class="nc" id="L156">        throw new IllegalArgumentException(</span>
+            key + &quot; = &quot; + value + &quot; is non-positive.&quot;);
+      }
+<span class="nc" id="L159">    };</span>
+  }
+
+  static BiFunction&lt;String, Long, Integer&gt; requireInt() {
+<span class="nc" id="L163">    return (key, value) -&gt; {</span>
+      try {
+<span class="nc" id="L165">        return Math.toIntExact(value);</span>
+<span class="nc" id="L166">      } catch (ArithmeticException ae) {</span>
+<span class="nc" id="L167">        throw new IllegalArgumentException(</span>
+            &quot;Failed to cast &quot; + key + &quot; = &quot; + value + &quot; to int.&quot;, ae);
+      }
+    };
+  }
+
+  @SafeVarargs
+  static boolean getBoolean(
+      BiFunction&lt;String, Boolean, Boolean&gt; booleanGetter,
+      String key, boolean defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, Boolean&gt;... assertions) {
+<span class="nc" id="L177">    return get(booleanGetter, key, defaultValue, logger, assertions);</span>
+  }
+
+  @SafeVarargs
+  static int getInt(
+      BiFunction&lt;String, Integer, Integer&gt; integerGetter,
+      String key, int defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, Integer&gt;... assertions) {
+<span class="nc" id="L184">    return get(integerGetter, key, defaultValue, logger, assertions);</span>
+  }
+
+  @SafeVarargs
+  static int getInt(
+      BiFunction&lt;String, Integer, Integer&gt; integerGetter,
+      String key, int defaultValue, String fallbackKey, int fallbackValue,
+      Consumer&lt;String&gt; logger, BiConsumer&lt;String, Integer&gt;... assertions) {
+<span class="nc" id="L192">    return get(integerGetter, key, defaultValue, fallbackKey, fallbackValue, logger, assertions);</span>
+  }
+
+  @SafeVarargs
+  static long getLong(
+      BiFunction&lt;String, Long, Long&gt; longGetter,
+      String key, long defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, Long&gt;... assertions) {
+<span class="nc" id="L199">    return get(longGetter, key, defaultValue, logger, assertions);</span>
+  }
+
+  @SafeVarargs
+  static double getDouble(
+      BiFunction&lt;String, Double, Double&gt; doubleGetter,
+      String key, double defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, Double&gt;... assertions) {
+<span class="nc" id="L206">    return get(doubleGetter, key, defaultValue, logger, assertions);</span>
+  }
+
+  @SafeVarargs
+  static File getFile(
+      BiFunction&lt;String, File, File&gt; fileGetter,
+      String key, File defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, File&gt;... assertions) {
+<span class="nc" id="L213">    return get(fileGetter, key, defaultValue, logger, assertions);</span>
+  }
+
+  @SafeVarargs
+  static List&lt;File&gt; getFiles(
+      BiFunction&lt;String, List&lt;File&gt;, List&lt;File&gt;&gt; fileGetter,
+      String key, List&lt;File&gt; defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, List&lt;File&gt;&gt;... assertions) {
+<span class="nc" id="L220">    return get(fileGetter, key, defaultValue, logger, assertions);</span>
+  }
+
+
+  @SafeVarargs
+  static SizeInBytes getSizeInBytes(
+      BiFunction&lt;String, SizeInBytes, SizeInBytes&gt; getter,
+      String key, SizeInBytes defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, SizeInBytes&gt;... assertions) {
+<span class="nc" id="L228">    final SizeInBytes value = get(getter, key, defaultValue, logger, assertions);</span>
+<span class="nc" id="L229">    requireMin(0L).accept(key, value.getSize());</span>
+<span class="nc" id="L230">    return value;</span>
+  }
+
+  @SafeVarargs
+  static TimeDuration getTimeDuration(
+      BiFunction&lt;String, TimeDuration, TimeDuration&gt; getter,
+      String key, TimeDuration defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, TimeDuration&gt;... assertions) {
+<span class="nc" id="L237">    final TimeDuration value = get(getter, key, defaultValue, logger, assertions);</span>
+<span class="nc" id="L238">    requireNonNegativeTimeDuration().accept(key, value);</span>
+<span class="nc" id="L239">    return value;</span>
+  }
+
+  @SafeVarargs
+  static TimeDuration getTimeDuration(
+        BiFunction&lt;String, TimeDuration, TimeDuration&gt; getter,
+        String key, TimeDuration defaultValue, String fallbackKey, TimeDuration fallbackValue,
+        Consumer&lt;String&gt; logger, BiConsumer&lt;String, TimeDuration&gt;... assertions) {
+<span class="nc" id="L247">    final TimeDuration value = get(getter, key, defaultValue, fallbackKey, fallbackValue, logger, assertions);</span>
+<span class="nc" id="L248">    requireNonNegativeTimeDuration().accept(key, value);</span>
+<span class="nc" id="L249">    return value;</span>
+  }
+
+
+  static TlsConf getTlsConf(
+      Function&lt;String, TlsConf&gt; tlsConfGetter,
+      String key, Consumer&lt;String&gt; logger) {
+<span class="nc" id="L256">    return get((k, d) -&gt; tlsConfGetter.apply(k), key, null, logger);</span>
+  }
+
+  @SafeVarargs
+  static &lt;T&gt; T get(BiFunction&lt;String, T, T&gt; getter,
+      String key, T defaultValue, Consumer&lt;String&gt; logger, BiConsumer&lt;String, T&gt;... assertions) {
+<span class="nc" id="L262">    final T value = getter.apply(key, defaultValue);</span>
+<span class="nc" id="L263">    logGet(key, value, defaultValue, logger);</span>
+<span class="nc" id="L264">    Arrays.asList(assertions).forEach(a -&gt; a.accept(key, value));</span>
+<span class="nc" id="L265">    return value;</span>
+  }
+
+  @SafeVarargs
+  static &lt;T&gt; T get(BiFunction&lt;String, T, T&gt; getter,
+      String key, T defaultValue, String fallbackKey, T fallbackValue,
+      Consumer&lt;String&gt; logger, BiConsumer&lt;String, T&gt;... assertions) {
+<span class="nc" id="L272">    T value = get(getter, key, defaultValue, null, assertions);</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">    if (value != defaultValue) {</span>
+<span class="nc" id="L274">      logGet(key, value, defaultValue, logger);</span>
+<span class="nc" id="L275">      return value;</span>
+    } else {
+<span class="nc" id="L277">      logFallback(key, fallbackKey, fallbackValue, logger);</span>
+<span class="nc" id="L278">      return fallbackValue;</span>
+    }
+  }
+
+  static InetSocketAddress getInetSocketAddress(
+      BiFunction&lt;String, String, String&gt; stringGetter,
+      String key, String defaultValue, Consumer&lt;String&gt; logger) {
+<span class="nc" id="L285">    return NetUtils.createSocketAddr(get(stringGetter, key, defaultValue, logger));</span>
+  }
+
+  @SafeVarargs
+  static void setBoolean(
+      BiConsumer&lt;String, Boolean&gt; booleanSetter, String key, boolean value,
+      BiConsumer&lt;String, Boolean&gt;... assertions) {
+<span class="nc" id="L292">    set(booleanSetter, key, value, assertions);</span>
+<span class="nc" id="L293">  }</span>
+
+  @SafeVarargs
+  static void setInt(
+      BiConsumer&lt;String, Integer&gt; integerSetter, String key, int value,
+      BiConsumer&lt;String, Integer&gt;... assertions) {
+<span class="nc" id="L299">    set(integerSetter, key, value, assertions);</span>
+<span class="nc" id="L300">  }</span>
+
+  @SafeVarargs
+  static void setLong(
+      BiConsumer&lt;String, Long&gt; longSetter, String key, long value,
+      BiConsumer&lt;String, Long&gt;... assertions) {
+<span class="nc" id="L306">    set(longSetter, key, value, assertions);</span>
+<span class="nc" id="L307">  }</span>
+
+  @SafeVarargs
+  static void setDouble(
+      BiConsumer&lt;String, Double&gt; doubleSetter, String key, double value,
+      BiConsumer&lt;String, Double&gt;... assertions) {
+<span class="nc" id="L313">    set(doubleSetter, key, value, assertions);</span>
+<span class="nc" id="L314">  }</span>
+
+  @SafeVarargs
+  static void setFile(
+      BiConsumer&lt;String, File&gt; fileSetter, String key, File value,
+      BiConsumer&lt;String, File&gt;... assertions) {
+<span class="nc" id="L320">    set(fileSetter, key, value, assertions);</span>
+<span class="nc" id="L321">  }</span>
+
+  @SafeVarargs
+  static void setFiles(
+      BiConsumer&lt;String, List&lt;File&gt;&gt; fileSetter, String key, List&lt;File&gt; value,
+      BiConsumer&lt;String, List&lt;File&gt;&gt;... assertions) {
+<span class="nc" id="L327">    set(fileSetter, key, value, assertions);</span>
+<span class="nc" id="L328">  }</span>
+
+  @SafeVarargs
+  static void setSizeInBytes(
+      BiConsumer&lt;String, String&gt; stringSetter, String key, SizeInBytes value,
+      BiConsumer&lt;String, Long&gt;... assertions) {
+<span class="nc" id="L334">    final long v = value.getSize();</span>
+<span class="nc" id="L335">    Arrays.asList(assertions).forEach(a -&gt; a.accept(key, v));</span>
+<span class="nc" id="L336">    set(stringSetter, key, value.getInput());</span>
+<span class="nc" id="L337">  }</span>
+
+  @SafeVarargs
+  static void setTimeDuration(
+      BiConsumer&lt;String, TimeDuration&gt; timeDurationSetter, String key, TimeDuration value,
+      BiConsumer&lt;String, TimeDuration&gt;... assertions) {
+<span class="nc" id="L343">    set(timeDurationSetter, key, value, assertions);</span>
+<span class="nc" id="L344">  }</span>
+
+  static void setTlsConf(
+      BiConsumer&lt;String, TlsConf&gt; tlsConfSetter, String key, TlsConf value) {
+<span class="nc" id="L348">    set(tlsConfSetter, key, value);</span>
+<span class="nc" id="L349">  }</span>
+
+  @SafeVarargs
+  static &lt;T&gt; void set(
+      BiConsumer&lt;String, T&gt; setter, String key, T value,
+      BiConsumer&lt;String, T&gt;... assertions) {
+<span class="nc" id="L355">    Arrays.asList(assertions).forEach(a -&gt; a.accept(key, value));</span>
+<span class="nc" id="L356">    setter.accept(key, value);</span>
+<span class="nc" id="L357">    logSet(key, value);</span>
+<span class="nc" id="L358">  }</span>
+
+  static void printAll(Class&lt;?&gt; confClass) {
+<span class="nc" id="L361">    ConfUtils.printAll(confClass, System.out::println);</span>
+<span class="nc" id="L362">  }</span>
+
+  static void printAll(Class&lt;?&gt; confClass, Consumer&lt;Object&gt; out) {
+<span class="nc bnc" id="L365" title="All 2 branches missed.">    if (confClass.isEnum()) {</span>
+<span class="nc" id="L366">      return;</span>
+    }
+<span class="nc" id="L368">    out.accept(&quot;&quot;);</span>
+<span class="nc" id="L369">    out.accept(&quot;******* &quot; + confClass + &quot; *******&quot;);</span>
+<span class="nc" id="L370">    Arrays.asList(confClass.getDeclaredFields())</span>
+<span class="nc" id="L371">        .forEach(f -&gt; printField(confClass, out, f));</span>
+<span class="nc" id="L372">    Arrays.asList(confClass.getClasses())</span>
+<span class="nc" id="L373">        .forEach(c -&gt; printAll(c, s -&gt; out.accept(&quot;  &quot; + s)));</span>
+<span class="nc" id="L374">  }</span>
+
+  static void printField(Class&lt;?&gt; confClass, Consumer&lt;Object&gt; out, Field f) {
+<span class="nc" id="L377">    final int modifiers = f.getModifiers();</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">    if (!Modifier.isStatic(modifiers)) {</span>
+<span class="nc" id="L379">      throw new IllegalStateException(&quot;Found non-static field &quot; + f);</span>
+    }
+<span class="nc bnc" id="L381" title="All 2 branches missed.">    if (!Modifier.isFinal(modifiers)) {</span>
+<span class="nc" id="L382">      throw new IllegalStateException(&quot;Found non-final field &quot; + f);</span>
+    }
+<span class="nc bnc" id="L384" title="All 2 branches missed.">    if (printKey(confClass, out, f, &quot;KEY&quot;, &quot;DEFAULT&quot;, ConfUtils::append)) {</span>
+<span class="nc" id="L385">      return;</span>
+    }
+<span class="nc bnc" id="L387" title="All 2 branches missed.">    if (printKey(confClass, out, f, &quot;PARAMETER&quot;, &quot;CLASS&quot;,</span>
+<span class="nc" id="L388">        (b, classField) -&gt; b.append(classField.get(null)))) {</span>
+<span class="nc" id="L389">      return;</span>
+    }
+<span class="nc" id="L391">    final String fieldName = f.getName();</span>
+<span class="nc bnc" id="L392" title="All 4 branches missed.">    if (&quot;LOG&quot;.equals(fieldName) || &quot;$jacocoData&quot;.equals(fieldName)) {</span>
+<span class="nc" id="L393">      return;</span>
+    }
+<span class="nc bnc" id="L395" title="All 2 branches missed.">    if (!&quot;PREFIX&quot;.equals(fieldName)) {</span>
+<span class="nc" id="L396">      throw new IllegalStateException(&quot;Unexpected field: &quot; + fieldName);</span>
+    }
+    try {
+<span class="nc" id="L399">      out.accept(&quot;constant: &quot; + fieldName + &quot; = &quot; + f.get(null));</span>
+<span class="nc" id="L400">    } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L401">      throw new IllegalStateException(&quot;Failed to access &quot; + f, e);</span>
+<span class="nc" id="L402">    }</span>
+<span class="nc" id="L403">  }</span>
+
+  static void append(StringBuilder b, Field defaultField) throws IllegalAccessException {
+<span class="nc" id="L406">    b.append(defaultField.getGenericType().getTypeName());</span>
+
+<span class="nc" id="L408">    final Class&lt;?&gt; type = defaultField.getType();</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">    if (type.isEnum()) {</span>
+<span class="nc" id="L410">      b.append(&quot; enum[&quot;);</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">      for(Object e : defaultField.getType().getEnumConstants()) {</span>
+<span class="nc" id="L412">        b.append(e).append(&quot;, &quot;);</span>
+      }
+<span class="nc" id="L414">      b.setLength(b.length() - 2);</span>
+<span class="nc" id="L415">      b.append(&quot;]&quot;);</span>
+    }
+
+<span class="nc" id="L418">    b.append(&quot;, &quot;).append(&quot;default=&quot;).append(defaultField.get(null));</span>
+<span class="nc" id="L419">  }</span>
+
+  static boolean printKey(
+      Class&lt;?&gt; confClass, Consumer&lt;Object&gt; out, Field f, String key, String defaultName,
+      CheckedBiConsumer&lt;StringBuilder, Field, IllegalAccessException&gt; processDefault) {
+<span class="nc" id="L424">    final String fieldName = f.getName();</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">    if (fieldName.endsWith(&quot;_&quot; + defaultName)) {</span>
+<span class="nc" id="L426">      return true;</span>
+    }
+<span class="nc bnc" id="L428" title="All 2 branches missed.">    if (!fieldName.endsWith(&quot;_&quot; + key)) {</span>
+<span class="nc" id="L429">      return false;</span>
+    }
+<span class="nc" id="L431">    final StringBuilder b = new StringBuilder();</span>
+    final Object keyName;
+    try {
+<span class="nc" id="L434">      keyName = f.get(null);</span>
+<span class="nc" id="L435">      b.append(key.toLowerCase()).append(&quot;: &quot;).append(keyName);</span>
+<span class="nc" id="L436">    } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L437">      throw new IllegalStateException(&quot;Failed to access &quot; + fieldName, e);</span>
+<span class="nc" id="L438">    }</span>
+<span class="nc" id="L439">    assertKey(fieldName, key.length(), keyName, confClass);</span>
+<span class="nc" id="L440">    final String defaultFieldName = fieldName.substring(0, fieldName.length() - key.length()) + defaultName;</span>
+<span class="nc" id="L441">    b.append(&quot; (&quot;);</span>
+    try {
+<span class="nc" id="L443">      final Field defaultField = confClass.getDeclaredField(defaultFieldName);</span>
+<span class="nc" id="L444">      processDefault.accept(b, defaultField);</span>
+<span class="nc" id="L445">    } catch (NoSuchFieldException e) {</span>
+<span class="nc" id="L446">      throw new IllegalStateException(defaultName + &quot; not found for field &quot; + f, e);</span>
+<span class="nc" id="L447">    } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L448">      throw new IllegalStateException(&quot;Failed to access &quot; + defaultFieldName, e);</span>
+<span class="nc" id="L449">    }</span>
+<span class="nc" id="L450">    b.append(&quot;)&quot;);</span>
+
+<span class="nc" id="L452">    out.accept(b);</span>
+<span class="nc" id="L453">    return true;</span>
+  }
+
+  static String normalizeName(String name) {
+<span class="nc" id="L457">    return name.replaceAll(&quot;[._-]&quot;, &quot;&quot;).toLowerCase();</span>
+  }
+
+  static void assertKey(String fieldName, int toTruncate, Object keyName, Class&lt;?&gt; confClass) {
+<span class="nc" id="L461">    final String normalizedFieldName = normalizeName(fieldName.substring(0, fieldName.length() - toTruncate));</span>
+<span class="nc" id="L462">    final String normalizedKeyName = normalizeName(&quot;&quot; + keyName);</span>
+
+<span class="nc bnc" id="L464" title="All 2 branches missed.">    if (!normalizedKeyName.endsWith(normalizedFieldName)) {</span>
+<span class="nc" id="L465">      throw new IllegalStateException(&quot;Field and key mismatched: fieldName = &quot; + fieldName + &quot; (&quot; + normalizedFieldName</span>
+          + &quot;) but keyName = &quot; + keyName + &quot; (&quot; + normalizedKeyName + &quot;)&quot;);
+    }
+
+    // check getter and setter methods
+<span class="nc" id="L470">    boolean getter = false;</span>
+<span class="nc" id="L471">    boolean setter = false;</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">    for(Method m : confClass.getMethods()) {</span>
+<span class="nc" id="L473">      final String name = m.getName();</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">      if (name.equalsIgnoreCase(normalizedFieldName)) {</span>
+<span class="nc" id="L475">        getter = true;</span>
+      }
+<span class="nc bnc" id="L477" title="All 2 branches missed.">      if (name.equalsIgnoreCase(&quot;set&quot; + normalizedFieldName)) {</span>
+<span class="nc" id="L478">        setter = true;</span>
+      }
+    }
+<span class="nc bnc" id="L481" title="All 2 branches missed.">    if (!getter) {</span>
+<span class="nc" id="L482">      throw new IllegalStateException(&quot;Getter method not found for &quot; + fieldName);</span>
+    }
+<span class="nc bnc" id="L484" title="All 2 branches missed.">    if (!setter) {</span>
+<span class="nc" id="L485">      throw new IllegalStateException(&quot;Setter method not found for &quot; + fieldName);</span>
+    }
+<span class="nc" id="L487">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PeerProxyMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">PeerProxyMap.java</span></div><h1>PeerProxyMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.util.function.CheckedFunction;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/** A map from peer id to peer and its proxy. */
+public class PeerProxyMap&lt;PROXY extends Closeable&gt; implements RaftPeer.Add, Closeable {
+<span class="nc" id="L43">  public static final Logger LOG = LoggerFactory.getLogger(PeerProxyMap.class);</span>
+
+  /** Peer and its proxy. */
+  private class PeerAndProxy {
+    private final RaftPeer peer;
+<span class="nc" id="L48">    @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type</span>
+    private volatile PROXY proxy = null;
+    private final LifeCycle lifeCycle;
+
+<span class="nc" id="L52">    PeerAndProxy(RaftPeer peer) {</span>
+<span class="nc" id="L53">      this.peer = peer;</span>
+<span class="nc" id="L54">      this.lifeCycle = new LifeCycle(peer);</span>
+<span class="nc" id="L55">    }</span>
+
+    RaftPeer getPeer() {
+<span class="nc" id="L58">      return peer;</span>
+    }
+
+    PROXY getProxy() throws IOException {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      if (proxy == null) {</span>
+<span class="nc" id="L63">        synchronized (this) {</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">          if (proxy == null) {</span>
+<span class="nc" id="L65">            final LifeCycle.State current = lifeCycle.getCurrentState();</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            if (current.isClosingOrClosed()) {</span>
+<span class="nc" id="L67">              throw new AlreadyClosedException(name + &quot; is already &quot; + current);</span>
+            }
+<span class="nc" id="L69">            lifeCycle.startAndTransition(</span>
+<span class="nc" id="L70">                () -&gt; proxy = createProxyImpl(peer), IOException.class);</span>
+          }
+<span class="nc" id="L72">        }</span>
+      }
+<span class="nc" id="L74">      return proxy;</span>
+    }
+
+    Optional&lt;PROXY&gt; setNullProxyAndClose() {
+      final PROXY p;
+<span class="nc" id="L79">      synchronized (this) {</span>
+<span class="nc" id="L80">        p = proxy;</span>
+<span class="nc" id="L81">        lifeCycle.checkStateAndClose(() -&gt; proxy = null);</span>
+<span class="nc" id="L82">      }</span>
+<span class="nc" id="L83">      return Optional.ofNullable(p);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L88">      return peer.getId().toString();</span>
+    }
+  }
+
+  private final String name;
+<span class="nc" id="L93">  private final Map&lt;RaftPeerId, PeerAndProxy&gt; peers = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="nc" id="L94">  private final Object resetLock = new Object();</span>
+
+  private final CheckedFunction&lt;RaftPeer, PROXY, IOException&gt; createProxy;
+<span class="nc" id="L97">  private final AtomicBoolean closed = new AtomicBoolean();</span>
+
+<span class="nc" id="L99">  public PeerProxyMap(String name, CheckedFunction&lt;RaftPeer, PROXY, IOException&gt; createProxy) {</span>
+<span class="nc" id="L100">    this.name = name;</span>
+<span class="nc" id="L101">    this.createProxy = createProxy;</span>
+<span class="nc" id="L102">  }</span>
+
+  public String getName() {
+<span class="nc" id="L105">    return name;</span>
+  }
+
+  private PROXY createProxyImpl(RaftPeer peer) throws IOException {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    if (closed.get()) {</span>
+<span class="nc" id="L110">      throw new AlreadyClosedException(name + &quot;: Failed to create proxy for &quot; + peer);</span>
+    }
+<span class="nc" id="L112">    return createProxy.apply(peer);</span>
+  }
+
+  public PROXY getProxy(RaftPeerId id) throws IOException {
+<span class="nc" id="L116">    Objects.requireNonNull(id, &quot;id == null&quot;);</span>
+<span class="nc" id="L117">    PeerAndProxy p = peers.get(id);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    if (p == null) {</span>
+<span class="nc" id="L119">      synchronized (resetLock) {</span>
+<span class="nc" id="L120">        p = Objects.requireNonNull(peers.get(id),</span>
+<span class="nc" id="L121">            () -&gt; name + &quot;: Server &quot; + id + &quot; not found: peers=&quot; + peers.keySet());</span>
+<span class="nc" id="L122">      }</span>
+    }
+<span class="nc" id="L124">    return p.getProxy();</span>
+  }
+
+  @Override
+  public void addRaftPeers(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">    for(RaftPeer p : newPeers) {</span>
+<span class="nc" id="L130">      computeIfAbsent(p);</span>
+<span class="nc" id="L131">    }</span>
+<span class="nc" id="L132">  }</span>
+
+  /**
+   * This method is similar to {@link Map#computeIfAbsent(Object, java.util.function.Function)}
+   * except that this method does not require a mapping function.
+   *
+   * @param peer the peer for retrieving/building a proxy.
+   * @return a supplier of the proxy for the given peer.
+   */
+  public CheckedSupplier&lt;PROXY, IOException&gt; computeIfAbsent(RaftPeer peer) {
+<span class="nc" id="L142">    final PeerAndProxy peerAndProxy = peers.computeIfAbsent(peer.getId(), k -&gt; new PeerAndProxy(peer));</span>
+<span class="nc" id="L143">    return peerAndProxy::getProxy;</span>
+  }
+
+  public void resetProxy(RaftPeerId id) {
+<span class="nc" id="L147">    LOG.debug(&quot;{}: reset proxy for {}&quot;, name, id );</span>
+    final PeerAndProxy pp;
+<span class="nc" id="L149">    Optional&lt;PROXY&gt; optional = Optional.empty();</span>
+<span class="nc" id="L150">    synchronized (resetLock) {</span>
+<span class="nc" id="L151">      pp = peers.remove(id);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">      if (pp != null) {</span>
+<span class="nc" id="L153">        final RaftPeer peer = pp.getPeer();</span>
+<span class="nc" id="L154">        optional = pp.setNullProxyAndClose();</span>
+<span class="nc" id="L155">        computeIfAbsent(peer);</span>
+      }
+<span class="nc" id="L157">    }</span>
+    // close proxy without holding the reset lock
+<span class="nc" id="L159">    optional.map(proxy -&gt; closeProxy(proxy, pp))</span>
+<span class="nc" id="L160">        .ifPresent(e -&gt; LOG.warn(&quot;Failed to close the previous proxy&quot;, e));</span>
+<span class="nc" id="L161">  }</span>
+
+  /** @return true if the given throwable is handled; otherwise, the call is a no-op, return false. */
+  public boolean handleException(RaftPeerId serverId, Throwable e, boolean reconnect) {
+<span class="nc bnc" id="L165" title="All 4 branches missed.">    if (reconnect || IOUtils.shouldReconnect(e)) {</span>
+<span class="nc" id="L166">      resetProxy(serverId);</span>
+<span class="nc" id="L167">      return true;</span>
+    }
+<span class="nc" id="L169">    return false;</span>
+  }
+
+  @Override
+  public void close() {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    if (!closed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L175">      return;</span>
+    }
+
+<span class="nc" id="L178">    final List&lt;IOException&gt; exceptions = Collections.synchronizedList(new ArrayList&lt;&gt;());</span>
+<span class="nc" id="L179">    ConcurrentUtils.parallelForEachAsync(peers.values(),</span>
+<span class="nc" id="L180">        pp -&gt; pp.setNullProxyAndClose().map(proxy -&gt; closeProxy(proxy, pp)).ifPresent(exceptions::add),</span>
+<span class="nc" id="L181">        r -&gt; new Thread(r).start()</span>
+<span class="nc" id="L182">    ).join();</span>
+
+<span class="nc" id="L184">    final int size = exceptions.size();</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">    if (size &gt; 0) {</span>
+<span class="nc" id="L186">      final Iterator&lt;IOException&gt; i = exceptions.iterator();</span>
+<span class="nc" id="L187">      final IOException e = new IOException(name + &quot;: Failed to close proxy map&quot;, i.next());</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">      for(; i.hasNext(); ) {</span>
+<span class="nc" id="L189">        e.addSuppressed(i.next());</span>
+      }
+<span class="nc" id="L191">      LOG.warn(&quot;{}: {} exception(s)&quot;, name, size, e);</span>
+    }
+<span class="nc" id="L193">  }</span>
+
+  private IOException closeProxy(PROXY proxy, PeerAndProxy pp) {
+    try {
+<span class="nc" id="L197">      LOG.debug(&quot;{}: Closing proxy {} {} for peer {}&quot;, name, proxy.getClass().getSimpleName(), proxy, pp);</span>
+<span class="nc" id="L198">      proxy.close();</span>
+<span class="nc" id="L199">      return null;</span>
+<span class="nc" id="L200">    } catch (IOException e) {</span>
+<span class="nc" id="L201">      return new IOException(name + &quot;: Failed to close proxy for peer &quot; + pp + &quot;, &quot; + proxy.getClass(), e);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

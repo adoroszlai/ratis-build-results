@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReflectionUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ReflectionUtils.java</span></div><h1>ReflectionUtils.java</h1><pre class="source lang-java linenums">/*
+ * *
+ *  * Licensed to the Apache Software Foundation (ASF) under one
+ *  * or more contributor license agreements.  See the NOTICE file
+ *  * distributed with this work for additional information
+ *  * regarding copyright ownership.  The ASF licenses this file
+ *  * to you under the Apache License, Version 2.0 (the
+ *  * &quot;License&quot;); you may not use this file except in compliance
+ *  * with the License.  You may obtain a copy of the License at
+ *  *
+ *  *     http://www.apache.org/licenses/LICENSE-2.0
+ *  *
+ *  * Unless required by applicable law or agreed to in writing, software
+ *  * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  * See the License for the specific language governing permissions and
+ *  * limitations under the License.
+ *
+ */
+
+package org.apache.ratis.util;
+
+
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Reflection related utility methods.
+ */
+public interface ReflectionUtils {
+  final class Constructors {
+    private Constructors() {}
+
+    /**
+     * Cache of constructors for each class. Pins the classes so they
+     * can't be garbage collected until ReflectionUtils can be collected.
+     */
+<span class="nc" id="L41">    private static final Map&lt;List&lt;Class&lt;?&gt;&gt;, Constructor&lt;?&gt;&gt; CONSTRUCTORS</span>
+        = new ConcurrentHashMap&lt;&gt;();
+
+    private static &lt;T&gt; Constructor&lt;T&gt; get(Class&lt;T&gt; clazz, Class&lt;?&gt;[] argClasses)
+        throws NoSuchMethodException {
+<span class="nc" id="L46">      Objects.requireNonNull(clazz, &quot;clazz == null&quot;);</span>
+
+<span class="nc" id="L48">      final List&lt;Class&lt;?&gt;&gt; key = new ArrayList&lt;&gt;(argClasses.length + 1);</span>
+<span class="nc" id="L49">      key.add(clazz);</span>
+<span class="nc" id="L50">      key.addAll(Arrays.asList(argClasses));</span>
+
+      @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L53">      Constructor&lt;T&gt; ctor = (Constructor&lt;T&gt;) CONSTRUCTORS.get(key);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">      if (ctor == null) {</span>
+<span class="nc" id="L55">        ctor = clazz.getDeclaredConstructor(argClasses);</span>
+<span class="nc" id="L56">        ctor.setAccessible(true);</span>
+<span class="nc" id="L57">        CONSTRUCTORS.put(key, ctor);</span>
+      }
+<span class="nc" id="L59">      return ctor;</span>
+    }
+  }
+
+<span class="nc" id="L63">  final class Classes {</span>
+<span class="nc" id="L64">    private static final Class&lt;?&gt;[] EMPTY_ARRAY = {};</span>
+
+    private static final Map&lt;ClassLoader, Map&lt;String, WeakReference&lt;Class&lt;?&gt;&gt;&gt;&gt;
+<span class="nc" id="L67">        CLASSES = new WeakHashMap&lt;&gt;();</span>
+
+    /** Sentinel value to store negative cache results in {@link #CLASSES}. */
+<span class="nc" id="L70">    private static final Class&lt;?&gt; NEGATIVE_CACHE_SENTINEL = NegativeCacheSentinel.class;</span>
+
+    /**
+     * A unique class which is used as a sentinel value in the caching
+     * for getClassByName. {@link #getClassByNameOrNull(String)}
+     */
+    private static final class NegativeCacheSentinel {}
+
+<span class="nc" id="L78">    private static final ClassLoader CLASS_LOADER = Optional.ofNullable(</span>
+<span class="nc" id="L79">            Thread.currentThread().getContextClassLoader()).orElseGet(ReflectionUtils.class::getClassLoader);</span>
+
+    private static Map&lt;String, WeakReference&lt;Class&lt;?&gt;&gt;&gt; getClassMap() {
+      Map&lt;String, WeakReference&lt;Class&lt;?&gt;&gt;&gt; map;
+<span class="nc" id="L83">      synchronized (CLASSES) {</span>
+<span class="nc" id="L84">        map = CLASSES.get(CLASS_LOADER);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (map == null) {</span>
+<span class="nc" id="L86">          map = Collections.synchronizedMap(new WeakHashMap&lt;&gt;());</span>
+<span class="nc" id="L87">          CLASSES.put(CLASS_LOADER, map);</span>
+        }
+<span class="nc" id="L89">      }</span>
+<span class="nc" id="L90">      return map;</span>
+    }
+  }
+
+  static ClassLoader getClassLoader() {
+<span class="nc" id="L95">    return Classes.CLASS_LOADER;</span>
+  }
+
+  /**
+   * Load a class by name, returning null rather than throwing an exception
+   * if it couldn't be loaded. This is to avoid the overhead of creating
+   * an exception.
+   *
+   * @param name the class name
+   * @return the class object, or null if it could not be found.
+   */
+  static Class&lt;?&gt; getClassByNameOrNull(String name) {
+<span class="nc" id="L107">    return getClassByNameOrNull(name, null);</span>
+  }
+
+  /**
+   * Load a class by name through a specific classloader, returning null rather
+   * than throwing an exception if it couldn't be loaded. This is to avoid the
+   * overhead of creating an exception.
+   *
+   * @param name the class name
+   * @param classLoader the classloader
+   * @return the class object, or null if it could not be found.
+   */
+  static Class&lt;?&gt; getClassByNameOrNull(String name, ClassLoader classLoader) {
+<span class="nc" id="L120">    final Map&lt;String, WeakReference&lt;Class&lt;?&gt;&gt;&gt; map = Classes.getClassMap();</span>
+
+<span class="nc" id="L122">    Class&lt;?&gt; clazz = null;</span>
+<span class="nc" id="L123">    WeakReference&lt;Class&lt;?&gt;&gt; ref = map.get(name);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (ref != null) {</span>
+<span class="nc" id="L125">      clazz = ref.get();</span>
+    }
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    if (clazz == null) {</span>
+      try {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        clazz = Class.forName(name, true,</span>
+<span class="nc" id="L131">            classLoader != null ? classLoader : Classes.CLASS_LOADER);</span>
+<span class="nc" id="L132">      } catch (ClassNotFoundException e) {</span>
+        // Leave a marker that the class isn't found
+<span class="nc" id="L134">        map.put(name, new WeakReference&lt;&gt;(Classes.NEGATIVE_CACHE_SENTINEL));</span>
+<span class="nc" id="L135">        return null;</span>
+<span class="nc" id="L136">      }</span>
+      // two putters can race here, but they'll put the same class
+<span class="nc" id="L138">      map.put(name, new WeakReference&lt;&gt;(clazz));</span>
+<span class="nc" id="L139">      return clazz;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">    } else if (clazz == Classes.NEGATIVE_CACHE_SENTINEL) {</span>
+<span class="nc" id="L141">      return null; // not found</span>
+    } else {
+      // cache hit
+<span class="nc" id="L144">      return clazz;</span>
+    }
+  }
+
+  /**
+   * Load a class by name.
+   *
+   * @param name the class name.
+   * @return the class object.
+   * @throws ClassNotFoundException if the class is not found.
+   */
+  static Class&lt;?&gt; getClassByName(String name) throws ClassNotFoundException {
+<span class="nc" id="L156">    return getClassByName(name, null);</span>
+  }
+
+  /**
+   * Load a class by name through a specific classloader.
+   *
+   * @param name the class name.
+   * @param classLoader the classloader.
+   * @return the class object.
+   * @throws ClassNotFoundException if the class is not found.
+   */
+  static Class&lt;?&gt; getClassByName(String name, ClassLoader classLoader)
+      throws ClassNotFoundException {
+<span class="nc" id="L169">    Class&lt;?&gt; ret = getClassByNameOrNull(name, classLoader);</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">    if (ret == null) {</span>
+<span class="nc" id="L171">      throw new ClassNotFoundException(&quot;Class &quot; + name + &quot; not found&quot;);</span>
+    }
+<span class="nc" id="L173">    return ret;</span>
+  }
+
+  /**
+   * Create an object for the given class using its default constructor.
+   */
+  static &lt;T&gt; T newInstance(Class&lt;T&gt; clazz) {
+<span class="nc" id="L180">    return newInstance(clazz, Classes.EMPTY_ARRAY);</span>
+  }
+
+  /**
+   * Create an object for the given class using the specified constructor.
+   *
+   * @param clazz class of which an object is created
+   * @param argClasses argument classes of the constructor
+   * @param args actual arguments to be passed to the constructor
+   * @param &lt;T&gt; class type of clazz
+   * @return a new object
+   */
+  static &lt;T&gt; T newInstance(Class&lt;T&gt; clazz, Class&lt;?&gt;[] argClasses, Object... args) {
+    final Constructor&lt;T&gt; ctor;
+    try {
+<span class="nc" id="L195">      ctor = Constructors.get(clazz, argClasses);</span>
+<span class="nc" id="L196">    } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L197">      throw new UnsupportedOperationException(</span>
+<span class="nc" id="L198">          &quot;Unable to find suitable constructor for class &quot; + clazz.getName()</span>
+<span class="nc" id="L199">          + &quot;, argument classes = &quot; + Arrays.toString(argClasses), e);</span>
+<span class="nc" id="L200">    }</span>
+<span class="nc" id="L201">    return instantiate(clazz.getName(), ctor, args);</span>
+  }
+
+  static &lt;T&gt; T instantiate(final String className, Constructor&lt;T&gt; ctor, Object[] ctorArgs) {
+    try {
+<span class="nc" id="L206">      ctor.setAccessible(true);</span>
+<span class="nc" id="L207">      return ctor.newInstance(ctorArgs);</span>
+<span class="nc" id="L208">    } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L209">      throw new UnsupportedOperationException(</span>
+          &quot;Unable to access specified class &quot; + className, e);
+<span class="nc" id="L211">    } catch (InstantiationException e) {</span>
+<span class="nc" id="L212">      throw new UnsupportedOperationException(</span>
+          &quot;Unable to instantiate specified class &quot; + className, e);
+<span class="nc" id="L214">    } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L215">      throw new UnsupportedOperationException(</span>
+          &quot;Constructor threw an exception for &quot; + className, e);
+    }
+  }
+
+  /** Is the given object an instance of one of the given classes? */
+  static boolean isInstance(Object obj, Class&lt;?&gt;... classes) {
+<span class="nc bnc" id="L222" title="All 2 branches missed.">    for(Class&lt;?&gt; c : classes) {</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">      if (c.isInstance(obj)) {</span>
+<span class="nc" id="L224">        return true;</span>
+      }
+    }
+<span class="nc" id="L227">    return false;</span>
+  }
+
+  static String getImplClassName(Class&lt;?&gt; clazz) {
+<span class="nc" id="L231">    return clazz.getPackage().getName() + &quot;.impl.&quot; + JavaUtils.getClassSimpleName(clazz) + &quot;Impl&quot;;</span>
+  }
+
+  static &lt;BASE&gt; Class&lt;? extends BASE&gt; getImplClass(Class&lt;BASE&gt; base) {
+<span class="nc" id="L235">    return getClass(getImplClassName(base), base);</span>
+  }
+
+  static &lt;BASE&gt; Class&lt;? extends BASE&gt; getClass(String subClassName, Class&lt;BASE&gt; base) {
+    try {
+<span class="nc" id="L240">      return getClassByName(subClassName, base.getClassLoader()).asSubclass(base);</span>
+<span class="nc" id="L241">    } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L242">      throw new IllegalArgumentException(&quot;Failed to get class &quot;</span>
+          + subClassName + &quot; as a subclass of &quot; + base, e);
+    }
+  }
+
+  static &lt;T extends Throwable&gt; T instantiateException(Class&lt;T&gt; clazz) throws Exception {
+<span class="nc" id="L248">    final Constructor&lt;T&gt; c = clazz.getConstructor();</span>
+<span class="nc" id="L249">    c.setAccessible(true);</span>
+<span class="nc" id="L250">    return c.newInstance();</span>
+  }
+
+  static &lt;T extends Throwable&gt; T instantiateException(Class&lt;T&gt; clazz, String message) throws Exception {
+<span class="nc bnc" id="L254" title="All 2 branches missed.">    if (message == null) {</span>
+<span class="nc" id="L255">      return instantiateException(clazz);</span>
+    }
+<span class="nc" id="L257">    final Constructor&lt;T&gt; c = clazz.getConstructor(String.class);</span>
+<span class="nc" id="L258">    c.setAccessible(true);</span>
+<span class="nc" id="L259">    return c.newInstance(message);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

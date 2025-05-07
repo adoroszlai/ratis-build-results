@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RetryCacheImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">RetryCacheImpl.java</span></div><h1>RetryCacheImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.RetryCache;
+import org.apache.ratis.thirdparty.com.google.common.cache.Cache;
+import org.apache.ratis.thirdparty.com.google.common.cache.CacheBuilder;
+import org.apache.ratis.thirdparty.com.google.common.cache.CacheStats;
+import org.apache.ratis.util.CollectionUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.Timestamp;
+
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+
+class RetryCacheImpl implements RetryCache {
+<span class="nc" id="L43">  static class CacheEntry implements Entry {</span>
+    private final ClientInvocationId key;
+<span class="nc" id="L45">    private final CompletableFuture&lt;RaftClientReply&gt; replyFuture = new CompletableFuture&lt;&gt;();</span>
+
+    /**
+     * &quot;failed&quot; means we failed to commit the request into the raft group, or
+     * the request did not get approved by the state machine before the raft
+     * replication. Note once the request gets committed by the raft group, this
+     * field is never true even if the state machine throws an exception when
+     * applying the transaction.
+     */
+<span class="nc" id="L54">    private volatile boolean failed = false;</span>
+
+<span class="nc" id="L56">    CacheEntry(ClientInvocationId key) {</span>
+<span class="nc" id="L57">      this.key = key;</span>
+<span class="nc" id="L58">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      return key + &quot;:&quot; + (isDone() ? &quot;done&quot; : &quot;pending&quot;);</span>
+    }
+
+    boolean isDone() {
+<span class="nc bnc" id="L66" title="All 4 branches missed.">      return isFailed() || replyFuture.isDone();</span>
+    }
+
+    boolean isCompletedNormally() {
+<span class="nc bnc" id="L70" title="All 4 branches missed.">      return !failed &amp;&amp; JavaUtils.isCompletedNormally(replyFuture);</span>
+    }
+
+    void updateResult(RaftClientReply reply) {
+<span class="nc bnc" id="L74" title="All 4 branches missed.">      assert !replyFuture.isDone() &amp;&amp; !replyFuture.isCancelled();</span>
+<span class="nc" id="L75">      replyFuture.complete(reply);</span>
+<span class="nc" id="L76">    }</span>
+
+    boolean isFailed() {
+<span class="nc bnc" id="L79" title="All 4 branches missed.">      return failed || replyFuture.isCompletedExceptionally();</span>
+    }
+
+    void failWithReply(RaftClientReply reply) {
+<span class="nc" id="L83">      failed = true;</span>
+<span class="nc" id="L84">      replyFuture.complete(reply);</span>
+<span class="nc" id="L85">    }</span>
+
+    void failWithException(Throwable t) {
+<span class="nc" id="L88">      failed = true;</span>
+<span class="nc" id="L89">      replyFuture.completeExceptionally(t);</span>
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public CompletableFuture&lt;RaftClientReply&gt; getReplyFuture() {
+<span class="nc" id="L94">      return replyFuture;</span>
+    }
+
+    @Override
+    public ClientInvocationId getKey() {
+<span class="nc" id="L99">      return key;</span>
+    }
+  }
+
+  static class CacheQueryResult {
+    private final CacheEntry entry;
+    private final boolean isRetry;
+
+<span class="nc" id="L107">    CacheQueryResult(CacheEntry entry, boolean isRetry) {</span>
+<span class="nc" id="L108">      this.entry = entry;</span>
+<span class="nc" id="L109">      this.isRetry = isRetry;</span>
+<span class="nc" id="L110">    }</span>
+
+    public CacheEntry getEntry() {
+<span class="nc" id="L113">      return entry;</span>
+    }
+
+    public boolean isRetry() {
+<span class="nc" id="L117">      return isRetry;</span>
+    }
+  }
+
+  class StatisticsImpl implements Statistics {
+    private final long size;
+    private final CacheStats cacheStats;
+<span class="nc" id="L124">    private final Timestamp creation = Timestamp.currentTime();</span>
+
+<span class="nc" id="L126">    StatisticsImpl(Cache&lt;?, ?&gt; cache) {</span>
+<span class="nc" id="L127">      this.size = cache.size();</span>
+<span class="nc" id="L128">      this.cacheStats = cache.stats();</span>
+<span class="nc" id="L129">    }</span>
+
+    boolean isExpired() {
+<span class="nc bnc" id="L132" title="All 2 branches missed.">      return Optional.ofNullable(statisticsExpiryTime).map(t -&gt; creation.elapsedTime().compareTo(t) &gt; 0).orElse(true);</span>
+    }
+
+    @Override
+    public long size() {
+<span class="nc" id="L137">      return size;</span>
+    }
+
+    @Override
+    public long hitCount() {
+<span class="nc" id="L142">      return cacheStats.hitCount();</span>
+    }
+
+    @Override
+    public double hitRate() {
+<span class="nc" id="L147">      return cacheStats.hitRate();</span>
+    }
+
+    @Override
+    public long missCount() {
+<span class="nc" id="L152">      return cacheStats.missCount();</span>
+    }
+
+    @Override
+    public double missRate() {
+<span class="nc" id="L157">      return cacheStats.missRate();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L162">      return creation + &quot;:size=&quot; + size + &quot;,&quot; + cacheStats;</span>
+    }
+  }
+
+  private final Cache&lt;ClientInvocationId, CacheEntry&gt; cache;
+  /** Cache statistics to reduce the number of expensive statistics computations. */
+<span class="nc" id="L168">  private final AtomicReference&lt;StatisticsImpl&gt; statistics = new AtomicReference&lt;&gt;();</span>
+  private final TimeDuration statisticsExpiryTime;
+
+  RetryCacheImpl(RaftProperties properties) {
+<span class="nc" id="L172">    this(RaftServerConfigKeys.RetryCache.expiryTime(properties),</span>
+<span class="nc" id="L173">         RaftServerConfigKeys.RetryCache.statisticsExpiryTime(properties));</span>
+<span class="nc" id="L174">  }</span>
+
+  /**
+   * @param cacheExpiryTime time for a cache entry to expire.
+   * @param statisticsExpiryTime time for a {@link RetryCache.Statistics} object to expire.
+   */
+<span class="nc" id="L180">  RetryCacheImpl(TimeDuration cacheExpiryTime, TimeDuration statisticsExpiryTime) {</span>
+<span class="nc" id="L181">    this.cache = CacheBuilder.newBuilder()</span>
+<span class="nc" id="L182">        .recordStats()</span>
+<span class="nc" id="L183">        .expireAfterWrite(cacheExpiryTime.getDuration(), cacheExpiryTime.getUnit())</span>
+<span class="nc" id="L184">        .build();</span>
+<span class="nc" id="L185">    this.statisticsExpiryTime = statisticsExpiryTime;</span>
+<span class="nc" id="L186">  }</span>
+
+  CacheEntry getOrCreateEntry(ClientInvocationId key) {
+<span class="nc" id="L189">    return getOrCreateEntry(key, () -&gt; new CacheEntry(key));</span>
+  }
+
+  private CacheEntry getOrCreateEntry(ClientInvocationId key, Supplier&lt;CacheEntry&gt; constructor) {
+    try {
+<span class="nc" id="L194">      return cache.get(key, constructor::get);</span>
+<span class="nc" id="L195">    } catch (ExecutionException e) {</span>
+<span class="nc" id="L196">      throw new IllegalStateException(&quot;Failed to get &quot; + key, e);</span>
+    }
+  }
+
+  CacheEntry refreshEntry(CacheEntry newEntry) {
+<span class="nc" id="L201">    cache.put(newEntry.getKey(), newEntry);</span>
+<span class="nc" id="L202">    return newEntry;</span>
+  }
+
+  CacheQueryResult queryCache(RaftClientRequest request) {
+<span class="nc" id="L206">    final ClientInvocationId key = ClientInvocationId.valueOf(request);</span>
+<span class="nc" id="L207">    final MemoizedSupplier&lt;CacheEntry&gt; newEntry = MemoizedSupplier.valueOf(() -&gt; new CacheEntry(key));</span>
+<span class="nc" id="L208">    final CacheEntry cacheEntry = getOrCreateEntry(key, newEntry);</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">    if (newEntry.isInitialized()) {</span>
+      // this is the entry we just newly created
+<span class="nc" id="L211">      return new CacheQueryResult(cacheEntry, false);</span>
+<span class="nc bnc" id="L212" title="All 4 branches missed.">    } else if (!cacheEntry.isDone() || !cacheEntry.isFailed()){</span>
+      // the previous attempt is either pending or successful
+<span class="nc" id="L214">      return new CacheQueryResult(cacheEntry, true);</span>
+    }
+
+    // the previous attempt failed, replace it with a new one.
+<span class="nc" id="L218">    synchronized (this) {</span>
+      // need to recheck, since there may be other retry attempts being
+      // processed at the same time. The recheck+replacement should be protected
+      // by lock.
+<span class="nc" id="L222">      final CacheEntry currentEntry = cache.getIfPresent(key);</span>
+<span class="nc bnc" id="L223" title="All 4 branches missed.">      if (currentEntry == cacheEntry || currentEntry == null) {</span>
+        // if the failed entry has not got replaced by another retry, or the
+        // failed entry got invalidated, we add a new cache entry
+<span class="nc" id="L226">        return new CacheQueryResult(refreshEntry(newEntry.get()), false);</span>
+      } else {
+<span class="nc" id="L228">        return new CacheQueryResult(currentEntry, true);</span>
+      }
+    }
+  }
+
+  void invalidateRepliedRequests(RaftClientRequest request) {
+<span class="nc" id="L234">    final ClientId clientId = request.getClientId();</span>
+<span class="nc" id="L235">    final Iterable&lt;Long&gt; callIds = request.getRepliedCallIds();</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">    if (!callIds.iterator().hasNext()) {</span>
+<span class="nc" id="L237">      return;</span>
+    }
+
+<span class="nc" id="L240">    LOG.debug(&quot;invalidateRepliedRequests callIds {} for {}&quot;, callIds, clientId);</span>
+<span class="nc" id="L241">    cache.invalidateAll(CollectionUtils.as(callIds, callId -&gt; ClientInvocationId.valueOf(clientId, callId)));</span>
+<span class="nc" id="L242">  }</span>
+
+  @Override
+  public Statistics getStatistics() {
+<span class="nc bnc" id="L246" title="All 4 branches missed.">    return statistics.updateAndGet(old -&gt; old == null || old.isExpired()? new StatisticsImpl(cache): old);</span>
+  }
+
+  @Override
+  public CacheEntry getIfPresent(ClientInvocationId key) {
+<span class="nc" id="L251">    return cache.getIfPresent(key);</span>
+  }
+
+  @Override
+  public synchronized void close() {
+<span class="nc" id="L256">    cache.invalidateAll();</span>
+<span class="nc" id="L257">    statistics.set(null);</span>
+<span class="nc" id="L258">  }</span>
+
+  static CompletableFuture&lt;RaftClientReply&gt; failWithReply(
+      RaftClientReply reply, CacheEntry entry) {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">    if (entry != null) {</span>
+<span class="nc" id="L263">      entry.failWithReply(reply);</span>
+<span class="nc" id="L264">      return entry.getReplyFuture();</span>
+    } else {
+<span class="nc" id="L266">      return CompletableFuture.completedFuture(reply);</span>
+    }
+  }
+
+  static CompletableFuture&lt;RaftClientReply&gt; failWithException(
+      Throwable t, CacheEntry entry) {
+<span class="nc bnc" id="L272" title="All 2 branches missed.">    if (entry != null) {</span>
+<span class="nc" id="L273">      entry.failWithException(t);</span>
+<span class="nc" id="L274">      return entry.getReplyFuture();</span>
+    } else {
+<span class="nc" id="L276">      return JavaUtils.completeExceptionally(t);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

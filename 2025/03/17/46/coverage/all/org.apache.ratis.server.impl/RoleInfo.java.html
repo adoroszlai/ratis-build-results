@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RoleInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">RoleInfo.java</span></div><h1>RoleInfo.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos.CandidateInfoProto;
+import org.apache.ratis.proto.RaftProtos.FollowerInfoProto;
+import org.apache.ratis.proto.RaftProtos.LeaderInfoProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.RoleInfoProto;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.leader.LogAppender;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.Timestamp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.apache.ratis.server.impl.ServerProtoUtils.toServerRpcProto;
+
+/**
+ * Maintain the Role of a Raft Peer.
+ */
+class RoleInfo {
+<span class="nc" id="L47">  public static final Logger LOG = LoggerFactory.getLogger(RoleInfo.class);</span>
+
+  private final RaftPeerId id;
+<span class="nc" id="L50">  private final AtomicReference&lt;RaftPeerRole&gt; role = new AtomicReference&lt;&gt;();</span>
+  /** Used when the peer is leader */
+<span class="nc" id="L52">  private final AtomicReference&lt;LeaderStateImpl&gt; leaderState = new AtomicReference&lt;&gt;();</span>
+  /** Used when the peer is follower, to monitor election timeout */
+<span class="nc" id="L54">  private final AtomicReference&lt;FollowerState&gt; followerState = new AtomicReference&lt;&gt;();</span>
+  /** Used when the peer is candidate, to request votes from other peers */
+<span class="nc" id="L56">  private final AtomicReference&lt;LeaderElection&gt; leaderElection = new AtomicReference&lt;&gt;();</span>
+<span class="nc" id="L57">  private final AtomicBoolean pauseLeaderElection = new AtomicBoolean(false);</span>
+
+  private final AtomicReference&lt;Timestamp&gt; transitionTime;
+
+<span class="nc" id="L61">  RoleInfo(RaftPeerId id) {</span>
+<span class="nc" id="L62">    this.id = id;</span>
+<span class="nc" id="L63">    this.transitionTime = new AtomicReference&lt;&gt;(Timestamp.currentTime());</span>
+<span class="nc" id="L64">  }</span>
+
+  void transitionRole(RaftPeerRole newRole) {
+<span class="nc" id="L67">    this.role.set(newRole);</span>
+<span class="nc" id="L68">    this.transitionTime.set(Timestamp.currentTime());</span>
+<span class="nc" id="L69">  }</span>
+
+  long getRoleElapsedTimeMs() {
+<span class="nc" id="L72">    return transitionTime.get().elapsedTimeMs();</span>
+  }
+
+  RaftPeerRole getCurrentRole() {
+<span class="nc" id="L76">    return role.get();</span>
+  }
+
+  boolean isLeaderReady() {
+<span class="nc" id="L80">    return getLeaderState().map(LeaderStateImpl::isReady).orElse(false);</span>
+  }
+
+  Optional&lt;LeaderStateImpl&gt; getLeaderState() {
+<span class="nc" id="L84">    return Optional.ofNullable(leaderState.get());</span>
+  }
+
+  LeaderStateImpl getLeaderStateNonNull() {
+<span class="nc" id="L88">    return Objects.requireNonNull(leaderState.get(), &quot;leaderState is null&quot;);</span>
+  }
+
+  LeaderStateImpl updateLeaderState(RaftServerImpl server) {
+<span class="nc" id="L92">    return updateAndGet(leaderState, new LeaderStateImpl(server));</span>
+  }
+
+  CompletableFuture&lt;Void&gt; shutdownLeaderState(boolean allowNull) {
+<span class="nc" id="L96">    final LeaderStateImpl leader = leaderState.getAndSet(null);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (leader == null) {</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">      if (!allowNull) {</span>
+<span class="nc" id="L99">        return JavaUtils.completeExceptionally(new NullPointerException(&quot;leaderState == null&quot;));</span>
+      }
+<span class="nc" id="L101">      return CompletableFuture.completedFuture(null);</span>
+    } else {
+<span class="nc" id="L103">      LOG.info(&quot;{}: shutdown {}&quot;, id, leader);</span>
+<span class="nc" id="L104">      return leader.stop();</span>
+    }
+  }
+
+  Optional&lt;FollowerState&gt; getFollowerState() {
+<span class="nc" id="L109">    return Optional.ofNullable(followerState.get());</span>
+  }
+
+  void startFollowerState(RaftServerImpl server, Object reason) {
+<span class="nc" id="L113">    updateAndGet(followerState, new FollowerState(server, reason)).start();</span>
+<span class="nc" id="L114">  }</span>
+
+  CompletableFuture&lt;Void&gt; shutdownFollowerState() {
+<span class="nc" id="L117">    final FollowerState follower = followerState.getAndSet(null);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    if (follower == null) {</span>
+<span class="nc" id="L119">      return CompletableFuture.completedFuture(null);</span>
+    }
+<span class="nc" id="L121">    LOG.info(&quot;{}: shutdown {}&quot;, id, follower);</span>
+<span class="nc" id="L122">    return follower.stopRunning();</span>
+  }
+
+  void startLeaderElection(RaftServerImpl server, boolean force) {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">    if (pauseLeaderElection.get()) {</span>
+<span class="nc" id="L127">      return;</span>
+    }
+<span class="nc" id="L129">    updateAndGet(leaderElection, new LeaderElection(server, force)).start();</span>
+<span class="nc" id="L130">  }</span>
+
+  void setLeaderElectionPause(boolean pause) {
+<span class="nc" id="L133">    pauseLeaderElection.set(pause);</span>
+<span class="nc" id="L134">  }</span>
+
+  CompletableFuture&lt;Void&gt; shutdownLeaderElection() {
+<span class="nc" id="L137">    final LeaderElection election = leaderElection.getAndSet(null);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">    if (election == null) {</span>
+<span class="nc" id="L139">      return CompletableFuture.completedFuture(null);</span>
+    }
+<span class="nc" id="L141">    LOG.info(&quot;{}: shutdown {}&quot;, id, election);</span>
+<span class="nc" id="L142">    return election.shutdown();</span>
+  }
+
+  private &lt;T&gt; T updateAndGet(AtomicReference&lt;T&gt; ref, T current) {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    final T updated = ref.updateAndGet(previous -&gt; previous != null? previous: current);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    Preconditions.assertTrue(updated == current, &quot;previous != null&quot;);</span>
+<span class="nc" id="L148">    LOG.info(&quot;{}: start {}&quot;, id, current);</span>
+<span class="nc" id="L149">    return updated;</span>
+  }
+
+  RoleInfoProto buildRoleInfoProto(RaftServerImpl server) {
+<span class="nc" id="L153">    final RaftPeerRole currentRole = getCurrentRole();</span>
+<span class="nc" id="L154">    final RoleInfoProto.Builder proto = RoleInfoProto.newBuilder()</span>
+<span class="nc" id="L155">        .setSelf(server.getPeer().getRaftPeerProto())</span>
+<span class="nc" id="L156">        .setRole(currentRole)</span>
+<span class="nc" id="L157">        .setRoleElapsedTimeMs(getRoleElapsedTimeMs());</span>
+
+<span class="nc bnc" id="L159" title="All 4 branches missed.">    switch (currentRole) {</span>
+      case LEADER:
+<span class="nc" id="L161">        getLeaderState().ifPresent(leader -&gt; {</span>
+<span class="nc" id="L162">          final LeaderInfoProto.Builder b = LeaderInfoProto.newBuilder()</span>
+<span class="nc" id="L163">              .setTerm(leader.getCurrentTerm());</span>
+<span class="nc" id="L164">          leader.getLogAppenders()</span>
+<span class="nc" id="L165">              .map(LogAppender::getFollower)</span>
+<span class="nc" id="L166">              .map(f -&gt; toServerRpcProto(f.getPeer(), f.getLastRpcResponseTime().elapsedTimeMs()))</span>
+<span class="nc" id="L167">              .forEach(b::addFollowerInfo);</span>
+<span class="nc" id="L168">          proto.setLeaderInfo(b);</span>
+<span class="nc" id="L169">        });</span>
+<span class="nc" id="L170">        return proto.build();</span>
+
+      case CANDIDATE:
+<span class="nc" id="L173">        return proto.setCandidateInfo(CandidateInfoProto.newBuilder()</span>
+<span class="nc" id="L174">            .setLastLeaderElapsedTimeMs(server.getState().getLastLeaderElapsedTimeMs()))</span>
+<span class="nc" id="L175">            .build();</span>
+
+      case LISTENER:
+      case FOLLOWER:
+        // FollowerState can be null while adding a new peer as it is not a voting member yet
+<span class="nc" id="L180">        final FollowerState follower = getFollowerState().orElse(null);</span>
+        final long rpcElapsed;
+        final int outstandingOp;
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (follower != null) {</span>
+<span class="nc" id="L184">          rpcElapsed = follower.getLastRpcTime().elapsedTimeMs();</span>
+<span class="nc" id="L185">          outstandingOp = follower.getOutstandingOp();</span>
+        } else {
+<span class="nc" id="L187">          rpcElapsed = 0;</span>
+<span class="nc" id="L188">          outstandingOp = 0;</span>
+        }
+<span class="nc" id="L190">        final RaftPeer leader = server.getRaftConf().getPeer(server.getState().getLeaderId());</span>
+<span class="nc" id="L191">        return proto.setFollowerInfo(FollowerInfoProto.newBuilder()</span>
+<span class="nc" id="L192">            .setLeaderInfo(toServerRpcProto(leader, rpcElapsed))</span>
+<span class="nc" id="L193">            .setOutstandingOp(outstandingOp))</span>
+<span class="nc" id="L194">            .build();</span>
+
+      default:
+<span class="nc" id="L197">        throw new IllegalStateException(&quot;Unexpected role &quot; + currentRole);</span>
+    }
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L203">    return String.format(&quot;%9s&quot;, role);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

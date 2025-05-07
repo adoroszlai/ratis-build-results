@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server</a> &gt; <span class="el_source">RaftServer.java</span></div><h1>RaftServer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.Objects;
+import java.util.Optional;
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.AdminAsynchronousProtocol;
+import org.apache.ratis.protocol.AdminProtocol;
+import org.apache.ratis.protocol.RaftClientAsynchronousProtocol;
+import org.apache.ratis.protocol.RaftClientProtocol;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.rpc.RpcType;
+import org.apache.ratis.server.metrics.RaftServerMetrics;
+import org.apache.ratis.server.protocol.RaftServerAsynchronousProtocol;
+import org.apache.ratis.server.protocol.RaftServerProtocol;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.thirdparty.com.google.common.collect.Iterables;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.ReflectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/** Raft server interface */
+public interface RaftServer extends Closeable, RpcType.Get,
+    RaftServerProtocol, RaftServerAsynchronousProtocol,
+    RaftClientProtocol, RaftClientAsynchronousProtocol,
+    AdminProtocol, AdminAsynchronousProtocol {
+<span class="nc" id="L59">  Logger LOG = LoggerFactory.getLogger(RaftServer.class);</span>
+
+  /** A division of a {@link RaftServer} for a particular {@link RaftGroup}. */
+  interface Division extends Closeable {
+<span class="nc" id="L63">    Logger LOG = LoggerFactory.getLogger(Division.class);</span>
+
+    /** @return the {@link DivisionProperties} for this division. */
+    DivisionProperties properties();
+
+    /** @return the {@link RaftGroupMemberId} for this division. */
+    RaftGroupMemberId getMemberId();
+
+    /** @return the {@link RaftPeerId} for this division. */
+    default RaftPeerId getId() {
+<span class="nc" id="L73">      return getMemberId().getPeerId();</span>
+    }
+
+    /** @return the {@link RaftPeer} for this division. */
+    default RaftPeer getPeer() {
+<span class="nc" id="L78">      return Optional.ofNullable(getRaftConf().getPeer(getId(), RaftPeerRole.FOLLOWER, RaftPeerRole.LISTENER))</span>
+<span class="nc" id="L79">        .orElseGet(() -&gt; getRaftServer().getPeer());</span>
+    }
+
+    /** @return the information about this division. */
+    DivisionInfo getInfo();
+
+    /** @return the {@link RaftGroup} for this division. */
+    default RaftGroup getGroup() {
+<span class="nc" id="L87">      final Collection&lt;RaftPeer&gt; allFollowerPeers = getRaftConf().getAllPeers(RaftPeerRole.FOLLOWER);</span>
+<span class="nc" id="L88">      final Collection&lt;RaftPeer&gt; allListenerPeers = getRaftConf().getAllPeers(RaftPeerRole.LISTENER);</span>
+<span class="nc" id="L89">      Iterable&lt;RaftPeer&gt; peers = Iterables.concat(allFollowerPeers, allListenerPeers);</span>
+<span class="nc" id="L90">      return RaftGroup.valueOf(getMemberId().getGroupId(), peers);</span>
+    }
+
+    /** @return the current {@link RaftConfiguration} for this division. */
+    RaftConfiguration getRaftConf();
+
+    /** @return the {@link RaftServer} containing this division. */
+    RaftServer getRaftServer();
+
+    /** @return the {@link RaftServerMetrics} for this division. */
+    RaftServerMetrics getRaftServerMetrics();
+
+    /** @return the {@link StateMachine} for this division. */
+    StateMachine getStateMachine();
+
+    /** @return the raft log of this division. */
+    RaftLog getRaftLog();
+
+    /** @return the storage of this division. */
+    RaftStorage getRaftStorage();
+
+    /** @return the commit information of this division. */
+    Collection&lt;CommitInfoProto&gt; getCommitInfos();
+
+    /** @return the retry cache of this division. */
+    RetryCache getRetryCache();
+
+    /** @return the data stream map of this division. */
+    DataStreamMap getDataStreamMap();
+
+    /** @return the {@link ThreadGroup} the threads of this Division belong to. */
+    ThreadGroup getThreadGroup();
+
+    @Override
+    void close();
+  }
+
+  /** @return the server ID. */
+  RaftPeerId getId();
+
+  /**
+   * @return the general {@link RaftPeer} for this server.
+   *         To obtain a specific {@link RaftPeer} for a {@link RaftGroup}, use {@link Division#getPeer()}.
+   */
+  RaftPeer getPeer();
+
+  /** @return the group IDs the server is part of. */
+  Iterable&lt;RaftGroupId&gt; getGroupIds();
+
+  /** @return the groups the server is part of. */
+  Iterable&lt;RaftGroup&gt; getGroups() throws IOException;
+
+  Division getDivision(RaftGroupId groupId) throws IOException;
+
+  /** @return the server properties. */
+  RaftProperties getProperties();
+
+  /** @return the rpc service. */
+  RaftServerRpc getServerRpc();
+
+  /** @return the data stream rpc service. */
+  DataStreamServerRpc getDataStreamServerRpc();
+
+  /** @return the {@link RpcType}. */
+  default RpcType getRpcType() {
+<span class="nc" id="L155">    return getFactory().getRpcType();</span>
+  }
+
+  /** @return the factory for creating server components. */
+  ServerFactory getFactory();
+
+  /** Start this server. */
+  void start() throws IOException;
+
+  LifeCycle.State getLifeCycleState();
+
+  /** @return a {@link Builder}. */
+  static Builder newBuilder() {
+<span class="nc" id="L168">    return new Builder();</span>
+  }
+
+  /** To build {@link RaftServer} objects. */
+<span class="nc" id="L172">  class Builder {</span>
+<span class="nc" id="L173">    private static final Method NEW_RAFT_SERVER_METHOD = initNewRaftServerMethod();</span>
+
+    private static Method initNewRaftServerMethod() {
+<span class="nc" id="L176">      final String className = RaftServer.class.getPackage().getName() + &quot;.impl.ServerImplUtils&quot;;</span>
+<span class="nc" id="L177">      final Class&lt;?&gt;[] argClasses = {RaftPeerId.class, RaftGroup.class, RaftStorage.StartupOption.class,</span>
+          StateMachine.Registry.class, ThreadGroup.class, RaftProperties.class, Parameters.class};
+      try {
+<span class="nc" id="L180">        final Class&lt;?&gt; clazz = ReflectionUtils.getClassByName(className);</span>
+<span class="nc" id="L181">        return clazz.getMethod(&quot;newRaftServer&quot;, argClasses);</span>
+<span class="nc" id="L182">      } catch (Exception e) {</span>
+<span class="nc" id="L183">        throw new IllegalStateException(&quot;Failed to initNewRaftServerMethod&quot;, e);</span>
+      }
+    }
+
+    private static RaftServer newRaftServer(RaftPeerId serverId, RaftGroup group, RaftStorage.StartupOption option,
+        StateMachine.Registry stateMachineRegistry, ThreadGroup threadGroup, RaftProperties properties,
+        Parameters parameters) throws IOException {
+      try {
+<span class="nc" id="L191">        return (RaftServer) NEW_RAFT_SERVER_METHOD.invoke(null,</span>
+            serverId, group, option, stateMachineRegistry, threadGroup, properties, parameters);
+<span class="nc" id="L193">      } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L194">        throw new IllegalStateException(&quot;Failed to build &quot; + serverId, e);</span>
+<span class="nc" id="L195">      } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L196">        throw IOUtils.asIOException(e.getCause());</span>
+      }
+    }
+
+    private RaftPeerId serverId;
+    private StateMachine.Registry stateMachineRegistry ;
+<span class="nc" id="L202">    private RaftGroup group = null;</span>
+<span class="nc" id="L203">    private RaftStorage.StartupOption option = RaftStorage.StartupOption.FORMAT;</span>
+    private RaftProperties properties;
+    private Parameters parameters;
+    private ThreadGroup threadGroup;
+
+    /** @return a {@link RaftServer} object. */
+    public RaftServer build() throws IOException {
+<span class="nc" id="L210">      return newRaftServer(</span>
+          serverId,
+          group,
+          option,
+<span class="nc" id="L214">          Objects.requireNonNull(stateMachineRegistry , &quot;Neither 'stateMachine' nor 'setStateMachineRegistry' &quot; +</span>
+              &quot;is initialized.&quot;),
+          threadGroup,
+<span class="nc" id="L217">          Objects.requireNonNull(properties, &quot;The 'properties' field is not initialized.&quot;),</span>
+          parameters);
+    }
+
+    /** Set the server ID. */
+    public Builder setServerId(RaftPeerId serverId) {
+<span class="nc" id="L223">      this.serverId = serverId;</span>
+<span class="nc" id="L224">      return this;</span>
+    }
+
+    /** Set the {@link StateMachine} of the server. */
+    public Builder setStateMachine(StateMachine stateMachine) {
+<span class="nc" id="L229">      return setStateMachineRegistry(gid -&gt; stateMachine);</span>
+    }
+
+    /** Set the {@link StateMachine.Registry} of the server. */
+    public Builder setStateMachineRegistry(StateMachine.Registry stateMachineRegistry ) {
+<span class="nc" id="L234">      this.stateMachineRegistry = stateMachineRegistry ;</span>
+<span class="nc" id="L235">      return this;</span>
+    }
+
+    /** Set all the peers (including the server being built) in the Raft cluster. */
+    public Builder setGroup(RaftGroup group) {
+<span class="nc" id="L240">      this.group = group;</span>
+<span class="nc" id="L241">      return this;</span>
+    }
+
+    /** Set the startup option for the group. */
+    public Builder setOption(RaftStorage.StartupOption option) {
+<span class="nc" id="L246">      this.option = option;</span>
+<span class="nc" id="L247">      return this;</span>
+    }
+
+    /** Set {@link RaftProperties}. */
+    public Builder setProperties(RaftProperties properties) {
+<span class="nc" id="L252">      this.properties = properties;</span>
+<span class="nc" id="L253">      return this;</span>
+    }
+
+    /** Set {@link Parameters}. */
+    public Builder setParameters(Parameters parameters) {
+<span class="nc" id="L258">      this.parameters = parameters;</span>
+<span class="nc" id="L259">      return this;</span>
+    }
+
+    /**
+     * Set {@link ThreadGroup} so the application can control RaftServer threads consistently with the application.
+     * For example, configure {@link ThreadGroup#uncaughtException(Thread, Throwable)} for the whole thread group.
+     * If not set, the new thread will be put into the thread group of the caller thread.
+     */
+    public Builder setThreadGroup(ThreadGroup threadGroup) {
+<span class="nc" id="L268">      this.threadGroup = threadGroup;</span>
+<span class="nc" id="L269">      return this;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

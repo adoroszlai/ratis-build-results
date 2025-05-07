@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeakDetector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">LeakDetector.java</span></div><h1>LeakDetector.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/**
+ * Simple general resource leak detector using {@link ReferenceQueue} and {@link java.lang.ref.WeakReference} to
+ * observe resource object life-cycle and assert proper resource closure before they are GCed.
+ *
+ * &lt;p&gt;
+ * Example usage:
+ *
+ * &lt;pre&gt; {@code
+ * class MyResource implements AutoClosable {
+ *   static final LeakDetector LEAK_DETECTOR = new LeakDetector(&quot;MyResource&quot;);
+ *
+ *   private final UncheckedAutoCloseable leakTracker = LEAK_DETECTOR.track(this, () -&gt; {
+ *      // report leaks, don't refer to the original object (MyResource) here.
+ *      System.out.println(&quot;MyResource is not closed before being discarded.&quot;);
+ *   });
+ *
+ *   @Override
+ *   public void close() {
+ *     // proper resources cleanup...
+ *     // inform tracker that this object is closed properly.
+ *     leakTracker.close();
+ *   }
+ * }
+ *
+ * }&lt;/pre&gt;
+ */
+public class LeakDetector {
+<span class="nc" id="L61">  private static final Logger LOG = LoggerFactory.getLogger(LeakDetector.class);</span>
+
+<span class="nc" id="L63">  private static class LeakTrackerSet {</span>
+<span class="nc" id="L64">    private final Set&lt;LeakTracker&gt; set = Collections.newSetFromMap(new HashMap&lt;&gt;());</span>
+
+    synchronized boolean remove(LeakTracker tracker) {
+<span class="nc" id="L67">      return set.remove(tracker);</span>
+    }
+
+    synchronized void removeExisting(LeakTracker tracker) {
+<span class="nc" id="L71">      final boolean removed = set.remove(tracker);</span>
+<span class="nc" id="L72">      Preconditions.assertTrue(removed, () -&gt; &quot;Failed to remove existing &quot; + tracker);</span>
+<span class="nc" id="L73">    }</span>
+
+    synchronized LeakTracker add(Object referent, ReferenceQueue&lt;Object&gt; queue, Supplier&lt;String&gt; leakReporter) {
+<span class="nc" id="L76">      final LeakTracker tracker = new LeakTracker(referent, queue, this::removeExisting, leakReporter);</span>
+<span class="nc" id="L77">      final boolean added = set.add(tracker);</span>
+<span class="nc" id="L78">      Preconditions.assertTrue(added, () -&gt; &quot;Failed to add &quot; + tracker + &quot; for &quot; + referent);</span>
+<span class="nc" id="L79">      return tracker;</span>
+    }
+
+    synchronized int getNumLeaks(boolean throwException) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">      if (set.isEmpty()) {</span>
+<span class="nc" id="L84">        return 0;</span>
+      }
+
+<span class="nc" id="L87">      int n = 0;</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      for (LeakTracker tracker : set) {</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (tracker.reportLeak() != null) {</span>
+<span class="nc" id="L90">          n++;</span>
+        }
+<span class="nc" id="L92">      }</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">      if (throwException) {</span>
+<span class="nc" id="L94">        assertNoLeaks(n);</span>
+      }
+<span class="nc" id="L96">      return n;</span>
+    }
+
+    synchronized void assertNoLeaks(int leaks) {
+<span class="nc bnc" id="L100" title="All 2 branches missed.">      Preconditions.assertTrue(leaks == 0, () -&gt; {</span>
+<span class="nc" id="L101">        final int size = set.size();</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        return &quot;#leaks = &quot; + leaks + &quot; &gt; 0, #leaks &quot; + (leaks == size? &quot;==&quot; : &quot;!=&quot;) + &quot; set.size = &quot; + size;</span>
+      });
+<span class="nc" id="L104">    }</span>
+  }
+
+<span class="nc" id="L107">  private static final AtomicLong COUNTER = new AtomicLong();</span>
+
+<span class="nc" id="L109">  private final ReferenceQueue&lt;Object&gt; queue = new ReferenceQueue&lt;&gt;();</span>
+  /** All the {@link LeakTracker}s. */
+<span class="nc" id="L111">  private final LeakTrackerSet trackers = new LeakTrackerSet();</span>
+  /** When a leak is discovered, a message is printed and added to this list. */
+<span class="nc" id="L113">  private final List&lt;String&gt; leakMessages = Collections.synchronizedList(new ArrayList&lt;&gt;());</span>
+  private final String name;
+
+<span class="nc" id="L116">  LeakDetector(String name) {</span>
+<span class="nc" id="L117">    this.name = name + COUNTER.getAndIncrement();</span>
+<span class="nc" id="L118">  }</span>
+
+  LeakDetector start() {
+<span class="nc" id="L121">    Thread t = new Thread(this::run);</span>
+<span class="nc" id="L122">    t.setName(LeakDetector.class.getSimpleName() + &quot;-&quot; + name);</span>
+<span class="nc" id="L123">    t.setDaemon(true);</span>
+<span class="nc" id="L124">    LOG.info(&quot;Starting leak detector thread {}.&quot;, name);</span>
+<span class="nc" id="L125">    t.start();</span>
+<span class="nc" id="L126">    return this;</span>
+  }
+
+  private void run() {
+    while (true) {
+      try {
+<span class="nc" id="L132">        LeakTracker tracker = (LeakTracker) queue.remove();</span>
+        // Original resource already been GCed, if tracker is not closed yet,
+        // report a leak.
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (trackers.remove(tracker)) {</span>
+<span class="nc" id="L136">          final String leak = tracker.reportLeak();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">          if (leak != null) {</span>
+<span class="nc" id="L138">            leakMessages.add(leak);</span>
+          }
+        }
+<span class="nc" id="L141">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L142">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L143">        LOG.warn(&quot;Thread interrupted, exiting.&quot;, e);</span>
+<span class="nc" id="L144">        break;</span>
+<span class="nc" id="L145">      }</span>
+    }
+
+<span class="nc" id="L148">    LOG.warn(&quot;Exiting leak detector {}.&quot;, name);</span>
+<span class="nc" id="L149">  }</span>
+
+  Runnable track(Object leakable, Supplier&lt;String&gt; reportLeak) {
+    // TODO: A rate filter can be put here to only track a subset of all objects, e.g. 5%, 10%,
+    // if we have proofs that leak tracking impacts performance, or a single LeakDetector
+    // thread can't keep up with the pace of object allocation.
+    // For now, it looks effective enough and let keep it simple.
+<span class="nc" id="L156">    return trackers.add(leakable, queue, reportLeak)::remove;</span>
+  }
+
+  public int getLeakCount() {
+<span class="nc" id="L160">    return trackers.getNumLeaks(false);</span>
+  }
+
+  public void assertNoLeaks(int maxRetries, TimeDuration retrySleep) throws InterruptedException {
+<span class="nc" id="L164">    synchronized (leakMessages) {</span>
+      // leakMessages are all the leaks discovered so far.
+<span class="nc" id="L166">      Preconditions.assertTrue(leakMessages.isEmpty(),</span>
+<span class="nc" id="L167">          () -&gt; &quot;#leaks = &quot; + leakMessages.size() + &quot;\n&quot; + leakMessages);</span>
+<span class="nc" id="L168">    }</span>
+
+<span class="nc bnc" id="L170" title="All 2 branches missed.">    for(int i = 0; i &lt; maxRetries; i++) {</span>
+<span class="nc" id="L171">      final int numLeaks = trackers.getNumLeaks(false);</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">      if (numLeaks == 0) {</span>
+<span class="nc" id="L173">        return;</span>
+      }
+<span class="nc" id="L175">      LOG.warn(&quot;{}/{}) numLeaks == {} &gt; 0, will wait and retry ...&quot;, i, maxRetries, numLeaks);</span>
+<span class="nc" id="L176">      retrySleep.sleep();</span>
+    }
+<span class="nc" id="L178">    trackers.getNumLeaks(true);</span>
+<span class="nc" id="L179">  }</span>
+
+  private static final class LeakTracker extends WeakReference&lt;Object&gt; {
+    private final Consumer&lt;LeakTracker&gt; removeMethod;
+    private final Supplier&lt;String&gt; getLeakMessage;
+
+    LeakTracker(Object referent, ReferenceQueue&lt;Object&gt; referenceQueue,
+        Consumer&lt;LeakTracker&gt; removeMethod, Supplier&lt;String&gt; getLeakMessage) {
+<span class="nc" id="L187">      super(referent, referenceQueue);</span>
+<span class="nc" id="L188">      this.removeMethod = removeMethod;</span>
+<span class="nc" id="L189">      this.getLeakMessage = getLeakMessage;</span>
+<span class="nc" id="L190">    }</span>
+
+    /** Called by the tracked resource when the object is completely released. */
+    void remove() {
+<span class="nc" id="L194">      removeMethod.accept(this);</span>
+<span class="nc" id="L195">    }</span>
+
+    /** @return the leak message if there is a leak; return null if there is no leak. */
+    String reportLeak() {
+<span class="nc" id="L199">      return getLeakMessage.get();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

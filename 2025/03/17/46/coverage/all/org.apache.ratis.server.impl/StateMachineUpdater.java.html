@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateMachineUpdater.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">StateMachineUpdater.java</span></div><h1>StateMachineUpdater.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.raftlog.RaftLogIndex;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.SnapshotRetentionPolicy;
+import org.apache.ratis.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.stream.LongStream;
+
+/**
+ * This class tracks the log entries that have been committed in a quorum and
+ * applies them to the state machine. We let a separate thread do this work
+ * asynchronously so that this will not block normal raft protocol.
+ * &lt;p&gt;
+ * If the auto log compaction is enabled, the state machine updater thread will
+ * trigger a snapshot of the state machine by calling
+ * {@link StateMachine#takeSnapshot} when the log size exceeds a limit.
+ */
+class StateMachineUpdater implements Runnable {
+<span class="nc" id="L59">  static final Logger LOG = LoggerFactory.getLogger(StateMachineUpdater.class);</span>
+
+<span class="nc" id="L61">  enum State {</span>
+<span class="nc" id="L62">    RUNNING, STOP, RELOAD, EXCEPTION</span>
+  }
+
+  private final Consumer&lt;Object&gt; infoIndexChange;
+  private final Consumer&lt;Object&gt; debugIndexChange;
+  private final String name;
+
+  private final StateMachine stateMachine;
+  private final RaftServerImpl server;
+  private final RaftLog raftLog;
+
+  private final boolean triggerSnapshotWhenStopEnabled;
+
+  private final boolean triggerSnapshotWhenRemoveEnabled;
+
+  private final Long autoSnapshotThreshold;
+  private final boolean purgeUptoSnapshotIndex;
+
+  private final Thread updater;
+  private final AwaitForSignal awaitForSignal;
+
+  private final RaftLogIndex appliedIndex;
+  private final RaftLogIndex snapshotIndex;
+<span class="nc" id="L85">  private final AtomicReference&lt;Long&gt; stopIndex = new AtomicReference&lt;&gt;();</span>
+<span class="nc" id="L86">  private volatile State state = State.RUNNING;</span>
+
+  private final SnapshotRetentionPolicy snapshotRetentionPolicy;
+
+  private final MemoizedSupplier&lt;StateMachineMetrics&gt; stateMachineMetrics;
+
+  private final Consumer&lt;Long&gt; appliedIndexConsumer;
+
+  private volatile boolean isRemoving;
+
+  StateMachineUpdater(StateMachine stateMachine, RaftServerImpl server,
+<span class="nc" id="L97">      ServerState serverState, long lastAppliedIndex, RaftProperties properties, Consumer&lt;Long&gt; appliedIndexConsumer) {</span>
+<span class="nc" id="L98">    this.name = serverState.getMemberId() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L99">    this.appliedIndexConsumer = appliedIndexConsumer;</span>
+<span class="nc" id="L100">    this.infoIndexChange = s -&gt; LOG.info(&quot;{}: {}&quot;, name, s);</span>
+<span class="nc" id="L101">    this.debugIndexChange = s -&gt; LOG.debug(&quot;{}: {}&quot;, name, s);</span>
+
+<span class="nc" id="L103">    this.stateMachine = stateMachine;</span>
+<span class="nc" id="L104">    this.server = server;</span>
+<span class="nc" id="L105">    this.raftLog = serverState.getLog();</span>
+
+<span class="nc" id="L107">    this.appliedIndex = new RaftLogIndex(&quot;appliedIndex&quot;, lastAppliedIndex);</span>
+<span class="nc" id="L108">    this.snapshotIndex = new RaftLogIndex(&quot;snapshotIndex&quot;, lastAppliedIndex);</span>
+
+<span class="nc" id="L110">    this.triggerSnapshotWhenStopEnabled = RaftServerConfigKeys.Snapshot.triggerWhenStopEnabled(properties);</span>
+<span class="nc" id="L111">    this.triggerSnapshotWhenRemoveEnabled = RaftServerConfigKeys.Snapshot.triggerWhenRemoveEnabled(properties);</span>
+<span class="nc" id="L112">    final boolean autoSnapshot = RaftServerConfigKeys.Snapshot.autoTriggerEnabled(properties);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    this.autoSnapshotThreshold = autoSnapshot? RaftServerConfigKeys.Snapshot.autoTriggerThreshold(properties): null;</span>
+<span class="nc" id="L114">    final int numSnapshotFilesRetained = RaftServerConfigKeys.Snapshot.retentionFileNum(properties);</span>
+<span class="nc" id="L115">    this.snapshotRetentionPolicy = new SnapshotRetentionPolicy() {</span>
+      @Override
+      public int getNumSnapshotsRetained() {
+<span class="nc" id="L118">        return numSnapshotFilesRetained;</span>
+      }
+    };
+<span class="nc" id="L121">    this.purgeUptoSnapshotIndex = RaftServerConfigKeys.Log.purgeUptoSnapshotIndex(properties);</span>
+<span class="nc" id="L122">    updater = Daemon.newBuilder().setName(name).setRunnable(this)</span>
+<span class="nc" id="L123">        .setThreadGroup(server.getThreadGroup()).build();</span>
+<span class="nc" id="L124">    this.awaitForSignal = new AwaitForSignal(name);</span>
+<span class="nc" id="L125">    this.stateMachineMetrics = MemoizedSupplier.valueOf(</span>
+<span class="nc" id="L126">        () -&gt; StateMachineMetrics.getStateMachineMetrics(server, appliedIndex, stateMachine));</span>
+<span class="nc" id="L127">  }</span>
+
+  void start() {
+    //wait for RaftServerImpl and ServerState constructors to complete
+<span class="nc" id="L131">    stateMachineMetrics.get();</span>
+<span class="nc" id="L132">    updater.start();</span>
+<span class="nc" id="L133">    notifyAppliedIndex(appliedIndex.get());</span>
+<span class="nc" id="L134">  }</span>
+
+  private void stop() {
+<span class="nc" id="L137">    state = State.STOP;</span>
+    try {
+<span class="nc" id="L139">      LOG.info(&quot;{}: closing {}, lastApplied={}&quot;, name,</span>
+<span class="nc" id="L140">          JavaUtils.getClassSimpleName(stateMachine.getClass()), stateMachine.getLastAppliedTermIndex());</span>
+<span class="nc" id="L141">      stateMachine.close();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (stateMachineMetrics.isInitialized()) {</span>
+<span class="nc" id="L143">        stateMachineMetrics.get().unregister();</span>
+      }
+<span class="nc" id="L145">    } catch(Throwable t) {</span>
+<span class="nc" id="L146">      LOG.warn(name + &quot;: Failed to close &quot; + JavaUtils.getClassSimpleName(stateMachine.getClass())</span>
+          + &quot; &quot; + stateMachine, t);
+<span class="nc" id="L148">    }</span>
+<span class="nc" id="L149">  }</span>
+
+  /**
+   * Stop the updater thread after all the committed transactions
+   * have been applied to the state machine.
+   */
+  void stopAndJoin() throws InterruptedException {
+<span class="nc bnc" id="L156" title="All 2 branches missed.">    if (state == State.EXCEPTION) {</span>
+<span class="nc" id="L157">      stop();</span>
+<span class="nc" id="L158">      return;</span>
+    }
+<span class="nc bnc" id="L160" title="All 2 branches missed.">    if (stopIndex.compareAndSet(null, raftLog.getLastCommittedIndex())) {</span>
+<span class="nc" id="L161">      notifyUpdater();</span>
+<span class="nc" id="L162">      LOG.info(&quot;{}: set stopIndex = {}&quot;, this, stopIndex);</span>
+    }
+<span class="nc" id="L164">    updater.join();</span>
+<span class="nc" id="L165">  }</span>
+
+  void reloadStateMachine() {
+<span class="nc" id="L168">    state = State.RELOAD;</span>
+<span class="nc" id="L169">    notifyUpdater();</span>
+<span class="nc" id="L170">  }</span>
+
+  void notifyUpdater() {
+<span class="nc" id="L173">    awaitForSignal.signal();</span>
+<span class="nc" id="L174">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L178">    return name;</span>
+  }
+
+  @Override
+  public void run() {
+<span class="nc" id="L183">    CompletableFuture&lt;Void&gt; applyLogFutures = CompletableFuture.completedFuture(null);</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">    for(; state != State.STOP; ) {</span>
+      try {
+<span class="nc" id="L186">        waitForCommit(applyLogFutures);</span>
+
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (state == State.RELOAD) {</span>
+<span class="nc" id="L189">          reload();</span>
+        }
+
+<span class="nc" id="L192">        applyLogFutures = applyLog(applyLogFutures);</span>
+<span class="nc" id="L193">        checkAndTakeSnapshot(applyLogFutures);</span>
+
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (shouldStop()) {</span>
+<span class="nc" id="L196">          applyLogFutures.get();</span>
+<span class="nc" id="L197">          stop();</span>
+        }
+<span class="nc" id="L199">      } catch (Throwable t) {</span>
+<span class="nc bnc" id="L200" title="All 4 branches missed.">        if (t instanceof InterruptedException &amp;&amp; state == State.STOP) {</span>
+<span class="nc" id="L201">          Thread.currentThread().interrupt();</span>
+<span class="nc" id="L202">          LOG.info(&quot;{} was interrupted.  Exiting ...&quot;, this);</span>
+        } else {
+<span class="nc" id="L204">          state = State.EXCEPTION;</span>
+<span class="nc" id="L205">          LOG.error(this + &quot; caught a Throwable.&quot;, t);</span>
+<span class="nc" id="L206">          server.close();</span>
+        }
+<span class="nc" id="L208">      }</span>
+    }
+<span class="nc" id="L210">  }</span>
+
+  private void waitForCommit(CompletableFuture&lt;?&gt; applyLogFutures) throws InterruptedException, ExecutionException {
+    // When a peer starts, the committed is initialized to 0.
+    // It will be updated only after the leader contacts other peers.
+    // Thus it is possible to have applied &gt; committed initially.
+<span class="nc" id="L216">    final long applied = getLastAppliedIndex();</span>
+<span class="nc bnc" id="L217" title="All 6 branches missed.">    for(; applied &gt;= raftLog.getLastCommittedIndex() &amp;&amp; state == State.RUNNING &amp;&amp; !shouldStop(); ) {</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">      if (server.getSnapshotRequestHandler().shouldTriggerTakingSnapshot()) {</span>
+<span class="nc" id="L219">        takeSnapshot(applyLogFutures);</span>
+      }
+<span class="nc bnc" id="L221" title="All 2 branches missed.">      if (awaitForSignal.await(100, TimeUnit.MILLISECONDS)) {</span>
+<span class="nc" id="L222">        return;</span>
+      }
+    }
+<span class="nc" id="L225">  }</span>
+
+  private void reload() throws IOException {
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    Preconditions.assertTrue(stateMachine.getLifeCycleState() == LifeCycle.State.PAUSED);</span>
+
+<span class="nc" id="L230">    stateMachine.reinitialize();</span>
+
+<span class="nc" id="L232">    final SnapshotInfo snapshot = stateMachine.getLatestSnapshot();</span>
+<span class="nc" id="L233">    Objects.requireNonNull(snapshot, &quot;snapshot == null&quot;);</span>
+<span class="nc" id="L234">    final long i = snapshot.getIndex();</span>
+<span class="nc" id="L235">    snapshotIndex.setUnconditionally(i, infoIndexChange);</span>
+<span class="nc" id="L236">    appliedIndex.setUnconditionally(i, infoIndexChange);</span>
+<span class="nc" id="L237">    notifyAppliedIndex(i);</span>
+<span class="nc" id="L238">    state = State.RUNNING;</span>
+<span class="nc" id="L239">  }</span>
+
+  private CompletableFuture&lt;Void&gt; applyLog(CompletableFuture&lt;Void&gt; applyLogFutures) throws RaftLogIOException {
+<span class="nc" id="L242">    final long committed = raftLog.getLastCommittedIndex();</span>
+<span class="nc bnc" id="L243" title="All 6 branches missed.">    for(long applied; (applied = getLastAppliedIndex()) &lt; committed &amp;&amp; state == State.RUNNING &amp;&amp; !shouldStop(); ) {</span>
+<span class="nc" id="L244">      final long nextIndex = applied + 1;</span>
+<span class="nc" id="L245">      final ReferenceCountedObject&lt;LogEntryProto&gt; next = raftLog.retainLog(nextIndex);</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">      if (next == null) {</span>
+<span class="nc" id="L247">        LOG.debug(&quot;{}: logEntry {} is null. There may be snapshot to load. state:{}&quot;,</span>
+<span class="nc" id="L248">            this, nextIndex, state);</span>
+<span class="nc" id="L249">        break;</span>
+      }
+
+      try {
+<span class="nc" id="L253">        final LogEntryProto entry = next.get();</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L255">          LOG.trace(&quot;{}: applying nextIndex={}, nextLog={}&quot;, this, nextIndex, LogProtoUtils.toLogEntryString(entry));</span>
+        } else {
+<span class="nc" id="L257">          LOG.debug(&quot;{}: applying nextIndex={}&quot;, this, nextIndex);</span>
+        }
+
+<span class="nc" id="L260">        final CompletableFuture&lt;Message&gt; f = server.applyLogToStateMachine(next);</span>
+<span class="nc" id="L261">        final long incremented = appliedIndex.incrementAndGet(debugIndexChange);</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        Preconditions.assertTrue(incremented == nextIndex);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (f != null) {</span>
+<span class="nc" id="L264">          CompletableFuture&lt;Message&gt; exceptionHandledFuture = f.exceptionally(ex -&gt; {</span>
+<span class="nc" id="L265">            LOG.error(&quot;Exception while {}: applying txn index={}, nextLog={}&quot;, this, nextIndex,</span>
+<span class="nc" id="L266">                    LogProtoUtils.toLogEntryString(entry), ex);</span>
+<span class="nc" id="L267">            return null;</span>
+          });
+<span class="nc" id="L269">          applyLogFutures = applyLogFutures.thenCombine(exceptionHandledFuture, (v, message) -&gt; null);</span>
+<span class="nc" id="L270">          f.thenAccept(m -&gt; notifyAppliedIndex(incremented));</span>
+<span class="nc" id="L271">        } else {</span>
+<span class="nc" id="L272">          notifyAppliedIndex(incremented);</span>
+        }
+      } finally {
+<span class="nc" id="L275">        next.release();</span>
+      }
+<span class="nc" id="L277">    }</span>
+<span class="nc" id="L278">    return applyLogFutures;</span>
+  }
+
+  private void checkAndTakeSnapshot(CompletableFuture&lt;?&gt; futures)
+      throws ExecutionException, InterruptedException {
+    // check if need to trigger a snapshot
+<span class="nc bnc" id="L284" title="All 2 branches missed.">    if (shouldTakeSnapshot()) {</span>
+<span class="nc" id="L285">      takeSnapshot(futures);</span>
+    }
+<span class="nc" id="L287">  }</span>
+
+  private void takeSnapshot(CompletableFuture&lt;?&gt; applyLogFutures) throws ExecutionException, InterruptedException {
+    final long i;
+<span class="nc" id="L291">    applyLogFutures.get();</span>
+    try {
+<span class="nc" id="L293">      try(UncheckedAutoCloseable ignored = Timekeeper.start(stateMachineMetrics.get().getTakeSnapshotTimer())) {</span>
+<span class="nc" id="L294">        i = stateMachine.takeSnapshot();</span>
+      }
+<span class="nc" id="L296">      server.getSnapshotRequestHandler().completeTakingSnapshot(i);</span>
+
+<span class="nc" id="L298">      final long lastAppliedIndex = getLastAppliedIndex();</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">      if (i &gt; lastAppliedIndex) {</span>
+<span class="nc" id="L300">        throw new StateMachineException(</span>
+            &quot;Bug in StateMachine: snapshot index = &quot; + i + &quot; &gt; appliedIndex = &quot; + lastAppliedIndex
+<span class="nc" id="L302">            + &quot;; StateMachine class=&quot; +  stateMachine.getClass().getName() + &quot;, stateMachine=&quot; + stateMachine);</span>
+      }
+<span class="nc" id="L304">      stateMachine.getStateMachineStorage().cleanupOldSnapshots(snapshotRetentionPolicy);</span>
+<span class="nc" id="L305">    } catch (IOException e) {</span>
+<span class="nc" id="L306">      LOG.error(name + &quot;: Failed to take snapshot&quot;, e);</span>
+<span class="nc" id="L307">      return;</span>
+<span class="nc" id="L308">    }</span>
+
+<span class="nc bnc" id="L310" title="All 2 branches missed.">    if (i &gt;= 0) {</span>
+<span class="nc" id="L311">      LOG.info(&quot;{}: Took a snapshot at index {}&quot;, name, i);</span>
+<span class="nc" id="L312">      snapshotIndex.updateIncreasingly(i, infoIndexChange);</span>
+
+      final long purgeIndex;
+<span class="nc bnc" id="L315" title="All 2 branches missed.">      if (purgeUptoSnapshotIndex) {</span>
+        // We can purge up to snapshot index even if all the peers do not have
+        // commitIndex up to this snapshot index.
+<span class="nc" id="L318">        purgeIndex = i;</span>
+      } else {
+<span class="nc" id="L320">        final LongStream commitIndexStream = server.getCommitInfos().stream().mapToLong(</span>
+            CommitInfoProto::getCommitIndex);
+<span class="nc" id="L322">        purgeIndex = LongStream.concat(LongStream.of(i), commitIndexStream).min().orElse(i);</span>
+      }
+<span class="nc" id="L324">      raftLog.purge(purgeIndex);</span>
+    }
+<span class="nc" id="L326">  }</span>
+
+  private boolean shouldStop() {
+<span class="nc bnc" id="L329" title="All 2 branches missed.">    return Optional.ofNullable(stopIndex.get()).filter(i -&gt; i &lt;= getLastAppliedIndex()).isPresent();</span>
+  }
+
+  private boolean shouldTakeSnapshot() {
+<span class="nc bnc" id="L333" title="All 4 branches missed.">    if (state == State.RUNNING &amp;&amp; server.getSnapshotRequestHandler().shouldTriggerTakingSnapshot()) {</span>
+<span class="nc" id="L334">      return true;</span>
+    }
+<span class="nc bnc" id="L336" title="All 2 branches missed.">    if (autoSnapshotThreshold == null) {</span>
+<span class="nc" id="L337">      return false;</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">    } else if (shouldStop()) {</span>
+<span class="nc bnc" id="L339" title="All 4 branches missed.">      return shouldTakeSnapshotAtStop() &amp;&amp; getLastAppliedIndex() - snapshotIndex.get() &gt; 0;</span>
+    }
+<span class="nc bnc" id="L341" title="All 2 branches missed.">    return state == State.RUNNING &amp;&amp;</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">        getStateMachineLastAppliedIndex() - snapshotIndex.get() &gt;= autoSnapshotThreshold;</span>
+  }
+
+  /**
+   * In view of the three variables triggerSnapshotWhenStopEnabled, triggerSnapshotWhenRemoveEnabled and isRemoving,
+   * we can draw the following 8 combination:
+   * true true true =&gt; true
+   * true true false =&gt; true
+   * true false true =&gt; false
+   * true false false =&gt; true
+   * false true true =&gt; true
+   * false true false =&gt;  false
+   * false false true =&gt; false
+   * false false false =&gt; false
+   * @return result
+   */
+  private boolean shouldTakeSnapshotAtStop() {
+<span class="nc bnc" id="L359" title="All 2 branches missed.">    return isRemoving ? triggerSnapshotWhenRemoveEnabled : triggerSnapshotWhenStopEnabled;</span>
+  }
+
+  void setRemoving() {
+<span class="nc" id="L363">    this.isRemoving = true;</span>
+<span class="nc" id="L364">  }</span>
+
+  private long getLastAppliedIndex() {
+<span class="nc" id="L367">    return appliedIndex.get();</span>
+  }
+
+  private void notifyAppliedIndex(long index) {
+<span class="nc" id="L371">    appliedIndexConsumer.accept(index);</span>
+<span class="nc" id="L372">  }</span>
+
+  long getStateMachineLastAppliedIndex() {
+<span class="nc" id="L375">    return Optional.ofNullable(stateMachine.getLastAppliedTermIndex())</span>
+<span class="nc" id="L376">        .map(TermIndex::getIndex)</span>
+<span class="nc" id="L377">        .orElse(RaftLog.INVALID_LOG_INDEX);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

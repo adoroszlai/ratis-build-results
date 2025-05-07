@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaderElectionMetrics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.metrics</a> &gt; <span class="el_source">LeaderElectionMetrics.java</span></div><h1>LeaderElectionMetrics.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.server.metrics;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.metrics.RatisMetrics;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.util.Timestamp;
+
+import java.util.Optional;
+import java.util.function.LongSupplier;
+
+/**
+ * Class to update the metrics related to Leader Election.
+ */
+public final class LeaderElectionMetrics extends RatisMetrics {
+
+  public static final String RATIS_LEADER_ELECTION_METRICS = &quot;leader_election&quot;;
+  public static final String RATIS_LEADER_ELECTION_METRICS_DESC = &quot;Metrics for Ratis Leader Election.&quot;;
+
+  public static final String LEADER_ELECTION_COUNT_METRIC = &quot;electionCount&quot;;
+  public static final String LEADER_ELECTION_TIMEOUT_COUNT_METRIC = &quot;timeoutCount&quot;;
+  public static final String LEADER_ELECTION_TIME_TAKEN = &quot;electionTime&quot;;
+  public static final String LAST_LEADER_ELAPSED_TIME = &quot;lastLeaderElapsedTime&quot;;
+  public static final String TRANSFER_LEADERSHIP_COUNT_METRIC = &quot;transferLeadershipCount&quot;;
+
+  public static final String LAST_LEADER_ELECTION_ELAPSED_TIME = &quot;lastLeaderElectionElapsedTime&quot;;
+
+<span class="nc" id="L48">  private final LongCounter electionCount = getRegistry().counter(LEADER_ELECTION_COUNT_METRIC);</span>
+<span class="nc" id="L49">  private final LongCounter timeoutCount = getRegistry().counter(LEADER_ELECTION_TIMEOUT_COUNT_METRIC);</span>
+<span class="nc" id="L50">  private final LongCounter transferLeadershipCount = getRegistry().counter(TRANSFER_LEADERSHIP_COUNT_METRIC);</span>
+
+<span class="nc" id="L52">  private final Timekeeper electionTime = getRegistry().timer(LEADER_ELECTION_TIME_TAKEN);</span>
+
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile Timestamp lastElectionTime;
+
+  private LeaderElectionMetrics(RaftGroupMemberId serverId, LongSupplier getLastLeaderElapsedTimeMs) {
+<span class="nc" id="L58">    super(createRegistry(serverId));</span>
+
+<span class="nc" id="L60">    getRegistry().gauge(LAST_LEADER_ELAPSED_TIME, () -&gt; getLastLeaderElapsedTimeMs::getAsLong);</span>
+<span class="nc" id="L61">    getRegistry().gauge(LAST_LEADER_ELECTION_ELAPSED_TIME,</span>
+<span class="nc" id="L62">        () -&gt; () -&gt; Optional.ofNullable(lastElectionTime).map(Timestamp::elapsedTimeMs).orElse(-1L));</span>
+<span class="nc" id="L63">  }</span>
+
+  public static RatisMetricRegistry createRegistry(RaftGroupMemberId serverId) {
+<span class="nc" id="L66">    return create(new MetricRegistryInfo(serverId.toString(),</span>
+        RATIS_APPLICATION_NAME_METRICS, RATIS_LEADER_ELECTION_METRICS,
+        RATIS_LEADER_ELECTION_METRICS_DESC));
+  }
+
+  public static LeaderElectionMetrics getLeaderElectionMetrics(
+      RaftGroupMemberId serverId, LongSupplier getLastLeaderElapsedTimeMs) {
+<span class="nc" id="L73">    return new LeaderElectionMetrics(serverId, getLastLeaderElapsedTimeMs);</span>
+  }
+
+  public void onNewLeaderElectionCompletion() {
+<span class="nc" id="L77">    electionCount.inc();</span>
+<span class="nc" id="L78">    lastElectionTime = Timestamp.currentTime();</span>
+<span class="nc" id="L79">  }</span>
+
+  public Timekeeper getLeaderElectionTimer() {
+<span class="nc" id="L82">    return electionTime;</span>
+  }
+
+  public void onLeaderElectionTimeout() {
+<span class="nc" id="L86">    timeoutCount.inc();</span>
+<span class="nc" id="L87">  }</span>
+
+  public void onTransferLeadership() {
+<span class="nc" id="L90">    transferLeadershipCount.inc();</span>
+<span class="nc" id="L91">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

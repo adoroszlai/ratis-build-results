@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftLog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog</a> &gt; <span class="el_source">RaftLog.java</span></div><h1>RaftLog.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog;
+
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.server.metrics.RaftLogMetrics;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.storage.RaftStorageMetadata;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+
+/**
+ * {@link RaftLog} is a transaction log of a raft service.
+ */
+public interface RaftLog extends RaftLogSequentialOps, Closeable {
+<span class="nc" id="L40">  Logger LOG = LoggerFactory.getLogger(RaftLog.class);</span>
+
+  /** The least valid log index, i.e. the index used when writing to an empty log. */
+  long LEAST_VALID_LOG_INDEX = 0L;
+  /** Invalid log index is used to indicate that the log index is missing. */
+  long INVALID_LOG_INDEX = LEAST_VALID_LOG_INDEX - 1;
+
+  /** Does this log contains the given {@link TermIndex}? */
+  default boolean contains(TermIndex ti) {
+<span class="nc" id="L49">    Objects.requireNonNull(ti, &quot;ti == null&quot;);</span>
+<span class="nc" id="L50">    return ti.equals(getTermIndex(ti.getIndex()));</span>
+  }
+
+  /**
+   * @return null if the log entry is not found in this log;
+   *         otherwise, return the {@link TermIndex} of the log entry corresponding to the given index.
+   */
+  TermIndex getTermIndex(long index);
+
+  /**
+   * @return null if the log entry is not found in this log;
+   *         otherwise, return a copy of the log entry corresponding to the given index.
+   * @deprecated use {@link RaftLog#retainLog(long)} instead in order to avoid copying.
+   */
+  @Deprecated
+  LogEntryProto get(long index) throws RaftLogIOException;
+
+  /**
+   * @return a retained {@link ReferenceCountedObject} to the log entry corresponding to the given index if it exists;
+   *         otherwise, return null.
+   *         Since the returned reference is retained, the caller must call {@link ReferenceCountedObject#release()}}
+   *         after use.
+   */
+  default ReferenceCountedObject&lt;LogEntryProto&gt; retainLog(long index) throws RaftLogIOException {
+<span class="nc" id="L74">    ReferenceCountedObject&lt;LogEntryProto&gt; wrap = ReferenceCountedObject.wrap(get(index));</span>
+<span class="nc" id="L75">    wrap.retain();</span>
+<span class="nc" id="L76">    return wrap;</span>
+  }
+
+  /**
+   * @return null if the log entry is not found in this log;
+   *         otherwise, return the {@link EntryWithData} corresponding to the given index.
+   * @deprecated use {@link #retainEntryWithData(long)}.
+   */
+  @Deprecated
+  EntryWithData getEntryWithData(long index) throws RaftLogIOException;
+
+  /**
+   * @return null if the log entry is not found in this log;
+   *         otherwise, return a retained reference of the {@link EntryWithData} corresponding to the given index.
+   *         Since the returned reference is retained, the caller must call {@link ReferenceCountedObject#release()}}
+   *         after use.
+   */
+  default ReferenceCountedObject&lt;EntryWithData&gt; retainEntryWithData(long index) throws RaftLogIOException {
+<span class="nc" id="L94">    final ReferenceCountedObject&lt;EntryWithData&gt; wrap = ReferenceCountedObject.wrap(getEntryWithData(index));</span>
+<span class="nc" id="L95">    wrap.retain();</span>
+<span class="nc" id="L96">    return wrap;</span>
+}
+
+  /**
+   * @param startIndex the starting log index (inclusive)
+   * @param endIndex the ending log index (exclusive)
+   * @return null if entries are unavailable in this log;
+   *         otherwise, return the log entry headers within the given index range.
+   */
+  LogEntryHeader[] getEntries(long startIndex, long endIndex);
+
+  /** @return the index of the starting entry of this log. */
+  long getStartIndex();
+
+  /** @return the index of the next entry to append. */
+  default long getNextIndex() {
+<span class="nc" id="L112">    final TermIndex last = getLastEntryTermIndex();</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (last == null) {</span>
+      // if the log is empty, the last committed index should be consistent with
+      // the last index included in the latest snapshot.
+<span class="nc" id="L116">      return getLastCommittedIndex() + 1;</span>
+    }
+<span class="nc" id="L118">    return last.getIndex() + 1;</span>
+  }
+
+  /** @return the index of the last entry that has been committed. */
+  long getLastCommittedIndex();
+
+  /** @return the index of the latest snapshot. */
+  long getSnapshotIndex();
+
+  /** @return the index of the last entry that has been flushed to the local storage. */
+  long getFlushIndex();
+
+  /** @return the {@link TermIndex} of the last log entry. */
+  TermIndex getLastEntryTermIndex();
+
+  /** @return the {@link RaftLogMetrics}. */
+  RaftLogMetrics getRaftLogMetrics();
+
+  /**
+   * Update the commit index.
+   * @param majorityIndex the index that has achieved majority.
+   * @param currentTerm the current term.
+   * @param isLeader Is this server the leader?
+   * @return true if commit index is changed; otherwise, return false.
+   */
+  boolean updateCommitIndex(long majorityIndex, long currentTerm, boolean isLeader);
+
+  /**
+   * Update the snapshot index with the given index.
+   * Note that the commit index may also be changed by this update.
+   */
+  void updateSnapshotIndex(long newSnapshotIndex);
+
+  /** Open this log for read and write. */
+  void open(long lastIndexInSnapshot, Consumer&lt;LogEntryProto&gt; consumer) throws IOException;
+
+  /**
+   * Purge asynchronously the log transactions.
+   * The implementation may choose to purge an index other than the suggested index.
+   *
+   * @param suggestedIndex the suggested index (inclusive) to be purged.
+   * @return the future of the actual purged log index.
+   */
+  CompletableFuture&lt;Long&gt; purge(long suggestedIndex);
+
+  /** Persist the given metadata. */
+  void persistMetadata(RaftStorageMetadata metadata) throws IOException;
+
+  /** Load metadata. */
+  RaftStorageMetadata loadMetadata() throws IOException;
+
+  /**
+   * A snapshot is installed so that the indices and other information of this log must be updated.
+   * This log may also purge the outdated entries.
+   *
+   * @return the future of the actual purged log index (inclusive).
+   */
+  CompletableFuture&lt;Long&gt; onSnapshotInstalled(long lastSnapshotIndex);
+
+  /**
+   * Log entry with state machine data.
+   *
+   * When both {@link LogEntryProto#hasStateMachineLogEntry()} and
+   * {@link StateMachineLogEntryProto#hasStateMachineEntry()} are true,
+   * the {@link StateMachineEntryProto} is removed from the original {@link LogEntryProto}
+   * before appending to this log.
+   * The {@link StateMachineEntryProto} is stored by the state machine but not in this log.
+   * When reading the log entry, this class rebuilds the original {@link LogEntryProto}
+   * containing both the log entry and the state machine data.
+   */
+  interface EntryWithData {
+    /** @return the index of this entry. */
+    default long getIndex() {
+      try {
+<span class="nc" id="L192">        return getEntry(TimeDuration.ONE_MINUTE).getIndex();</span>
+<span class="nc" id="L193">      } catch (Exception e) {</span>
+<span class="nc" id="L194">        throw new IllegalStateException(&quot;Failed to getIndex&quot;, e);</span>
+      }
+    }
+
+    /** @return the serialized size including both log entry and state machine data. */
+    int getSerializedSize();
+
+    /** @return the {@link LogEntryProto} containing both the log entry and the state machine data. */
+    LogEntryProto getEntry(TimeDuration timeout) throws RaftLogIOException, TimeoutException;
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

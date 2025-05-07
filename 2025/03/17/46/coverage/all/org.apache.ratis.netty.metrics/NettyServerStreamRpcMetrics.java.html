@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyServerStreamRpcMetrics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.metrics</a> &gt; <span class="el_source">NettyServerStreamRpcMetrics.java</span></div><h1>NettyServerStreamRpcMetrics.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * &lt;p&gt;
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * &lt;p&gt;
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.netty.metrics;
+
+import org.apache.ratis.metrics.LongCounter;
+import org.apache.ratis.metrics.MetricRegistryInfo;
+import org.apache.ratis.metrics.RatisMetricRegistry;
+import org.apache.ratis.metrics.RatisMetrics;
+import org.apache.ratis.metrics.Timekeeper;
+
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+
+public class NettyServerStreamRpcMetrics extends RatisMetrics {
+  private static final String METRICS_APP_NAME = &quot;ratis_netty&quot;;
+  private static final String METRICS_COMP_NAME = &quot;stream_server&quot;;
+  private static final String METRICS_DESC = &quot;Metrics for Ratis Netty Stream Server&quot;;
+
+  private static final String METRICS_LATENCY = &quot;%s_latency&quot;;
+  private static final String METRICS_SUCCESS = &quot;%s_success_reply_count&quot;;
+  private static final String METRICS_FAIL = &quot;%s_fail_reply_count&quot;;
+  private static final String METRICS_NUM_REQUESTS = &quot;num_requests_%s&quot;;
+
+<span class="nc" id="L41">  public enum RequestType {</span>
+<span class="nc" id="L42">    CHANNEL_READ, HEADER, LOCAL_WRITE, REMOTE_WRITE, STATE_MACHINE_STREAM, START_TRANSACTION;</span>
+
+    private final String numRequestsString;
+    private final String successCountString;
+    private final String failCountString;
+    private final String latencyString;
+
+<span class="nc" id="L49">    RequestType() {</span>
+<span class="nc" id="L50">      final String lower = name().toLowerCase(Locale.ENGLISH);</span>
+<span class="nc" id="L51">      this.numRequestsString = String.format(METRICS_NUM_REQUESTS, lower);</span>
+<span class="nc" id="L52">      this.successCountString = String.format(METRICS_SUCCESS, lower);</span>
+<span class="nc" id="L53">      this.failCountString = String.format(METRICS_FAIL, lower);</span>
+<span class="nc" id="L54">      this.latencyString = String.format(METRICS_LATENCY, lower);</span>
+<span class="nc" id="L55">    }</span>
+
+    String getNumRequestsString() {
+<span class="nc" id="L58">      return numRequestsString;</span>
+    }
+    String getSuccessCountString() {
+<span class="nc" id="L61">      return successCountString;</span>
+    }
+    String getFailCountString() {
+<span class="nc" id="L64">      return failCountString;</span>
+    }
+    String getLatencyString() {
+<span class="nc" id="L67">      return latencyString;</span>
+    }
+  }
+
+  public final class RequestMetrics {
+    private final RequestType type;
+    private final Timekeeper timer;
+
+<span class="nc" id="L75">    private RequestMetrics(RequestType type) {</span>
+<span class="nc" id="L76">      this.type = type;</span>
+<span class="nc" id="L77">      this.timer = getLatencyTimer(type);</span>
+<span class="nc" id="L78">    }</span>
+
+    public Timekeeper.Context start() {
+<span class="nc" id="L81">      onRequestCreate(type);</span>
+<span class="nc" id="L82">      return timer.time();</span>
+    }
+
+    public void stop(Timekeeper.Context context, boolean success) {
+<span class="nc" id="L86">      context.stop();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">      if (success) {</span>
+<span class="nc" id="L88">        onRequestSuccess(type);</span>
+      } else {
+<span class="nc" id="L90">        onRequestFail(type);</span>
+      }
+<span class="nc" id="L92">    }</span>
+  }
+
+<span class="nc" id="L95">  private enum Op {</span>
+<span class="nc" id="L96">    Create(RequestType::getNumRequestsString),</span>
+<span class="nc" id="L97">    Success(RequestType::getSuccessCountString),</span>
+<span class="nc" id="L98">    Fail(RequestType::getFailCountString);</span>
+
+    private final Function&lt;RequestType, String&gt; stringFunction;
+
+<span class="nc" id="L102">    Op(Function&lt;RequestType, String&gt; stringFunction) {</span>
+<span class="nc" id="L103">      this.stringFunction = stringFunction;</span>
+<span class="nc" id="L104">    }</span>
+
+    String getString(RequestType type) {
+<span class="nc" id="L107">      return stringFunction.apply(type);</span>
+    }
+  }
+
+<span class="nc" id="L111">  private final Map&lt;String, Timekeeper&gt; latencyTimers = new ConcurrentHashMap&lt;&gt;();</span>
+  private final Map&lt;Op, Map&lt;String, LongCounter&gt;&gt; ops;
+
+  public NettyServerStreamRpcMetrics(String serverId) {
+<span class="nc" id="L115">    super(createRegistry(serverId));</span>
+
+<span class="nc" id="L117">    this.ops = newCounterMaps(Op.class);</span>
+<span class="nc" id="L118">  }</span>
+
+  private static RatisMetricRegistry createRegistry(String serverId) {
+<span class="nc" id="L121">    return create(new MetricRegistryInfo(serverId,</span>
+        METRICS_APP_NAME, METRICS_COMP_NAME, METRICS_DESC));
+  }
+
+  public RequestMetrics newRequestMetrics(RequestType type) {
+<span class="nc" id="L126">    return new RequestMetrics(type);</span>
+  }
+
+  public Timekeeper getLatencyTimer(RequestType type) {
+<span class="nc" id="L130">    return latencyTimers.computeIfAbsent(type.getLatencyString(), getRegistry()::timer);</span>
+  }
+
+  private void inc(Op op, RequestType type) {
+<span class="nc" id="L134">    ops.get(op).computeIfAbsent(op.getString(type), getRegistry()::counter).inc();</span>
+<span class="nc" id="L135">  }</span>
+
+  public void onRequestCreate(RequestType type) {
+<span class="nc" id="L138">    inc(Op.Create, type);</span>
+<span class="nc" id="L139">  }</span>
+
+  public void onRequestSuccess(RequestType type) {
+<span class="nc" id="L142">    inc(Op.Success, type);</span>
+<span class="nc" id="L143">  }</span>
+
+  public void onRequestFail(RequestType type) {
+<span class="nc" id="L146">    inc(Op.Fail, type);</span>
+<span class="nc" id="L147">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

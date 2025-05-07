@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Timestamp.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">Timestamp.java</span></div><h1>Timestamp.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Use {@link System#nanoTime()} as timestamps.
+ *
+ * This class takes care the possibility of numerical overflow.
+ *
+ * This is a value-based class.
+ */
+public final class Timestamp implements Comparable&lt;Timestamp&gt; {
+  private static final long NANOSECONDS_PER_MILLISECOND = 1000000;
+
+<span class="nc" id="L32">  private static final long START_TIME = System.nanoTime();</span>
+
+  /** @return a {@link Timestamp} for the given nanos. */
+  public static Timestamp valueOf(long nanos) {
+<span class="nc" id="L36">    return new Timestamp(nanos);</span>
+  }
+
+  /** @return a long in nanos for the current time. */
+  public static long currentTimeNanos() {
+<span class="nc" id="L41">    return System.nanoTime();</span>
+  }
+
+  /** @return a {@link Timestamp} for the current time. */
+  public static Timestamp currentTime() {
+<span class="nc" id="L46">    return valueOf(currentTimeNanos());</span>
+  }
+
+  /** @return the latest timestamp. */
+  public static Timestamp latest(Timestamp a, Timestamp b) {
+<span class="nc bnc" id="L51" title="All 2 branches missed.">    return a.compareTo(b) &gt; 0? a: b;</span>
+  }
+
+  /** @return the earliest timestamp. */
+  public static Timestamp earliest(Timestamp a, Timestamp b) {
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    return a.compareTo(b) &gt; 0? b: a;</span>
+  }
+
+  private final long nanos;
+
+<span class="nc" id="L61">  private Timestamp(long nanos) {</span>
+<span class="nc" id="L62">    this.nanos = nanos;</span>
+<span class="nc" id="L63">  }</span>
+
+  /**
+   * @param milliseconds the time period to be added.
+   * @return a new {@link Timestamp} whose value is calculated
+   *         by adding the given milliseconds to this timestamp.
+   */
+  public Timestamp addTimeMs(long milliseconds) {
+<span class="nc" id="L71">    return new Timestamp(nanos + milliseconds * NANOSECONDS_PER_MILLISECOND);</span>
+  }
+
+  /**
+   * @param t the time period to be added.
+   * @return a new {@link Timestamp} whose value is calculated
+   *         by adding the given milliseconds to this timestamp.
+   */
+  public Timestamp addTime(TimeDuration t) {
+<span class="nc" id="L80">    return new Timestamp(nanos + t.to(TimeUnit.NANOSECONDS).getDuration());</span>
+  }
+
+  /**
+   * @return the elapsed time in milliseconds.
+   *         If the timestamp is a future time, the returned value is negative.
+   */
+  public long elapsedTimeMs() {
+<span class="nc" id="L88">    final long d = System.nanoTime() - nanos;</span>
+<span class="nc" id="L89">    return d / NANOSECONDS_PER_MILLISECOND;</span>
+  }
+
+  /**
+   * @return the elapsed time in nanoseconds.
+   *         If the timestamp is a future time, the returned value is negative.
+   */
+  public TimeDuration elapsedTime() {
+<span class="nc" id="L97">    final long d = System.nanoTime() - nanos;</span>
+<span class="nc" id="L98">    return TimeDuration.valueOf(d, TimeUnit.NANOSECONDS);</span>
+  }
+
+  /**
+   * Compare two timestamps, t0 (this) and t1 (that).
+   * This method uses {@code t0 - t1 &lt; 0}, not {@code t0 &lt; t1},
+   * in order to take care the possibility of numerical overflow.
+   *
+   * @see System#nanoTime()
+   */
+  @Override
+  public int compareTo(Timestamp that) {
+<span class="nc" id="L110">    final long d = this.nanos - that.nanos;</span>
+<span class="nc bnc" id="L111" title="All 4 branches missed.">    return d &gt; 0? 1: d == 0? 0: -1;</span>
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    if (this == obj) {</span>
+<span class="nc" id="L117">      return true;</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    } else if (!(obj instanceof Timestamp)) {</span>
+<span class="nc" id="L119">      return false;</span>
+    }
+<span class="nc" id="L121">    final Timestamp that = (Timestamp)obj;</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    return this.nanos == that.nanos;</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L127">    return Long.hashCode(nanos);</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L132">    final long ms = (nanos - START_TIME)/NANOSECONDS_PER_MILLISECOND;</span>
+<span class="nc" id="L133">    return (ms/1000) + &quot;.&quot; + (ms%1000) + TimeDuration.Abbreviation.SECONDS.getDefault();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

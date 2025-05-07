@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server</a> &gt; <span class="el_source">RaftConfiguration.java</span></div><h1>RaftConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server;
+
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+
+import java.util.Collection;
+
+/**
+ * A configuration is a subset of the members in a {@link org.apache.ratis.protocol.RaftGroup}.
+ * The configuration of a cluster may change from time to time.
+ *
+ * In a configuration,
+ * - the peers are voting members such as LEADER, CANDIDATE and FOLLOWER;
+ * - the listeners are non-voting members.
+ *
+ * This class captures the current configuration and the previous configuration of a cluster.
+ *
+ * The objects of this class are immutable.
+ *
+ * @see org.apache.ratis.proto.RaftProtos.RaftPeerRole
+ */
+public interface RaftConfiguration {
+  /**
+   * @return the peer corresponding to the given id;
+   *         or return null if the peer is not in this configuration.
+   */
+  RaftPeer getPeer(RaftPeerId id, RaftPeerRole... roles);
+
+  /** The same as getAllPeers(RaftPeerRole.FOLLOWER). */
+  default Collection&lt;RaftPeer&gt; getAllPeers() {
+<span class="nc" id="L49">    return getAllPeers(RaftPeerRole.FOLLOWER);</span>
+  }
+
+  /** @return all the peers of the given role in the current configuration and the previous configuration. */
+  Collection&lt;RaftPeer&gt; getAllPeers(RaftPeerRole role);
+
+  /** The same as getCurrentPeers(RaftPeerRole.FOLLOWER). */
+  default Collection&lt;RaftPeer&gt; getCurrentPeers() {
+<span class="nc" id="L57">    return getCurrentPeers(RaftPeerRole.FOLLOWER);</span>
+  }
+
+  /** @return all the peers of the given role in the current configuration. */
+  Collection&lt;RaftPeer&gt; getCurrentPeers(RaftPeerRole roles);
+
+  /** The same as getPreviousPeers(RaftPeerRole.FOLLOWER). */
+  default Collection&lt;RaftPeer&gt; getPreviousPeers() {
+<span class="nc" id="L65">    return getPreviousPeers(RaftPeerRole.FOLLOWER);</span>
+  }
+
+  /** @return all the peers of the given role in the previous configuration. */
+  Collection&lt;RaftPeer&gt; getPreviousPeers(RaftPeerRole roles);
+
+  /** @return the index of the corresponding log entry for the current configuration. */
+  long getLogEntryIndex();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimeDuration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">TimeDuration.java</span></div><h1>TimeDuration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedBiFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.LongUnaryOperator;
+import java.util.stream.Stream;
+
+/**
+ * Time duration is represented by a long together with a {@link TimeUnit}.
+ * &lt;p&gt;
+ * This is a value-based class.
+ */
+public final class TimeDuration implements Comparable&lt;TimeDuration&gt; {
+<span class="nc" id="L40">  static final Logger LOG = LoggerFactory.getLogger(TimeDuration.class);</span>
+
+<span class="nc" id="L42">  public static final TimeDuration ZERO = valueOf(0, TimeUnit.NANOSECONDS);</span>
+<span class="nc" id="L43">  public static final TimeDuration ONE_MILLISECOND = TimeDuration.valueOf(1, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L44">  public static final TimeDuration ONE_SECOND = TimeDuration.valueOf(1, TimeUnit.SECONDS);</span>
+<span class="nc" id="L45">  public static final TimeDuration ONE_MINUTE = TimeDuration.valueOf(1, TimeUnit.MINUTES);</span>
+<span class="nc" id="L46">  public static final TimeDuration ONE_DAY = TimeDuration.valueOf(1, TimeUnit.DAYS);</span>
+
+  static final double ERROR_THRESHOLD = 0.001; // accept 0.1% error
+
+  /** @return the next lower {@link TimeUnit}.  If the unit is already the lowest, return it. */
+  public static TimeUnit lowerUnit(TimeUnit unit) {
+<span class="nc" id="L52">    final int ordinal = unit.ordinal();</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    return ordinal == 0? unit: TimeUnit.values()[ordinal - 1];</span>
+  }
+
+  /** @return the next higher {@link TimeUnit}.  If the unit is already the highest, return it. */
+  public static TimeUnit higherUnit(TimeUnit unit) {
+<span class="nc" id="L58">    final int ordinal = unit.ordinal();</span>
+<span class="nc" id="L59">    final TimeUnit[] timeUnits = TimeUnit.values();</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">    return ordinal == timeUnits.length - 1? unit: timeUnits[ordinal + 1];</span>
+  }
+
+  /** @return the minimum of the given parameters. */
+  public static TimeDuration min(TimeDuration left, TimeDuration right) {
+<span class="nc" id="L65">    Objects.requireNonNull(left, &quot;left == null&quot;);</span>
+<span class="nc" id="L66">    Objects.requireNonNull(right, &quot;right == null&quot;);</span>
+<span class="nc" id="L67">    return Stream.of(left, right).min(TimeDuration::compareTo).orElseThrow(</span>
+<span class="nc" id="L68">        () -&gt; new IllegalStateException(&quot;Failed to compute min(&quot; + left + &quot;, &quot; + right + &quot;)&quot;));</span>
+  }
+
+  /** @return the maximum of the given parameters. */
+  public static TimeDuration max(TimeDuration left, TimeDuration right) {
+<span class="nc" id="L73">    Objects.requireNonNull(left, &quot;left == null&quot;);</span>
+<span class="nc" id="L74">    Objects.requireNonNull(right, &quot;right == null&quot;);</span>
+<span class="nc" id="L75">    return Stream.of(left, right).max(TimeDuration::compareTo).orElseThrow(</span>
+<span class="nc" id="L76">        () -&gt; new IllegalStateException(&quot;Failed to compute max(&quot; + left + &quot;, &quot; + right + &quot;)&quot;));</span>
+  }
+
+  /** Abbreviations of {@link TimeUnit}. */
+<span class="nc" id="L80">  public enum Abbreviation {</span>
+<span class="nc" id="L81">    NANOSECONDS(&quot;ns&quot;, &quot;nanos&quot;),</span>
+<span class="nc" id="L82">    MICROSECONDS(&quot;μs&quot;, &quot;us&quot;, &quot;micros&quot;),</span>
+<span class="nc" id="L83">    MILLISECONDS(&quot;ms&quot;, &quot;msec&quot;, &quot;millis&quot;),</span>
+<span class="nc" id="L84">    SECONDS(&quot;s&quot;, &quot;sec&quot;),</span>
+<span class="nc" id="L85">    MINUTES(&quot;min&quot;, &quot;m&quot;),</span>
+<span class="nc" id="L86">    HOURS(&quot;hr&quot;, &quot;h&quot;),</span>
+<span class="nc" id="L87">    DAYS(&quot;day&quot;, &quot;d&quot;);</span>
+
+<span class="nc" id="L89">    private final TimeUnit unit = TimeUnit.valueOf(name());</span>
+    private final List&lt;String&gt; symbols;
+
+<span class="nc" id="L92">    Abbreviation(String... symbols) {</span>
+<span class="nc" id="L93">      final List&lt;String&gt; input = Arrays.asList(symbols);</span>
+<span class="nc" id="L94">      final List&lt;String&gt; all = new ArrayList&lt;&gt;(input.size() + 2);</span>
+<span class="nc" id="L95">      input.forEach(s -&gt; all.add(s.toLowerCase()));</span>
+
+<span class="nc" id="L97">      final String s = unit.name().toLowerCase();</span>
+<span class="nc" id="L98">      addIfAbsent(all, s);</span>
+<span class="nc" id="L99">      addIfAbsent(all, s.substring(0, s.length() - 1));</span>
+
+<span class="nc" id="L101">      this.symbols = Collections.unmodifiableList(all);</span>
+<span class="nc" id="L102">    }</span>
+
+    static void addIfAbsent(List&lt;String&gt; list, String toAdd) {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">      for(String s : list) {</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (toAdd.equals(s)) {</span>
+<span class="nc" id="L107">          return;</span>
+        }
+<span class="nc" id="L109">      }</span>
+<span class="nc" id="L110">      list.add(toAdd);</span>
+<span class="nc" id="L111">    }</span>
+
+    /** @return the corresponding {@link TimeUnit}. */
+    public TimeUnit unit() {
+<span class="nc" id="L115">      return unit;</span>
+    }
+
+    /** @return the default abbreviation. */
+    String getDefault() {
+<span class="nc" id="L120">      return symbols.get(0);</span>
+    }
+
+    /** @return the entire abbreviation list for this unit. */
+    public List&lt;String&gt; getSymbols() {
+<span class="nc" id="L125">      return symbols;</span>
+    }
+
+    /** @return the corresponding {@link Abbreviation}. */
+    public static Abbreviation valueOf(TimeUnit unit) {
+<span class="nc" id="L130">      return valueOf(unit.name());</span>
+    }
+  }
+
+  /** The same as valueOf(timeString, targetUnit).toLong(targetUnit). */
+  public static long parse(String timeString, TimeUnit targetUnit) {
+<span class="nc" id="L136">    return valueOf(timeString, targetUnit).toLong(targetUnit);</span>
+  }
+
+  /**
+   * Parse the given string.
+   * The string is first be trimmed and underscore removed.
+   *
+   * @param defaultUnit Use it if no unit is specified.
+   * @return a {@link TimeDuration} in the target unit.
+   */
+  public static TimeDuration valueOf(String timeString, TimeUnit defaultUnit) {
+<span class="nc" id="L147">    Objects.requireNonNull(timeString, &quot;timeString == null&quot;);</span>
+<span class="nc" id="L148">    final String lower = timeString.trim().replace(&quot;_&quot;, &quot;&quot;).toLowerCase();</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">    for(Abbreviation a : Abbreviation.values()) {</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">      for(String s : a.getSymbols()) {</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (lower.endsWith(s)) {</span>
+<span class="nc" id="L152">          final String value = lower.substring(0, lower.length()-s.length()).trim();</span>
+          try {
+<span class="nc" id="L154">            return valueOf(Long.parseLong(value), a.unit());</span>
+<span class="nc" id="L155">          } catch(NumberFormatException e) {</span>
+            // failed with current symbol; ignore and try next symbol.
+          }
+        }
+<span class="nc" id="L159">      }</span>
+    }
+<span class="nc" id="L161">    Objects.requireNonNull(defaultUnit, &quot;defaultUnit == null&quot;);</span>
+<span class="nc" id="L162">    return valueOf(Long.parseLong(lower), defaultUnit);</span>
+  }
+
+  /** @return a {@link TimeDuration} representing the given duration and unit. */
+  public static TimeDuration valueOf(long duration, TimeUnit unit) {
+<span class="nc" id="L167">    return new TimeDuration(duration, unit);</span>
+  }
+
+  private final long duration;
+  private final TimeUnit unit;
+
+<span class="nc" id="L173">  private TimeDuration(long duration, TimeUnit unit) {</span>
+<span class="nc" id="L174">    this.duration = duration;</span>
+<span class="nc" id="L175">    this.unit = Objects.requireNonNull(unit, &quot;unit == null&quot;);</span>
+<span class="nc" id="L176">  }</span>
+
+  /** @return the duration value. */
+  public long getDuration() {
+<span class="nc" id="L180">    return duration;</span>
+  }
+
+  /** @return the {@link TimeUnit}. */
+  public TimeUnit getUnit() {
+<span class="nc" id="L185">    return unit;</span>
+  }
+
+  /**
+   * Convert this {@link TimeDuration} to a long in the target unit.
+   * Note that the returned value may be truncated or saturated; see {@link TimeUnit#convert(long, TimeUnit)}.*
+   *
+   * @return the value in the target unit.
+   */
+  public long toLong(TimeUnit targetUnit) {
+<span class="nc" id="L195">    return targetUnit.convert(duration, unit);</span>
+  }
+
+  /**
+   * The same as Math.toIntExact(toLong(targetUnit));
+   * Similar to {@link #toLong(TimeUnit)}, the returned value may be truncated.
+   * However, the returned value is never saturated.  The method throws {@link ArithmeticException} if it overflows.
+   *
+   * @return the value in the target unit.
+   * @throws ArithmeticException if it overflows.
+   */
+  public int toIntExact(TimeUnit targetUnit) {
+<span class="nc" id="L207">    return Math.toIntExact(toLong(targetUnit));</span>
+  }
+
+  /** @return the {@link TimeDuration} in the target unit. */
+  public TimeDuration to(TimeUnit targetUnit) {
+<span class="nc bnc" id="L212" title="All 2 branches missed.">    if (this.unit == targetUnit) {</span>
+<span class="nc" id="L213">      return this;</span>
+    }
+<span class="nc" id="L215">    final TimeDuration t = valueOf(toLong(targetUnit), targetUnit);</span>
+<span class="nc" id="L216">    LOG.debug(&quot;{}.to({}) = {}&quot;, this, targetUnit, t);</span>
+<span class="nc" id="L217">    return t;</span>
+  }
+
+  /** @return (this + that) in the minimum unit among them. */
+  public TimeDuration add(TimeDuration that) {
+<span class="nc" id="L222">    Objects.requireNonNull(that, &quot;that == null&quot;);</span>
+<span class="nc" id="L223">    final TimeUnit minUnit = CollectionUtils.min(this.unit, that.unit);</span>
+<span class="nc" id="L224">    return valueOf(this.toLong(minUnit) + that.toLong(minUnit), minUnit);</span>
+  }
+
+  /** @return (this + (thatDuration, thatUnit)) in the minimum unit among them. */
+  public TimeDuration add(long thatDuration, TimeUnit thatUnit) {
+<span class="nc" id="L229">    return add(TimeDuration.valueOf(thatDuration, thatUnit));</span>
+  }
+
+  /** @return (this - that) in the minimum unit among them. */
+  public TimeDuration subtract(TimeDuration that) {
+<span class="nc" id="L234">    Objects.requireNonNull(that, &quot;that == null&quot;);</span>
+<span class="nc" id="L235">    final TimeUnit minUnit = CollectionUtils.min(this.unit, that.unit);</span>
+<span class="nc" id="L236">    return valueOf(this.toLong(minUnit) - that.toLong(minUnit), minUnit);</span>
+  }
+
+  private static boolean isMagnitudeLarge(long n) {
+<span class="nc bnc" id="L240" title="All 4 branches missed.">    return n &gt; 1_000_000_000_000L || n &lt; -1_000_000_000_000L;</span>
+  }
+
+  /** @return this * multiplier; the result unit may be changed in order to reduce rounding/overflow error. */
+  public TimeDuration multiply(double multiplier) {
+<span class="nc" id="L245">    final double product = duration * multiplier;</span>
+<span class="nc" id="L246">    final long rounded = Math.round(product);</span>
+
+<span class="nc bnc" id="L248" title="All 2 branches missed.">    if (unit.ordinal() != TimeUnit.values().length - 1) {</span>
+      // check overflow error
+<span class="nc bnc" id="L250" title="All 4 branches missed.">      if (rounded == Long.MAX_VALUE || rounded == Long.MIN_VALUE) {</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        if (Math.abs(multiplier) &gt; 2) {</span>
+<span class="nc" id="L252">          return multiply(2).multiply(multiplier / 2);</span>
+        } else {
+<span class="nc" id="L254">          return to(higherUnit(unit)).multiply(multiplier);</span>
+        }
+      }
+    }
+<span class="nc bnc" id="L258" title="All 2 branches missed.">    if (unit.ordinal() != 0) {</span>
+      // check round off error
+<span class="nc bnc" id="L260" title="All 2 branches missed.">      if (Math.abs(product - rounded) &gt; Math.abs(product) * ERROR_THRESHOLD) {</span>
+<span class="nc bnc" id="L261" title="All 4 branches missed.">        if (isMagnitudeLarge(duration) &amp;&amp; Math.abs(multiplier) &lt; 0.5d) {</span>
+<span class="nc" id="L262">          return multiply(0.5).multiply(multiplier * 2);</span>
+        } else {
+<span class="nc" id="L264">          return to(lowerUnit(unit)).multiply(multiplier);</span>
+        }
+      }
+    }
+
+<span class="nc" id="L269">    final TimeDuration t = valueOf(rounded, unit);</span>
+<span class="nc" id="L270">    LOG.debug(&quot;{} * {} = {}&quot;, this, multiplier, t);</span>
+<span class="nc" id="L271">    return t;</span>
+  }
+
+  /** @return -this. */
+  public TimeDuration negate() {
+<span class="nc bnc" id="L276" title="All 2 branches missed.">    if (duration == Long.MIN_VALUE) {</span>
+<span class="nc" id="L277">      return valueOf(Long.MAX_VALUE, unit);</span>
+    }
+<span class="nc" id="L279">    return valueOf(Math.negateExact(duration), unit);</span>
+  }
+
+  /** Round up to the given nanos to nearest multiple (in nanoseconds) of this {@link TimeDuration}. */
+  public long roundUpNanos(long nanos) {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">    if (duration &lt;= 0) {</span>
+<span class="nc" id="L285">      throw new ArithmeticException(</span>
+<span class="nc" id="L286">          &quot;Rounding up to a non-positive &quot; + JavaUtils.getClassSimpleName(getClass()) + &quot; (=&quot; + this + &quot;)&quot;);</span>
+    }
+
+<span class="nc" id="L289">    final long divisor = toLong(TimeUnit.NANOSECONDS);</span>
+<span class="nc bnc" id="L290" title="All 4 branches missed.">    if (nanos == 0 || divisor == 1) {</span>
+<span class="nc" id="L291">      return nanos;</span>
+    }
+
+<span class="nc" id="L294">    long remainder = nanos % divisor; // In Java, the sign of remainder is the same as the dividend.</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">    if (remainder &gt; 0) {</span>
+<span class="nc" id="L296">      remainder -= divisor;</span>
+    }
+<span class="nc" id="L298">    return nanos - remainder;</span>
+  }
+
+  /**
+   * Apply the given operator to the duration value of this object.
+   *
+   * @return a new object with the new duration value and the same unit of this object.
+   */
+  public TimeDuration apply(LongUnaryOperator operator) {
+<span class="nc" id="L307">    return valueOf(operator.applyAsLong(duration), unit);</span>
+  }
+
+  /** Apply the given function to the (duration, unit) of this object. */
+  public &lt;OUTPUT, THROWABLE extends Throwable&gt; OUTPUT apply(
+      CheckedBiFunction&lt;Long, TimeUnit, OUTPUT, THROWABLE&gt; function) throws THROWABLE {
+<span class="nc" id="L313">    return function.apply(getDuration(), getUnit());</span>
+  }
+
+  /** @return Is this {@link TimeDuration} less than zero? */
+  public boolean isNegative() {
+<span class="nc bnc" id="L318" title="All 2 branches missed.">    return duration &lt; 0;</span>
+  }
+
+  /** @return Is this {@link TimeDuration} greater than or equal to zero? */
+  public boolean isNonNegative() {
+<span class="nc bnc" id="L323" title="All 2 branches missed.">    return duration &gt;= 0;</span>
+  }
+
+  /** @return Is this {@link TimeDuration} greater than zero? */
+  public boolean isPositive() {
+<span class="nc bnc" id="L328" title="All 2 branches missed.">    return duration &gt; 0;</span>
+  }
+
+  /** @return Is this {@link TimeDuration} less than or equal to zero? */
+  public boolean isNonPositive() {
+<span class="nc bnc" id="L333" title="All 2 branches missed.">    return duration &lt;= 0;</span>
+  }
+
+  /** The same as sleep(null). */
+  public TimeDuration sleep() throws InterruptedException {
+<span class="nc" id="L338">    return sleep(null);</span>
+  }
+
+  /**
+   * Performs a {@link TimeUnit#sleep(long)} using this {@link TimeDuration}.
+   *
+   * @param log If not null, use it to print log messages.
+   * @return the difference of the actual sleep time duration and this {@link TimeDuration}.
+   */
+  public TimeDuration sleep(Consumer&lt;Object&gt; log) throws InterruptedException {
+<span class="nc bnc" id="L348" title="All 2 branches missed.">    if (log != null) {</span>
+<span class="nc" id="L349">      log.accept(StringUtils.stringSupplierAsObject(() -&gt; &quot;Start sleeping &quot; + this));</span>
+    }
+<span class="nc" id="L351">    final Timestamp start = Timestamp.currentTime();</span>
+    try {
+<span class="nc" id="L353">      unit.sleep(duration);</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">      if (log != null) {</span>
+<span class="nc" id="L355">        log.accept(StringUtils.stringSupplierAsObject(() -&gt; &quot;Completed sleeping &quot; + this));</span>
+      }
+<span class="nc" id="L357">    } catch (InterruptedException ie) {</span>
+<span class="nc" id="L358">      Thread.currentThread().interrupt();</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">      if (log != null) {</span>
+<span class="nc" id="L360">        log.accept(StringUtils.stringSupplierAsObject(() -&gt; &quot;Interrupted sleeping &quot; + this));</span>
+      }
+<span class="nc" id="L362">      throw ie;</span>
+<span class="nc" id="L363">    }</span>
+<span class="nc" id="L364">    return start.elapsedTime().subtract(this);</span>
+  }
+
+  @Override
+  public int compareTo(TimeDuration that) {
+<span class="nc bnc" id="L369" title="All 2 branches missed.">    if (this.unit.compareTo(that.unit) &gt; 0) {</span>
+<span class="nc" id="L370">      return Integer.compare(0, that.compareTo(this));</span>
+    }
+<span class="nc bnc" id="L372" title="All 2 branches missed.">    if (this.unit == that.unit) {</span>
+<span class="nc" id="L373">      return Long.compare(this.duration, that.duration);</span>
+    }
+    // this.unit &lt; that.unit
+<span class="nc" id="L376">    final long thisDurationInThatUnit = this.toLong(that.unit);</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">    if (thisDurationInThatUnit == that.duration) {</span>
+      // check for overflow
+<span class="nc" id="L379">      final long thatDurationInThisUnit = that.toLong(this.unit);</span>
+<span class="nc" id="L380">      return Long.compare(this.duration, thatDurationInThisUnit);</span>
+    } else {
+<span class="nc" id="L382">      return Long.compare(thisDurationInThatUnit, that.duration);</span>
+    }
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+<span class="nc bnc" id="L388" title="All 2 branches missed.">    if (this == obj) {</span>
+<span class="nc" id="L389">      return true;</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">    } else if (!(obj instanceof TimeDuration)) {</span>
+<span class="nc" id="L391">      return false;</span>
+    }
+<span class="nc" id="L393">    final TimeDuration that = (TimeDuration)obj;</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">    return this.compareTo(that) == 0;</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L399">    return Long.hashCode(toLong(TimeUnit.NANOSECONDS));</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L404">    return duration + Abbreviation.valueOf(unit).getDefault();</span>
+  }
+
+  /** @return a representation of this object in the given target unit and decimal places. */
+  public String toString(TimeUnit targetUnit, int decimalPlaces) {
+<span class="nc" id="L409">    Objects.requireNonNull(targetUnit, &quot;targetUnit == null&quot;);</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">    if (targetUnit.compareTo(unit) &lt;= 0) {</span>
+<span class="nc" id="L411">      return to(targetUnit).toString();</span>
+    }
+<span class="nc" id="L413">    final double divisor = unit.convert(1, targetUnit);</span>
+<span class="nc bnc" id="L414" title="All 2 branches missed.">    if (duration % divisor == 0) {</span>
+<span class="nc" id="L415">      return to(targetUnit).toString();</span>
+    }
+<span class="nc" id="L417">    final String decimal = StringUtils.format(&quot;%.&quot; + decimalPlaces + &quot;f&quot;, duration/divisor);</span>
+<span class="nc" id="L418">    final String s = decimal + Abbreviation.valueOf(targetUnit).getDefault();</span>
+<span class="nc" id="L419">    LOG.debug(&quot;{}.to({}) = {}&quot;, this, targetUnit, s);</span>
+<span class="nc" id="L420">    return s;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

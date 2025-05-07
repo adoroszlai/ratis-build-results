@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcServerProtocolService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.server</a> &gt; <span class="el_source">GrpcServerProtocolService.java</span></div><h1>GrpcServerProtocolService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.server;
+
+import java.util.function.Consumer;
+import java.util.function.Function;
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.grpc.metrics.ZeroCopyMetrics;
+import org.apache.ratis.grpc.util.ZeroCopyMessageMarshaller;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.protocol.RaftServerProtocol;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.thirdparty.io.grpc.ServerServiceDefinition;
+import org.apache.ratis.thirdparty.io.grpc.Status;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.proto.grpc.RaftServerProtocolServiceGrpc.RaftServerProtocolServiceImplBase;
+import org.apache.ratis.util.BatchLogger;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+
+import static org.apache.ratis.grpc.GrpcUtil.addMethodWithCustomMarshaller;
+import static org.apache.ratis.proto.grpc.RaftServerProtocolServiceGrpc.getAppendEntriesMethod;
+
+class GrpcServerProtocolService extends RaftServerProtocolServiceImplBase {
+<span class="nc" id="L52">  public static final Logger LOG = LoggerFactory.getLogger(GrpcServerProtocolService.class);</span>
+
+<span class="nc" id="L54">  private enum BatchLogKey implements BatchLogger.Key {</span>
+<span class="nc" id="L55">    COMPLETED_REQUEST,</span>
+<span class="nc" id="L56">    COMPLETED_REPLY</span>
+  }
+
+  static class PendingServerRequest&lt;REQUEST&gt; {
+    private final AtomicReference&lt;ReferenceCountedObject&lt;REQUEST&gt;&gt; requestRef;
+<span class="nc" id="L61">    private final CompletableFuture&lt;Void&gt; future = new CompletableFuture&lt;&gt;();</span>
+
+<span class="nc" id="L63">    PendingServerRequest(ReferenceCountedObject&lt;REQUEST&gt; requestRef) {</span>
+<span class="nc" id="L64">      requestRef.retain();</span>
+<span class="nc" id="L65">      this.requestRef = new AtomicReference&lt;&gt;(requestRef);</span>
+<span class="nc" id="L66">    }</span>
+
+    REQUEST getRequest() {
+<span class="nc" id="L69">      return Optional.ofNullable(requestRef.get())</span>
+<span class="nc" id="L70">          .map(ReferenceCountedObject::get)</span>
+<span class="nc" id="L71">          .orElse(null);</span>
+    }
+
+    CompletableFuture&lt;Void&gt; getFuture() {
+<span class="nc" id="L75">      return future;</span>
+    }
+
+    void release() {
+<span class="nc" id="L79">      Optional.ofNullable(requestRef.getAndSet(null))</span>
+<span class="nc" id="L80">          .ifPresent(ReferenceCountedObject::release);</span>
+<span class="nc" id="L81">    }</span>
+  }
+
+  abstract class ServerRequestStreamObserver&lt;REQUEST, REPLY&gt; implements StreamObserver&lt;REQUEST&gt; {
+    private final RaftServer.Op op;
+    private final Supplier&lt;String&gt; nameSupplier;
+    private final StreamObserver&lt;REPLY&gt; responseObserver;
+    /** For ordered {@link #onNext(Object)} requests. */
+<span class="nc" id="L89">    private final AtomicReference&lt;PendingServerRequest&lt;REQUEST&gt;&gt; previousOnNext = new AtomicReference&lt;&gt;();</span>
+    /** For both ordered and unordered {@link #onNext(Object)} requests. */
+<span class="nc" id="L91">    private final AtomicReference&lt;CompletableFuture&lt;REPLY&gt;&gt; requestFuture</span>
+<span class="nc" id="L92">        = new AtomicReference&lt;&gt;(CompletableFuture.completedFuture(null));</span>
+<span class="nc" id="L93">    private final AtomicBoolean isClosed = new AtomicBoolean(false);</span>
+
+<span class="nc" id="L95">    ServerRequestStreamObserver(RaftServer.Op op, StreamObserver&lt;REPLY&gt; responseObserver) {</span>
+<span class="nc" id="L96">      this.op = op;</span>
+<span class="nc" id="L97">      this.nameSupplier = MemoizedSupplier.valueOf(() -&gt; getId() + &quot;_&quot; + op);</span>
+<span class="nc" id="L98">      this.responseObserver = responseObserver;</span>
+<span class="nc" id="L99">    }</span>
+
+    String getName() {
+<span class="nc" id="L102">      return nameSupplier.get();</span>
+    }
+
+    private String getPreviousRequestString() {
+<span class="nc" id="L106">      return Optional.ofNullable(previousOnNext.get())</span>
+<span class="nc" id="L107">          .map(PendingServerRequest::getRequest)</span>
+<span class="nc" id="L108">          .map(this::requestToString)</span>
+<span class="nc" id="L109">          .orElse(null);</span>
+    }
+
+    CompletableFuture&lt;REPLY&gt; process(REQUEST request) throws IOException {
+<span class="nc" id="L113">      throw new UnsupportedOperationException(&quot;This method is not supported.&quot;);</span>
+    }
+
+    CompletableFuture&lt;REPLY&gt; process(ReferenceCountedObject&lt;REQUEST&gt; requestRef)
+        throws IOException {
+      try {
+<span class="nc" id="L119">        return process(requestRef.retain());</span>
+      } finally {
+<span class="nc" id="L121">        requestRef.release();</span>
+      }
+    }
+
+    void release(REQUEST req) {
+<span class="nc" id="L126">    }</span>
+
+    abstract long getCallId(REQUEST request);
+
+    boolean isHeartbeat(REQUEST request) {
+<span class="nc" id="L131">      return false;</span>
+    }
+
+    abstract String requestToString(REQUEST request);
+
+    abstract String replyToString(REPLY reply);
+
+    abstract boolean replyInOrder(REQUEST request);
+
+    private synchronized void handleError(Throwable e, long callId, boolean isHeartbeat) {
+<span class="nc" id="L141">      GrpcUtil.warn(LOG, () -&gt; getId() + &quot;: Failed &quot; + op + &quot; request cid=&quot; + callId + &quot;, isHeartbeat? &quot;</span>
+          + isHeartbeat, e);
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      if (isClosed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L144">        responseObserver.onError(GrpcUtil.wrapException(e, callId, isHeartbeat));</span>
+      }
+<span class="nc" id="L146">    }</span>
+
+    private synchronized REPLY handleReply(REPLY reply) {
+<span class="nc bnc" id="L149" title="All 2 branches missed.">      if (!isClosed.get()) {</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L151">          LOG.debug(&quot;{}: reply {}&quot;, getId(), replyToString(reply));</span>
+        }
+<span class="nc" id="L153">        responseObserver.onNext(reply);</span>
+      }
+<span class="nc" id="L155">      return reply;</span>
+    }
+
+    void composeRequest(CompletableFuture&lt;REPLY&gt; current) {
+<span class="nc" id="L159">      requestFuture.updateAndGet(previous -&gt; previous.thenCompose(reply -&gt; current));</span>
+<span class="nc" id="L160">    }</span>
+
+    @Override
+    public void onNext(REQUEST request) {
+<span class="nc" id="L164">      ReferenceCountedObject&lt;REQUEST&gt; requestRef = ReferenceCountedObject.wrap(request, () -&gt; {}, released -&gt; {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (released) {</span>
+<span class="nc" id="L166">          release(request);</span>
+        }
+<span class="nc" id="L168">      });</span>
+
+<span class="nc bnc" id="L170" title="All 2 branches missed.">      if (!replyInOrder(request)) {</span>
+        try {
+<span class="nc" id="L172">          composeRequest(process(requestRef).thenApply(this::handleReply));</span>
+<span class="nc" id="L173">        } catch (Exception e) {</span>
+<span class="nc" id="L174">          handleError(e, getCallId(request), isHeartbeat(request));</span>
+<span class="nc" id="L175">          release(request);</span>
+<span class="nc" id="L176">        }</span>
+<span class="nc" id="L177">        return;</span>
+      }
+
+<span class="nc" id="L180">      final PendingServerRequest&lt;REQUEST&gt; current = new PendingServerRequest&lt;&gt;(requestRef);</span>
+<span class="nc" id="L181">      final long callId = getCallId(current.getRequest());</span>
+<span class="nc" id="L182">      final boolean isHeartbeat = isHeartbeat(current.getRequest());</span>
+<span class="nc" id="L183">      final Optional&lt;PendingServerRequest&lt;REQUEST&gt;&gt; previous = Optional.ofNullable(previousOnNext.getAndSet(current));</span>
+<span class="nc" id="L184">      final CompletableFuture&lt;Void&gt; previousFuture = previous.map(PendingServerRequest::getFuture)</span>
+<span class="nc" id="L185">          .orElse(CompletableFuture.completedFuture(null));</span>
+      try {
+<span class="nc" id="L187">        final CompletableFuture&lt;REPLY&gt; f = process(requestRef).exceptionally(e -&gt; {</span>
+          // Handle cases, such as RaftServer is paused
+<span class="nc" id="L189">          handleError(e, callId, isHeartbeat);</span>
+<span class="nc" id="L190">          current.getFuture().completeExceptionally(e);</span>
+<span class="nc" id="L191">          return null;</span>
+<span class="nc" id="L192">        }).thenCombine(previousFuture, (reply, v) -&gt; {</span>
+<span class="nc" id="L193">          handleReply(reply);</span>
+<span class="nc" id="L194">          current.getFuture().complete(null);</span>
+<span class="nc" id="L195">          return null;</span>
+        });
+<span class="nc" id="L197">        composeRequest(f);</span>
+<span class="nc" id="L198">      } catch (Exception e) {</span>
+<span class="nc" id="L199">        handleError(e, callId, isHeartbeat);</span>
+<span class="nc" id="L200">        current.getFuture().completeExceptionally(e);</span>
+      } finally {
+<span class="nc" id="L202">        previous.ifPresent(PendingServerRequest::release);</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (isClosed.get()) {</span>
+          // Some requests may come after onCompleted or onError, ensure they're released.
+<span class="nc" id="L205">          releaseLast();</span>
+        }
+      }
+<span class="nc" id="L208">    }</span>
+
+    @Override
+    public void onCompleted() {
+<span class="nc bnc" id="L212" title="All 2 branches missed.">      if (isClosed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L213">        BatchLogger.print(BatchLogKey.COMPLETED_REQUEST, getName(),</span>
+<span class="nc" id="L214">            suffix -&gt; LOG.info(&quot;{}: Completed {}, lastRequest: {} {}&quot;,</span>
+<span class="nc" id="L215">                getId(), op, getPreviousRequestString(), suffix));</span>
+<span class="nc" id="L216">        requestFuture.get().thenAccept(reply -&gt; {</span>
+<span class="nc" id="L217">          BatchLogger.print(BatchLogKey.COMPLETED_REPLY, getName(),</span>
+<span class="nc" id="L218">              suffix -&gt; LOG.info(&quot;{}: Completed {}, lastReply: {} {}&quot;, getId(), op, reply, suffix));</span>
+<span class="nc" id="L219">          responseObserver.onCompleted();</span>
+<span class="nc" id="L220">        });</span>
+<span class="nc" id="L221">        releaseLast();</span>
+      }
+<span class="nc" id="L223">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+<span class="nc" id="L227">      GrpcUtil.warn(LOG, () -&gt; getId() + &quot;: &quot;+ op + &quot; onError, lastRequest: &quot; + getPreviousRequestString(), t);</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">      if (isClosed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L229">        Status status = Status.fromThrowable(t);</span>
+<span class="nc bnc" id="L230" title="All 4 branches missed.">        if (status != null &amp;&amp; status.getCode() != Status.Code.CANCELLED) {</span>
+<span class="nc" id="L231">          responseObserver.onCompleted();</span>
+        }
+<span class="nc" id="L233">        releaseLast();</span>
+      }
+<span class="nc" id="L235">    }</span>
+
+    private void releaseLast() {
+<span class="nc" id="L238">      Optional.ofNullable(previousOnNext.get()).ifPresent(PendingServerRequest::release);</span>
+<span class="nc" id="L239">    }</span>
+  }
+
+  private final Supplier&lt;RaftPeerId&gt; idSupplier;
+  private final RaftServer server;
+  private final boolean zeroCopyEnabled;
+  private final ZeroCopyMessageMarshaller&lt;AppendEntriesRequestProto&gt; zeroCopyRequestMarshaller;
+
+  GrpcServerProtocolService(Supplier&lt;RaftPeerId&gt; idSupplier, RaftServer server, boolean zeroCopyEnabled,
+<span class="nc" id="L248">      ZeroCopyMetrics zeroCopyMetrics) {</span>
+<span class="nc" id="L249">    this.idSupplier = idSupplier;</span>
+<span class="nc" id="L250">    this.server = server;</span>
+<span class="nc" id="L251">    this.zeroCopyEnabled = zeroCopyEnabled;</span>
+<span class="nc" id="L252">    this.zeroCopyRequestMarshaller = new ZeroCopyMessageMarshaller&lt;&gt;(AppendEntriesRequestProto.getDefaultInstance(),</span>
+        zeroCopyMetrics::onZeroCopyMessage, zeroCopyMetrics::onNonZeroCopyMessage, zeroCopyMetrics::onReleasedMessage);
+<span class="nc" id="L254">    zeroCopyMetrics.addUnreleased(&quot;server_protocol&quot;, zeroCopyRequestMarshaller::getUnclosedCount);</span>
+<span class="nc" id="L255">  }</span>
+
+  RaftPeerId getId() {
+<span class="nc" id="L258">    return idSupplier.get();</span>
+  }
+
+  ServerServiceDefinition bindServiceWithZeroCopy() {
+<span class="nc" id="L262">    ServerServiceDefinition orig = super.bindService();</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">    if (!zeroCopyEnabled) {</span>
+<span class="nc" id="L264">      LOG.info(&quot;{}: Zero copy is disabled.&quot;, getId());</span>
+<span class="nc" id="L265">      return orig;</span>
+    }
+<span class="nc" id="L267">    ServerServiceDefinition.Builder builder = ServerServiceDefinition.builder(orig.getServiceDescriptor().getName());</span>
+
+    // Add appendEntries with zero copy marshaller.
+<span class="nc" id="L270">    addMethodWithCustomMarshaller(orig, builder, getAppendEntriesMethod(), zeroCopyRequestMarshaller);</span>
+    // Add remaining methods as is.
+<span class="nc" id="L272">    orig.getMethods().stream().filter(</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        x -&gt; !x.getMethodDescriptor().getFullMethodName().equals(getAppendEntriesMethod().getFullMethodName())</span>
+<span class="nc" id="L274">    ).forEach(</span>
+        builder::addMethod
+    );
+
+<span class="nc" id="L278">    return builder.build();</span>
+  }
+
+  @Override
+  public void requestVote(RequestVoteRequestProto request,
+      StreamObserver&lt;RequestVoteReplyProto&gt; responseObserver) {
+    try {
+<span class="nc" id="L285">      final RequestVoteReplyProto reply = server.requestVote(request);</span>
+<span class="nc" id="L286">      responseObserver.onNext(reply);</span>
+<span class="nc" id="L287">      responseObserver.onCompleted();</span>
+<span class="nc" id="L288">    } catch (Exception e) {</span>
+<span class="nc" id="L289">      GrpcUtil.warn(LOG, () -&gt; getId() + &quot;: Failed requestVote &quot; + ProtoUtils.toString(request.getServerRequest()), e);</span>
+<span class="nc" id="L290">      responseObserver.onError(GrpcUtil.wrapException(e));</span>
+<span class="nc" id="L291">    }</span>
+<span class="nc" id="L292">  }</span>
+
+  @Override
+  public void startLeaderElection(StartLeaderElectionRequestProto request,
+      StreamObserver&lt;StartLeaderElectionReplyProto&gt; responseObserver) {
+    try {
+<span class="nc" id="L298">      final StartLeaderElectionReplyProto reply = server.startLeaderElection(request);</span>
+<span class="nc" id="L299">      responseObserver.onNext(reply);</span>
+<span class="nc" id="L300">      responseObserver.onCompleted();</span>
+<span class="nc" id="L301">    } catch (Throwable e) {</span>
+<span class="nc" id="L302">      GrpcUtil.warn(LOG,</span>
+<span class="nc" id="L303">          () -&gt; getId() + &quot;: Failed startLeaderElection &quot; + ProtoUtils.toString(request.getServerRequest()), e);</span>
+<span class="nc" id="L304">      responseObserver.onError(GrpcUtil.wrapException(e));</span>
+<span class="nc" id="L305">    }</span>
+<span class="nc" id="L306">  }</span>
+
+  @Override
+  public void readIndex(ReadIndexRequestProto request, StreamObserver&lt;ReadIndexReplyProto&gt; responseObserver) {
+<span class="nc" id="L310">    final Consumer&lt;Throwable&gt; warning = e -&gt; GrpcUtil.warn(LOG,</span>
+<span class="nc" id="L311">            () -&gt; getId() + &quot;: Failed readIndex &quot; + ProtoUtils.toString(request.getServerRequest()), e);</span>
+<span class="nc" id="L312">    GrpcUtil.asyncCall(responseObserver, () -&gt; server.readIndexAsync(request), Function.identity(), warning);</span>
+<span class="nc" id="L313">  }</span>
+
+  @Override
+  public StreamObserver&lt;AppendEntriesRequestProto&gt; appendEntries(
+      StreamObserver&lt;AppendEntriesReplyProto&gt; responseObserver) {
+<span class="nc" id="L318">    return new ServerRequestStreamObserver&lt;AppendEntriesRequestProto, AppendEntriesReplyProto&gt;(</span>
+<span class="nc" id="L319">        RaftServerProtocol.Op.APPEND_ENTRIES, responseObserver) {</span>
+      @Override
+      CompletableFuture&lt;AppendEntriesReplyProto&gt; process(ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; requestRef)
+          throws IOException {
+<span class="nc" id="L323">        return server.appendEntriesAsync(requestRef);</span>
+      }
+
+      @Override
+      void release(AppendEntriesRequestProto req) {
+<span class="nc" id="L328">        zeroCopyRequestMarshaller.release(req);</span>
+<span class="nc" id="L329">      }</span>
+
+      @Override
+      long getCallId(AppendEntriesRequestProto request) {
+<span class="nc" id="L333">        return request.getServerRequest().getCallId();</span>
+      }
+
+      @Override
+      boolean isHeartbeat(AppendEntriesRequestProto request) {
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        return request.getEntriesCount() == 0;</span>
+      }
+
+      @Override
+      String requestToString(AppendEntriesRequestProto request) {
+<span class="nc" id="L343">        return ServerStringUtils.toAppendEntriesRequestString(request, null);</span>
+      }
+
+      @Override
+      String replyToString(AppendEntriesReplyProto reply) {
+<span class="nc" id="L348">        return ServerStringUtils.toAppendEntriesReplyString(reply);</span>
+      }
+
+      @Override
+      boolean replyInOrder(AppendEntriesRequestProto request) {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">        return request.getEntriesCount() != 0;</span>
+      }
+    };
+  }
+
+  @Override
+  public StreamObserver&lt;InstallSnapshotRequestProto&gt; installSnapshot(
+      StreamObserver&lt;InstallSnapshotReplyProto&gt; responseObserver) {
+<span class="nc" id="L361">    return new ServerRequestStreamObserver&lt;InstallSnapshotRequestProto, InstallSnapshotReplyProto&gt;(</span>
+<span class="nc" id="L362">        RaftServerProtocol.Op.INSTALL_SNAPSHOT, responseObserver) {</span>
+      @Override
+      CompletableFuture&lt;InstallSnapshotReplyProto&gt; process(InstallSnapshotRequestProto request) throws IOException {
+<span class="nc" id="L365">        return CompletableFuture.completedFuture(server.installSnapshot(request));</span>
+      }
+
+      @Override
+      long getCallId(InstallSnapshotRequestProto request) {
+<span class="nc" id="L370">        return request.getServerRequest().getCallId();</span>
+      }
+
+      @Override
+      String requestToString(InstallSnapshotRequestProto request) {
+<span class="nc" id="L375">        return ServerStringUtils.toInstallSnapshotRequestString(request);</span>
+      }
+
+      @Override
+      String replyToString(InstallSnapshotReplyProto reply) {
+<span class="nc" id="L380">        return ServerStringUtils.toInstallSnapshotReplyString(reply);</span>
+      }
+
+      @Override
+      boolean replyInOrder(InstallSnapshotRequestProto installSnapshotRequestProto) {
+<span class="nc" id="L385">        return true;</span>
+      }
+    };
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

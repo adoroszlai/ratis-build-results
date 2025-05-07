@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CodeInjectionForTesting.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">CodeInjectionForTesting.java</span></div><h1>CodeInjectionForTesting.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Inject code for testing. */
+public final class CodeInjectionForTesting {
+
+  private CodeInjectionForTesting() {
+  }
+
+<span class="nc" id="L33">  public static final Logger LOG = LoggerFactory.getLogger(CodeInjectionForTesting.class);</span>
+
+  /** Code to be injected. */
+  public interface Code {
+<span class="nc" id="L37">    Logger LOG = CodeInjectionForTesting.LOG;</span>
+
+    /**
+     * Execute the injected code for testing.
+     * @param localId the id of the local peer
+     * @param remoteId the id of the remote peer if handling a request
+     * @param args other possible args
+     * @return if the injected code is executed
+     */
+    boolean execute(Object localId, Object remoteId, Object... args);
+  }
+
+<span class="nc" id="L49">  private static final Map&lt;String, Code&gt; INJECTION_POINTS</span>
+      = new ConcurrentHashMap&lt;&gt;();
+
+  /** Put an injection point. */
+  public static void put(String injectionPoint, Code code) {
+<span class="nc" id="L54">    LOG.debug(&quot;put: {}, {}&quot;, injectionPoint, code);</span>
+<span class="nc" id="L55">    INJECTION_POINTS.put(injectionPoint, code);</span>
+<span class="nc" id="L56">  }</span>
+
+  /** Execute the injected code, if there is any. */
+  public static boolean execute(String injectionPoint, Object localId,
+      Object remoteId, Object... args) {
+<span class="nc" id="L61">    final Code code = INJECTION_POINTS.get(injectionPoint);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (code == null) {</span>
+<span class="nc" id="L63">      return false;</span>
+    }
+<span class="nc bnc" id="L65" title="All 2 branches missed.">    if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L66">      LOG.debug(&quot;execute: {}, {}, localId={}, remoteId={}, args={}&quot;,</span>
+<span class="nc" id="L67">          injectionPoint, code, localId, remoteId, Arrays.toString(args));</span>
+    }
+<span class="nc" id="L69">    return code.execute(localId, remoteId, args);</span>
+  }
+
+  /** Remove an injection point. */
+  public static void remove(String injectionPoint) {
+<span class="nc" id="L74">    INJECTION_POINTS.remove(injectionPoint);</span>
+<span class="nc" id="L75">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

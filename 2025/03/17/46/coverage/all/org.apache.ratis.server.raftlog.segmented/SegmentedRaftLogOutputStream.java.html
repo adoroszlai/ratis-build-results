@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLogOutputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">SegmentedRaftLogOutputStream.java</span></div><h1>SegmentedRaftLogOutputStream.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.thirdparty.com.google.protobuf.CodedOutputStream;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.PureJavaCrc32C;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+
+public class SegmentedRaftLogOutputStream implements Closeable {
+<span class="nc" id="L38">  private static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogOutputStream.class);</span>
+
+  private static final ByteBuffer FILL;
+  private static final int BUFFER_SIZE = 1024 * 1024; // 1 MB
+  static {
+<span class="nc" id="L43">    final ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">    for (int i = 0; i &lt; BUFFER_SIZE; i++) {</span>
+<span class="nc" id="L45">      buffer.put(SegmentedRaftLogFormat.getTerminator());</span>
+    }
+<span class="nc" id="L47">    buffer.flip();</span>
+<span class="nc" id="L48">    FILL = buffer.asReadOnlyBuffer();</span>
+<span class="nc" id="L49">  }</span>
+
+  private final String name;
+  private final BufferedWriteChannel out; // buffered FileChannel for writing
+<span class="nc" id="L53">  private final PureJavaCrc32C checksum = new PureJavaCrc32C();</span>
+
+  private final long segmentMaxSize;
+  private final long preallocatedSize;
+
+  public SegmentedRaftLogOutputStream(File file, boolean append, long segmentMaxSize,
+      long preallocatedSize, ByteBuffer byteBuffer)
+<span class="nc" id="L60">      throws IOException {</span>
+<span class="nc" id="L61">    this.name = JavaUtils.getClassSimpleName(getClass()) + &quot;(&quot; + file.getName() + &quot;)&quot;;</span>
+<span class="nc" id="L62">    this.segmentMaxSize = segmentMaxSize;</span>
+<span class="nc" id="L63">    this.preallocatedSize = preallocatedSize;</span>
+<span class="nc" id="L64">    this.out = BufferedWriteChannel.open(file, append, byteBuffer);</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    if (!append) {</span>
+      // write header
+<span class="nc" id="L68">      preallocateIfNecessary(SegmentedRaftLogFormat.getHeaderLength());</span>
+<span class="nc" id="L69">      out.writeToChannel(SegmentedRaftLogFormat.getHeaderBytebuffer());</span>
+<span class="nc" id="L70">      out.flush();</span>
+    }
+<span class="nc" id="L72">  }</span>
+
+  /**
+   * Write the given entry to this output stream.
+   * &lt;p&gt;
+   * Format:
+   *   (1) The serialized size of the entry.
+   *   (2) The entry.
+   *   (3) 4-byte checksum of the entry.
+   * &lt;p&gt;
+   * Size in bytes to be written:
+   *   (size to encode n) + n + (checksum size),
+   *   where n is the entry serialized size and the checksum size is 4.
+   */
+  public void write(LogEntryProto entry) throws IOException {
+<span class="nc" id="L87">    final int serialized = entry.getSerializedSize();</span>
+<span class="nc" id="L88">    final int proto = CodedOutputStream.computeUInt32SizeNoTag(serialized) + serialized;</span>
+<span class="nc" id="L89">    final int total = proto + 4; // proto and 4-byte checksum</span>
+<span class="nc" id="L90">    preallocateIfNecessary(total);</span>
+
+<span class="nc" id="L92">    out.writeToBuffer(total, buf -&gt; {</span>
+<span class="nc" id="L93">      final int pos = buf.position();</span>
+<span class="nc" id="L94">      final int protoEndPos= pos + proto;</span>
+
+<span class="nc" id="L96">      final CodedOutputStream encoder = CodedOutputStream.newInstance(buf);</span>
+<span class="nc" id="L97">      encoder.writeUInt32NoTag(serialized);</span>
+<span class="nc" id="L98">      entry.writeTo(encoder);</span>
+
+      // compute checksum
+<span class="nc" id="L101">      final ByteBuffer duplicated = buf.duplicate();</span>
+<span class="nc" id="L102">      duplicated.position(pos).limit(protoEndPos);</span>
+<span class="nc" id="L103">      checksum.reset();</span>
+<span class="nc" id="L104">      checksum.update(duplicated);</span>
+
+<span class="nc" id="L106">      buf.position(protoEndPos);</span>
+<span class="nc" id="L107">      buf.putInt((int) checksum.getValue());</span>
+<span class="nc" id="L108">      Preconditions.assertSame(pos + total, buf.position(), &quot;buf.position()&quot;);</span>
+<span class="nc" id="L109">    });</span>
+<span class="nc" id="L110">  }</span>
+
+  @Override
+  public void close() throws IOException {
+    try {
+<span class="nc" id="L115">      flush();</span>
+    } finally {
+<span class="nc" id="L117">      IOUtils.cleanup(LOG, out);</span>
+    }
+<span class="nc" id="L119">  }</span>
+
+  /**
+   * Flush data to persistent store.
+   * Collect sync metrics.
+   */
+  public void flush() throws IOException {
+    try {
+<span class="nc" id="L127">      out.flush();</span>
+<span class="nc" id="L128">    } catch (IOException ioe) {</span>
+<span class="nc" id="L129">      String msg = &quot;Failed to flush &quot; + this;</span>
+<span class="nc" id="L130">      LOG.error(msg, ioe);</span>
+<span class="nc" id="L131">      throw new IOException(msg, ioe);</span>
+<span class="nc" id="L132">    }</span>
+<span class="nc" id="L133">  }</span>
+
+  CompletableFuture&lt;Void&gt; asyncFlush(ExecutorService executor) throws IOException {
+    try {
+<span class="nc" id="L137">      return out.asyncFlush(executor);</span>
+<span class="nc" id="L138">    } catch (IOException ioe) {</span>
+<span class="nc" id="L139">      String msg = &quot;Failed to asyncFlush &quot; + this;</span>
+<span class="nc" id="L140">      LOG.error(msg, ioe);</span>
+<span class="nc" id="L141">      throw new IOException(msg, ioe);</span>
+    }
+  }
+
+  private static long actualPreallocateSize(long outstandingData, long remainingSpace, long preallocate) {
+<span class="nc bnc" id="L146" title="All 4 branches missed.">    return outstandingData &gt; remainingSpace? outstandingData</span>
+        : outstandingData &gt; preallocate? outstandingData
+<span class="nc" id="L148">        : Math.min(preallocate, remainingSpace);</span>
+  }
+
+  private long preallocate(FileChannel fc, long outstanding) throws IOException {
+<span class="nc" id="L152">    final long size = fc.size();</span>
+<span class="nc" id="L153">    final long actual = actualPreallocateSize(outstanding, segmentMaxSize - size, preallocatedSize);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">    Preconditions.assertTrue(actual &gt;= outstanding);</span>
+<span class="nc" id="L155">    final long pos = fc.position();</span>
+<span class="nc" id="L156">    LOG.debug(&quot;Preallocate {} bytes (pos={}, size={}) for {}&quot;, actual, pos, size, this);</span>
+<span class="nc" id="L157">    final long allocated = IOUtils.preallocate(fc, actual, FILL);</span>
+<span class="nc" id="L158">    Preconditions.assertSame(pos, fc.position(), &quot;fc.position()&quot;);</span>
+<span class="nc" id="L159">    Preconditions.assertSame(actual, allocated, &quot;allocated&quot;);</span>
+<span class="nc" id="L160">    Preconditions.assertSame(size + allocated, fc.size(), &quot;fc.size()&quot;);</span>
+<span class="nc" id="L161">    return allocated;</span>
+  }
+
+  private void preallocateIfNecessary(int size) throws IOException {
+<span class="nc" id="L165">    out.preallocateIfNecessary(size, this::preallocate);</span>
+<span class="nc" id="L166">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L170">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

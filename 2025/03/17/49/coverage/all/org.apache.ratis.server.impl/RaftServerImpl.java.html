@@ -1,0 +1,1977 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">RaftServerImpl.java</span></div><h1>RaftServerImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto.AppendResult;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotReplyProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotResult;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.LogInfoProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase;
+import org.apache.ratis.proto.RaftProtos.RaftConfigurationProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.RaftProtos.ReadIndexReplyProto;
+import org.apache.ratis.proto.RaftProtos.ReadIndexRequestProto;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.proto.RaftProtos.RequestVoteReplyProto;
+import org.apache.ratis.proto.RaftProtos.RequestVoteRequestProto;
+import org.apache.ratis.proto.RaftProtos.RoleInfoProto;
+import org.apache.ratis.proto.RaftProtos.StartLeaderElectionReplyProto;
+import org.apache.ratis.proto.RaftProtos.StartLeaderElectionRequestProto;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.GroupInfoReply;
+import org.apache.ratis.protocol.GroupInfoRequest;
+import org.apache.ratis.protocol.LeaderElectionManagementRequest;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientAsynchronousProtocol;
+import org.apache.ratis.protocol.RaftClientProtocol;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.SetConfigurationRequest;
+import org.apache.ratis.protocol.SnapshotManagementRequest;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.protocol.exceptions.GroupMismatchException;
+import org.apache.ratis.protocol.exceptions.LeaderNotReadyException;
+import org.apache.ratis.protocol.exceptions.LeaderSteppingDownException;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.protocol.exceptions.ReadException;
+import org.apache.ratis.protocol.exceptions.ReadIndexException;
+import org.apache.ratis.protocol.exceptions.ReconfigurationInProgressException;
+import org.apache.ratis.protocol.exceptions.ResourceUnavailableException;
+import org.apache.ratis.protocol.exceptions.ServerNotReadyException;
+import org.apache.ratis.protocol.exceptions.SetConfigurationException;
+import org.apache.ratis.protocol.exceptions.StaleReadException;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.protocol.exceptions.TransferLeadershipException;
+import org.apache.ratis.server.DataStreamMap;
+import org.apache.ratis.server.DivisionInfo;
+import org.apache.ratis.server.DivisionProperties;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.RaftServerRpc;
+import org.apache.ratis.server.impl.LeaderElection.Phase;
+import org.apache.ratis.server.impl.RetryCacheImpl.CacheEntry;
+import org.apache.ratis.server.impl.ServerImplUtils.ConsecutiveIndices;
+import org.apache.ratis.server.impl.ServerImplUtils.NavigableIndices;
+import org.apache.ratis.server.leader.LeaderState;
+import org.apache.ratis.server.metrics.LeaderElectionMetrics;
+import org.apache.ratis.server.metrics.RaftServerMetricsImpl;
+import org.apache.ratis.server.protocol.RaftServerAsynchronousProtocol;
+import org.apache.ratis.server.protocol.RaftServerProtocol;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.server.storage.RaftStorageDirectory;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.statemachine.impl.TransactionContextImpl;
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.ratis.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.ratis.util.CodeInjectionForTesting;
+import org.apache.ratis.util.CollectionUtils;
+import org.apache.ratis.util.ConcurrentUtils;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.LifeCycle.State;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.apache.ratis.util.function.UncheckedAutoCloseableSupplier;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static org.apache.ratis.server.impl.ServerImplUtils.assertEntries;
+import static org.apache.ratis.server.impl.ServerImplUtils.assertGroup;
+import static org.apache.ratis.server.impl.ServerImplUtils.effectiveCommitIndex;
+import static org.apache.ratis.server.impl.ServerProtoUtils.toAppendEntriesReplyProto;
+import static org.apache.ratis.server.impl.ServerProtoUtils.toReadIndexReplyProto;
+import static org.apache.ratis.server.impl.ServerProtoUtils.toReadIndexRequestProto;
+import static org.apache.ratis.server.impl.ServerProtoUtils.toRequestVoteReplyProto;
+import static org.apache.ratis.server.impl.ServerProtoUtils.toStartLeaderElectionReplyProto;
+import static org.apache.ratis.server.util.ServerStringUtils.toAppendEntriesReplyString;
+import static org.apache.ratis.server.util.ServerStringUtils.toAppendEntriesRequestString;
+import static org.apache.ratis.server.util.ServerStringUtils.toRequestVoteReplyString;
+
+class RaftServerImpl implements RaftServer.Division,
+    RaftServerProtocol, RaftServerAsynchronousProtocol,
+    RaftClientProtocol, RaftClientAsynchronousProtocol {
+<span class="nc" id="L160">  private static final String CLASS_NAME = JavaUtils.getClassSimpleName(RaftServerImpl.class);</span>
+<span class="nc" id="L161">  static final String REQUEST_VOTE = CLASS_NAME + &quot;.requestVote&quot;;</span>
+<span class="nc" id="L162">  static final String APPEND_ENTRIES = CLASS_NAME + &quot;.appendEntries&quot;;</span>
+<span class="nc" id="L163">  static final String INSTALL_SNAPSHOT = CLASS_NAME + &quot;.installSnapshot&quot;;</span>
+<span class="nc" id="L164">  static final String APPEND_TRANSACTION = CLASS_NAME + &quot;.appendTransaction&quot;;</span>
+<span class="nc" id="L165">  static final String LOG_SYNC = APPEND_ENTRIES + &quot;.logComplete&quot;;</span>
+<span class="nc" id="L166">  static final String START_LEADER_ELECTION = CLASS_NAME + &quot;.startLeaderElection&quot;;</span>
+<span class="nc" id="L167">  static final String START_COMPLETE = CLASS_NAME + &quot;.startComplete&quot;;</span>
+
+<span class="nc" id="L169">  class Info implements DivisionInfo {</span>
+    @Override
+    public RaftPeerRole getCurrentRole() {
+<span class="nc" id="L172">      return getRole().getCurrentRole();</span>
+    }
+
+    @Override
+    public boolean isLeaderReady() {
+<span class="nc bnc" id="L177" title="All 4 branches missed.">      return isLeader() &amp;&amp; getRole().isLeaderReady();</span>
+    }
+
+    @Override
+    public RaftPeerId getLeaderId() {
+<span class="nc" id="L182">      return getState().getLeaderId();</span>
+    }
+
+    @Override
+    public LifeCycle.State getLifeCycleState() {
+<span class="nc" id="L187">      return lifeCycle.getCurrentState();</span>
+    }
+
+    @Override
+    public RoleInfoProto getRoleInfoProto() {
+<span class="nc" id="L192">      return RaftServerImpl.this.getRoleInfoProto();</span>
+    }
+
+    @Override
+    public long getCurrentTerm() {
+<span class="nc" id="L197">      return getState().getCurrentTerm();</span>
+    }
+
+    @Override
+    public long getLastAppliedIndex() {
+<span class="nc" id="L202">      return getState().getLastAppliedIndex();</span>
+    }
+
+    @Override
+    public long[] getFollowerNextIndices() {
+<span class="nc" id="L207">      return role.getLeaderState()</span>
+<span class="nc" id="L208">          .filter(leader -&gt; isLeader())</span>
+<span class="nc" id="L209">          .map(LeaderStateImpl::getFollowerNextIndices)</span>
+<span class="nc" id="L210">          .orElse(null);</span>
+    }
+
+    @Override
+    public long[] getFollowerMatchIndices() {
+<span class="nc" id="L215">      return role.getLeaderState()</span>
+<span class="nc" id="L216">          .filter(leader -&gt; isLeader())</span>
+<span class="nc" id="L217">          .map(LeaderStateImpl::getFollowerMatchIndices)</span>
+<span class="nc" id="L218">          .orElse(null);</span>
+    }
+  }
+
+  private final RaftServerProxy proxy;
+  private final StateMachine stateMachine;
+<span class="nc" id="L224">  private final Info info =  new Info();</span>
+
+  private final DivisionProperties divisionProperties;
+  private final TimeDuration leaderStepDownWaitTime;
+  private final boolean memberMajorityAddEnabled;
+  private final TimeDuration sleepDeviationThreshold;
+
+  private final LifeCycle lifeCycle;
+  private final ServerState state;
+  private final RoleInfo role;
+
+  private final DataStreamMap dataStreamMap;
+  private final RaftServerConfigKeys.Read.Option readOption;
+
+  private final TransactionManager transactionManager;
+  private final RetryCacheImpl retryCache;
+<span class="nc" id="L240">  private final CommitInfoCache commitInfoCache = new CommitInfoCache();</span>
+  private final WriteIndexCache writeIndexCache;
+
+<span class="nc" id="L243">  private final RaftServerJmxAdapter jmxAdapter = new RaftServerJmxAdapter(this);</span>
+  private final LeaderElectionMetrics leaderElectionMetrics;
+  private final RaftServerMetricsImpl raftServerMetrics;
+<span class="nc" id="L246">  private final CountDownLatch closeFinishedLatch = new CountDownLatch(1);</span>
+
+  // To avoid append entry before complete start() method
+  // For example, if thread1 start(), but before thread1 startAsFollower(), thread2 receive append entry
+  // request, and change state to RUNNING by lifeCycle.compareAndTransition(STARTING, RUNNING),
+  // then thread1 execute lifeCycle.transition(RUNNING) in startAsFollower(),
+  // So happens IllegalStateException: ILLEGAL TRANSITION: RUNNING -&gt; RUNNING,
+  private final AtomicBoolean startComplete;
+
+  private final TransferLeadership transferLeadership;
+  private final SnapshotManagementRequestHandler snapshotRequestHandler;
+  private final SnapshotInstallationHandler snapshotInstallationHandler;
+
+  private final ExecutorService serverExecutor;
+  private final ExecutorService clientExecutor;
+
+<span class="nc" id="L262">  private final AtomicBoolean firstElectionSinceStartup = new AtomicBoolean(true);</span>
+  private final ThreadGroup threadGroup;
+
+  private final AtomicReference&lt;CompletableFuture&lt;Void&gt;&gt; appendLogFuture;
+<span class="nc" id="L266">  private final NavigableIndices appendLogTermIndices = new NavigableIndices();</span>
+
+  RaftServerImpl(RaftGroup group, StateMachine stateMachine, RaftServerProxy proxy, RaftStorage.StartupOption option)
+<span class="nc" id="L269">      throws IOException {</span>
+<span class="nc" id="L270">    final RaftPeerId id = proxy.getId();</span>
+<span class="nc" id="L271">    LOG.info(&quot;{}: new RaftServerImpl for {} with {}&quot;, id, group, stateMachine);</span>
+<span class="nc" id="L272">    this.lifeCycle = new LifeCycle(id);</span>
+<span class="nc" id="L273">    this.stateMachine = stateMachine;</span>
+<span class="nc" id="L274">    this.role = new RoleInfo(id);</span>
+
+<span class="nc" id="L276">    final RaftProperties properties = proxy.getProperties();</span>
+<span class="nc" id="L277">    this.divisionProperties = new DivisionPropertiesImpl(properties);</span>
+<span class="nc" id="L278">    this.leaderStepDownWaitTime = RaftServerConfigKeys.LeaderElection.leaderStepDownWaitTime(properties);</span>
+<span class="nc" id="L279">    this.memberMajorityAddEnabled = RaftServerConfigKeys.LeaderElection.memberMajorityAdd(properties);</span>
+<span class="nc" id="L280">    this.sleepDeviationThreshold = RaftServerConfigKeys.sleepDeviationThreshold(properties);</span>
+<span class="nc" id="L281">    this.proxy = proxy;</span>
+
+<span class="nc" id="L283">    this.state = new ServerState(id, group, stateMachine, this, option, properties);</span>
+<span class="nc" id="L284">    this.retryCache = new RetryCacheImpl(properties);</span>
+<span class="nc" id="L285">    this.dataStreamMap = new DataStreamMapImpl(id);</span>
+<span class="nc" id="L286">    this.readOption = RaftServerConfigKeys.Read.option(properties);</span>
+<span class="nc" id="L287">    this.writeIndexCache = new WriteIndexCache(properties);</span>
+<span class="nc" id="L288">    this.transactionManager = new TransactionManager(id);</span>
+
+<span class="nc" id="L290">    this.leaderElectionMetrics = LeaderElectionMetrics.getLeaderElectionMetrics(</span>
+<span class="nc" id="L291">        getMemberId(), state::getLastLeaderElapsedTimeMs);</span>
+<span class="nc" id="L292">    this.raftServerMetrics = RaftServerMetricsImpl.computeIfAbsentRaftServerMetrics(</span>
+<span class="nc" id="L293">        getMemberId(), this::getCommitIndex, retryCache::getStatistics);</span>
+
+<span class="nc" id="L295">    this.startComplete = new AtomicBoolean(false);</span>
+<span class="nc" id="L296">    this.threadGroup = new ThreadGroup(proxy.getThreadGroup(), getMemberId().toString());</span>
+
+<span class="nc" id="L298">    this.transferLeadership = new TransferLeadership(this, properties);</span>
+<span class="nc" id="L299">    this.snapshotRequestHandler = new SnapshotManagementRequestHandler(this);</span>
+<span class="nc" id="L300">    this.snapshotInstallationHandler = new SnapshotInstallationHandler(this, properties);</span>
+<span class="nc" id="L301">    this.appendLogFuture = new AtomicReference&lt;&gt;(CompletableFuture.completedFuture(null));</span>
+
+<span class="nc" id="L303">    this.serverExecutor = ConcurrentUtils.newThreadPoolWithMax(</span>
+<span class="nc" id="L304">        RaftServerConfigKeys.ThreadPool.serverCached(properties),</span>
+<span class="nc" id="L305">        RaftServerConfigKeys.ThreadPool.serverSize(properties),</span>
+        id + &quot;-server&quot;);
+<span class="nc" id="L307">    this.clientExecutor = ConcurrentUtils.newThreadPoolWithMax(</span>
+<span class="nc" id="L308">        RaftServerConfigKeys.ThreadPool.clientCached(properties),</span>
+<span class="nc" id="L309">        RaftServerConfigKeys.ThreadPool.clientSize(properties),</span>
+        id + &quot;-client&quot;);
+<span class="nc" id="L311">  }</span>
+
+  private long getCommitIndex(RaftPeerId id) {
+<span class="nc" id="L314">    return commitInfoCache.get(id).orElse(0L);</span>
+  }
+
+  @Override
+  public DivisionProperties properties() {
+<span class="nc" id="L319">    return divisionProperties;</span>
+  }
+
+  int getMaxTimeoutMs() {
+<span class="nc" id="L323">    return properties().maxRpcTimeoutMs();</span>
+  }
+
+  TimeDuration getRandomElectionTimeout() {
+<span class="nc bnc" id="L327" title="All 2 branches missed.">    if (firstElectionSinceStartup.get()) {</span>
+<span class="nc" id="L328">      return getFirstRandomElectionTimeout();</span>
+    }
+<span class="nc" id="L330">    final int min = properties().minRpcTimeoutMs();</span>
+<span class="nc" id="L331">    final int millis = min + ThreadLocalRandom.current().nextInt(properties().maxRpcTimeoutMs() - min + 1);</span>
+<span class="nc" id="L332">    return TimeDuration.valueOf(millis, TimeUnit.MILLISECONDS);</span>
+  }
+
+  private TimeDuration getFirstRandomElectionTimeout() {
+<span class="nc" id="L336">    final RaftProperties properties = proxy.getProperties();</span>
+<span class="nc" id="L337">    final int min = RaftServerConfigKeys.Rpc.firstElectionTimeoutMin(properties).toIntExact(TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L338">    final int max = RaftServerConfigKeys.Rpc.firstElectionTimeoutMax(properties).toIntExact(TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L339">    final int mills = min + ThreadLocalRandom.current().nextInt(max - min + 1);</span>
+<span class="nc" id="L340">    return TimeDuration.valueOf(mills, TimeUnit.MILLISECONDS);</span>
+  }
+
+  TimeDuration getLeaderStepDownWaitTime() {
+<span class="nc" id="L344">    return leaderStepDownWaitTime;</span>
+  }
+
+  TimeDuration getSleepDeviationThreshold() {
+<span class="nc" id="L348">    return sleepDeviationThreshold;</span>
+  }
+
+  @Override
+  public ThreadGroup getThreadGroup() {
+<span class="nc" id="L353">    return threadGroup;</span>
+  }
+
+  @Override
+  public StateMachine getStateMachine() {
+<span class="nc" id="L358">    return stateMachine;</span>
+  }
+
+  @Override
+  public RaftLog getRaftLog() {
+<span class="nc" id="L363">    return getState().getLog();</span>
+  }
+
+  @Override
+  public RaftStorage getRaftStorage() {
+<span class="nc" id="L368">    return getState().getStorage();</span>
+  }
+
+  @Override
+  public DataStreamMap getDataStreamMap() {
+<span class="nc" id="L373">    return dataStreamMap;</span>
+  }
+
+  @Override
+  public RetryCacheImpl getRetryCache() {
+<span class="nc" id="L378">    return retryCache;</span>
+  }
+
+  @Override
+  public RaftServerProxy getRaftServer() {
+<span class="nc" id="L383">    return proxy;</span>
+  }
+
+  TransferLeadership getTransferLeadership() {
+<span class="nc" id="L387">    return transferLeadership;</span>
+  }
+
+  RaftServerRpc getServerRpc() {
+<span class="nc" id="L391">    return proxy.getServerRpc();</span>
+  }
+
+  private void setRole(RaftPeerRole newRole, Object reason) {
+<span class="nc" id="L395">    LOG.info(&quot;{}: changes role from {} to {} at term {} for {}&quot;,</span>
+<span class="nc" id="L396">        getMemberId(), this.role, newRole, state.getCurrentTerm(), reason);</span>
+<span class="nc" id="L397">    this.role.transitionRole(newRole);</span>
+<span class="nc" id="L398">  }</span>
+
+  boolean start() throws IOException {
+<span class="nc bnc" id="L401" title="All 2 branches missed.">    if (!lifeCycle.compareAndTransition(State.NEW, State.STARTING)) {</span>
+<span class="nc" id="L402">      return false;</span>
+    }
+<span class="nc" id="L404">    state.initialize(stateMachine);</span>
+
+<span class="nc" id="L406">    final RaftConfigurationImpl conf = getRaftConf();</span>
+<span class="nc bnc" id="L407" title="All 4 branches missed.">    if (conf != null &amp;&amp; conf.containsInBothConfs(getId())) {</span>
+<span class="nc" id="L408">      LOG.info(&quot;{}: start as a follower, conf={}&quot;, getMemberId(), conf);</span>
+<span class="nc" id="L409">      startAsPeer(RaftPeerRole.FOLLOWER);</span>
+<span class="nc bnc" id="L410" title="All 4 branches missed.">    } else if (conf != null &amp;&amp; conf.containsInConf(getId(), RaftPeerRole.LISTENER)) {</span>
+<span class="nc" id="L411">      LOG.info(&quot;{}: start as a listener, conf={}&quot;, getMemberId(), conf);</span>
+<span class="nc" id="L412">      startAsPeer(RaftPeerRole.LISTENER);</span>
+    } else {
+<span class="nc" id="L414">      LOG.info(&quot;{}: start with initializing state, conf={}&quot;, getMemberId(), conf);</span>
+<span class="nc" id="L415">      setRole(RaftPeerRole.FOLLOWER, &quot;start&quot;);</span>
+    }
+
+<span class="nc" id="L418">    jmxAdapter.registerMBean();</span>
+<span class="nc" id="L419">    state.start();</span>
+<span class="nc" id="L420">    CodeInjectionForTesting.execute(START_COMPLETE, getId(), null, role);</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">    if (startComplete.compareAndSet(false, true)) {</span>
+<span class="nc" id="L422">      LOG.info(&quot;{}: Successfully started.&quot;, getMemberId());</span>
+    }
+<span class="nc" id="L424">    return true;</span>
+  }
+
+  /**
+   * The peer belongs to the current configuration, should start as a follower or listener
+   */
+  private void startAsPeer(RaftPeerRole newRole) {
+    final Object reason;
+<span class="nc bnc" id="L432" title="All 2 branches missed.">    if (newRole == RaftPeerRole.FOLLOWER) {</span>
+<span class="nc" id="L433">      reason = &quot;startAsFollower&quot;;</span>
+<span class="nc" id="L434">      setRole(RaftPeerRole.FOLLOWER, reason);</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">    } else if (newRole == RaftPeerRole.LISTENER) {</span>
+<span class="nc" id="L436">      reason = &quot;startAsListener&quot;;</span>
+<span class="nc" id="L437">      setRole(RaftPeerRole.LISTENER, reason);</span>
+    } else {
+<span class="nc" id="L439">      throw new IllegalArgumentException(&quot;Unexpected role &quot; + newRole);</span>
+    }
+<span class="nc" id="L441">    role.startFollowerState(this, reason);</span>
+
+<span class="nc" id="L443">    lifeCycle.transition(State.RUNNING);</span>
+<span class="nc" id="L444">  }</span>
+
+  ServerState getState() {
+<span class="nc" id="L447">    return state;</span>
+  }
+
+  @Override
+  public RaftGroupMemberId getMemberId() {
+<span class="nc" id="L452">    return getState().getMemberId();</span>
+  }
+
+  @Override
+  public RaftPeer getPeer() {
+<span class="nc" id="L457">    return Optional.ofNullable(getState().getCurrentPeer())</span>
+<span class="nc" id="L458">        .orElseGet(() -&gt; getRaftServer().getPeer());</span>
+  }
+
+  @Override
+  public DivisionInfo getInfo() {
+<span class="nc" id="L463">    return info;</span>
+  }
+
+  RoleInfo getRole() {
+<span class="nc" id="L467">    return role;</span>
+  }
+
+  @Override
+  public RaftConfigurationImpl getRaftConf() {
+<span class="nc" id="L472">    return getState().getRaftConf();</span>
+  }
+
+  /**
+   * This removes the group from the server.
+   * If the deleteDirectory flag is set to false, and renameDirectory
+   * the directory is moved to
+   * {@link RaftServerConfigKeys#REMOVED_GROUPS_DIR_KEY} location.
+   * If the deleteDirectory flag is true, the group is permanently deleted.
+   */
+  void groupRemove(boolean deleteDirectory, boolean renameDirectory) {
+<span class="nc" id="L483">    final RaftStorageDirectory dir = state.getStorage().getStorageDir();</span>
+
+    /* Shutdown is triggered here inorder to avoid any locked files. */
+<span class="nc" id="L486">    state.getStateMachineUpdater().setRemoving();</span>
+<span class="nc" id="L487">    close();</span>
+    try {
+<span class="nc" id="L489">      closeFinishedLatch.await();</span>
+<span class="nc" id="L490">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L491">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L492">      LOG.warn(&quot;{}: Waiting closing interrupted, will not continue to remove group locally&quot;, getMemberId());</span>
+<span class="nc" id="L493">      return;</span>
+<span class="nc" id="L494">    }</span>
+<span class="nc" id="L495">    getStateMachine().event().notifyGroupRemove();</span>
+<span class="nc bnc" id="L496" title="All 2 branches missed.">    if (deleteDirectory) {</span>
+<span class="nc bnc" id="L497" title="All 2 branches missed.">      for (int i = 0; i &lt; FileUtils.NUM_ATTEMPTS; i ++) {</span>
+        try {
+<span class="nc" id="L499">          FileUtils.deleteFully(dir.getRoot());</span>
+<span class="nc" id="L500">          LOG.info(&quot;{}: Succeed to remove RaftStorageDirectory {}&quot;, getMemberId(), dir);</span>
+<span class="nc" id="L501">          break;</span>
+<span class="nc" id="L502">        } catch (NoSuchFileException e) {</span>
+<span class="nc" id="L503">          LOG.warn(&quot;{}: Some file does not exist {}&quot;, getMemberId(), dir, e);</span>
+<span class="nc" id="L504">        } catch (Exception e) {</span>
+<span class="nc" id="L505">          LOG.error(&quot;{}: Failed to remove RaftStorageDirectory {}&quot;, getMemberId(), dir, e);</span>
+<span class="nc" id="L506">          break;</span>
+<span class="nc" id="L507">        }</span>
+      }
+<span class="nc bnc" id="L509" title="All 2 branches missed.">    } else if(renameDirectory) {</span>
+      try {
+        /* Create path with current group in REMOVED_GROUPS_DIR_KEY location */
+<span class="nc" id="L512">        File toBeRemovedGroupFolder = new File(RaftServerConfigKeys</span>
+<span class="nc" id="L513">            .removedGroupsDir(proxy.getProperties()),</span>
+<span class="nc" id="L514">            dir.getRoot().getName());</span>
+
+<span class="nc" id="L516">        FileUtils.moveDirectory(dir.getRoot().toPath(),</span>
+<span class="nc" id="L517">            toBeRemovedGroupFolder.toPath());</span>
+
+<span class="nc" id="L519">        LOG.info(&quot;{}: Group {} is renamed successfully&quot;, getMemberId(), getGroup());</span>
+<span class="nc" id="L520">      } catch (IOException e) {</span>
+<span class="nc" id="L521">        LOG.warn(&quot;{}: Failed to remove group {}&quot;, getMemberId(),</span>
+<span class="nc" id="L522">            dir.getRoot().getName(), e);</span>
+<span class="nc" id="L523">      }</span>
+    }
+<span class="nc" id="L525">  }</span>
+
+  @Override
+  public void close() {
+<span class="nc" id="L529">    lifeCycle.checkStateAndClose(() -&gt; {</span>
+<span class="nc" id="L530">      LOG.info(&quot;{}: shutdown&quot;, getMemberId());</span>
+      try {
+<span class="nc" id="L532">        jmxAdapter.unregister();</span>
+<span class="nc" id="L533">      } catch (Exception e) {</span>
+<span class="nc" id="L534">        LOG.warn(&quot;{}: Failed to un-register RaftServer JMX bean&quot;, getMemberId(), e);</span>
+<span class="nc" id="L535">      }</span>
+      try {
+<span class="nc" id="L537">        role.shutdownFollowerState();</span>
+<span class="nc" id="L538">      } catch (Exception e) {</span>
+<span class="nc" id="L539">        LOG.warn(&quot;{}: Failed to shutdown FollowerState&quot;, getMemberId(), e);</span>
+<span class="nc" id="L540">      }</span>
+      try{
+<span class="nc" id="L542">        role.shutdownLeaderElection();</span>
+<span class="nc" id="L543">      } catch (Exception e) {</span>
+<span class="nc" id="L544">        LOG.warn(&quot;{}: Failed to shutdown LeaderElection&quot;, getMemberId(), e);</span>
+<span class="nc" id="L545">      }</span>
+      try{
+<span class="nc" id="L547">        role.shutdownLeaderState(true).join();</span>
+<span class="nc" id="L548">      } catch (Exception e) {</span>
+<span class="nc" id="L549">        LOG.warn(&quot;{}: Failed to shutdown LeaderState monitor&quot;, getMemberId(), e);</span>
+<span class="nc" id="L550">      }</span>
+      try{
+<span class="nc" id="L552">        state.close();</span>
+<span class="nc" id="L553">      } catch (Exception e) {</span>
+<span class="nc" id="L554">        LOG.warn(&quot;{}: Failed to close state&quot;, getMemberId(), e);</span>
+<span class="nc" id="L555">      }</span>
+      try {
+<span class="nc" id="L557">        leaderElectionMetrics.unregister();</span>
+<span class="nc" id="L558">        raftServerMetrics.unregister();</span>
+<span class="nc" id="L559">        RaftServerMetricsImpl.removeRaftServerMetrics(getMemberId());</span>
+<span class="nc" id="L560">      } catch (Exception e) {</span>
+<span class="nc" id="L561">        LOG.warn(&quot;{}: Failed to unregister metric&quot;, getMemberId(), e);</span>
+<span class="nc" id="L562">      }</span>
+      try {
+<span class="nc" id="L564">        ConcurrentUtils.shutdownAndWait(clientExecutor);</span>
+<span class="nc" id="L565">      } catch (Exception e) {</span>
+<span class="nc" id="L566">        LOG.warn(getMemberId() + &quot;: Failed to shutdown clientExecutor&quot;, e);</span>
+<span class="nc" id="L567">      }</span>
+      try {
+<span class="nc" id="L569">        ConcurrentUtils.shutdownAndWait(serverExecutor);</span>
+<span class="nc" id="L570">      } catch (Exception e) {</span>
+<span class="nc" id="L571">        LOG.warn(getMemberId() + &quot;: Failed to shutdown serverExecutor&quot;, e);</span>
+<span class="nc" id="L572">      }</span>
+<span class="nc" id="L573">      closeFinishedLatch.countDown();</span>
+<span class="nc" id="L574">    });</span>
+<span class="nc" id="L575">  }</span>
+
+  void setFirstElection(Object reason) {
+<span class="nc bnc" id="L578" title="All 2 branches missed.">    if (firstElectionSinceStartup.compareAndSet(true, false)) {</span>
+<span class="nc" id="L579">      LOG.info(&quot;{}: set firstElectionSinceStartup to false for {}&quot;, getMemberId(), reason);</span>
+    }
+<span class="nc" id="L581">  }</span>
+
+  /**
+   * Change the server state to Follower if this server is in a different role or force is true.
+   * @param newTerm The new term.
+   * @param force Force to start a new {@link FollowerState} even if this server is already a follower.
+   * @return if the term/votedFor should be updated to the new term
+   */
+  private synchronized CompletableFuture&lt;Void&gt; changeToFollower(
+      long newTerm, boolean force, boolean allowListener, Object reason, AtomicBoolean metadataUpdated) {
+<span class="nc" id="L591">    final RaftPeerRole old = role.getCurrentRole();</span>
+<span class="nc bnc" id="L592" title="All 4 branches missed.">    if (old == RaftPeerRole.LISTENER &amp;&amp; !allowListener) {</span>
+<span class="nc" id="L593">      throw new IllegalStateException(&quot;Unexpected role &quot; + old);</span>
+    }
+<span class="nc" id="L595">    CompletableFuture&lt;Void&gt; future = CompletableFuture.completedFuture(null);</span>
+<span class="nc bnc" id="L596" title="All 6 branches missed.">    if ((old != RaftPeerRole.FOLLOWER || force) &amp;&amp; old != RaftPeerRole.LISTENER) {</span>
+<span class="nc" id="L597">      setRole(RaftPeerRole.FOLLOWER, reason);</span>
+<span class="nc bnc" id="L598" title="All 2 branches missed.">      if (old == RaftPeerRole.LEADER) {</span>
+<span class="nc" id="L599">        future = role.shutdownLeaderState(false)</span>
+<span class="nc" id="L600">            .exceptionally(e -&gt; {</span>
+<span class="nc bnc" id="L601" title="All 2 branches missed.">              if (e != null) {</span>
+<span class="nc bnc" id="L602" title="All 2 branches missed.">                if (!getInfo().isAlive()) {</span>
+<span class="nc" id="L603">                  LOG.info(&quot;Since server is not alive {}, safely ignore {}&quot;, this, e.toString());</span>
+<span class="nc" id="L604">                  return null;</span>
+                }
+              }
+<span class="nc" id="L607">              throw new CompletionException(&quot;Failed to shutdownLeaderState: &quot; + this, e);</span>
+            });
+<span class="nc" id="L609">        state.setLeader(null, reason);</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">      } else if (old == RaftPeerRole.CANDIDATE) {</span>
+<span class="nc" id="L611">        future = role.shutdownLeaderElection();</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">      } else if (old == RaftPeerRole.FOLLOWER) {</span>
+<span class="nc" id="L613">        future = role.shutdownFollowerState();</span>
+      }
+
+<span class="nc" id="L616">      metadataUpdated.set(state.updateCurrentTerm(newTerm));</span>
+<span class="nc" id="L617">      role.startFollowerState(this, reason);</span>
+<span class="nc" id="L618">      setFirstElection(reason);</span>
+    } else {
+<span class="nc" id="L620">      metadataUpdated.set(state.updateCurrentTerm(newTerm));</span>
+    }
+<span class="nc" id="L622">    return future;</span>
+  }
+
+  synchronized CompletableFuture&lt;Void&gt; changeToFollowerAndPersistMetadata(
+      long newTerm,
+      boolean allowListener,
+      Object reason) throws IOException {
+<span class="nc" id="L629">    final AtomicBoolean metadataUpdated = new AtomicBoolean();</span>
+<span class="nc" id="L630">    final CompletableFuture&lt;Void&gt; future = changeToFollower(newTerm, false, allowListener, reason, metadataUpdated);</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">    if (metadataUpdated.get()) {</span>
+<span class="nc" id="L632">      state.persistMetadata();</span>
+    }
+<span class="nc" id="L634">    return future;</span>
+  }
+
+  synchronized void changeToLeader() {
+<span class="nc" id="L638">    Preconditions.assertTrue(getInfo().isCandidate());</span>
+<span class="nc" id="L639">    role.shutdownLeaderElection();</span>
+<span class="nc" id="L640">    setRole(RaftPeerRole.LEADER, &quot;changeToLeader&quot;);</span>
+<span class="nc" id="L641">    final LeaderStateImpl leader = role.updateLeaderState(this);</span>
+<span class="nc" id="L642">    state.becomeLeader();</span>
+
+    // start sending AppendEntries RPC to followers
+<span class="nc" id="L645">    leader.start();</span>
+<span class="nc" id="L646">  }</span>
+
+  @Override
+  public Collection&lt;CommitInfoProto&gt; getCommitInfos() {
+    try {
+<span class="nc" id="L651">      return getCommitInfosImpl();</span>
+<span class="nc" id="L652">    } catch (Throwable t) {</span>
+<span class="nc" id="L653">      LOG.warn(&quot;{} Failed to getCommitInfos&quot;, getMemberId(), t);</span>
+<span class="nc" id="L654">      return Collections.emptyList();</span>
+    }
+  }
+
+  private Collection&lt;CommitInfoProto&gt; getCommitInfosImpl() {
+<span class="nc" id="L659">    final List&lt;CommitInfoProto&gt; infos = new ArrayList&lt;&gt;();</span>
+    // add the commit info of this server
+<span class="nc" id="L661">    final long commitIndex = updateCommitInfoCache();</span>
+<span class="nc" id="L662">    infos.add(ProtoUtils.toCommitInfoProto(getPeer(), commitIndex));</span>
+
+    // add the commit infos of other servers
+<span class="nc bnc" id="L665" title="All 2 branches missed.">    if (getInfo().isLeader()) {</span>
+<span class="nc" id="L666">      role.getLeaderState().ifPresent(</span>
+<span class="nc" id="L667">          leader -&gt; leader.updateFollowerCommitInfos(commitInfoCache, infos));</span>
+    } else {
+<span class="nc" id="L669">      RaftConfigurationImpl raftConf = getRaftConf();</span>
+<span class="nc" id="L670">      Stream.concat(</span>
+<span class="nc" id="L671">              raftConf.getAllPeers(RaftPeerRole.FOLLOWER).stream(),</span>
+<span class="nc" id="L672">              raftConf.getAllPeers(RaftPeerRole.LISTENER).stream())</span>
+<span class="nc bnc" id="L673" title="All 2 branches missed.">          .filter(peer -&gt; !peer.getId().equals(getId()))</span>
+<span class="nc" id="L674">          .map(peer -&gt; commitInfoCache.get(peer.getId())</span>
+<span class="nc" id="L675">              .map(index -&gt; ProtoUtils.toCommitInfoProto(peer, index))</span>
+<span class="nc" id="L676">              .orElse(null))</span>
+<span class="nc" id="L677">          .filter(Objects::nonNull)</span>
+<span class="nc" id="L678">          .forEach(infos::add);</span>
+    }
+<span class="nc" id="L680">    return infos;</span>
+  }
+
+  GroupInfoReply getGroupInfo(GroupInfoRequest request) {
+<span class="nc" id="L684">    final RaftStorageDirectory dir = state.getStorage().getStorageDir();</span>
+<span class="nc" id="L685">    final RaftConfigurationProto conf =</span>
+<span class="nc" id="L686">        LogProtoUtils.toRaftConfigurationProtoBuilder(getRaftConf()).build();</span>
+<span class="nc" id="L687">    return new GroupInfoReply(request, getCommitInfos(), getGroup(), getRoleInfoProto(),</span>
+<span class="nc" id="L688">        dir.isHealthy(), conf, getLogInfo());</span>
+  }
+
+  LogInfoProto getLogInfo(){
+<span class="nc" id="L692">    final RaftLog log = getRaftLog();</span>
+<span class="nc" id="L693">    LogInfoProto.Builder logInfoBuilder = LogInfoProto.newBuilder();</span>
+<span class="nc" id="L694">    final TermIndex applied = getStateMachine().getLastAppliedTermIndex();</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">    if (applied != null) {</span>
+<span class="nc" id="L696">      logInfoBuilder.setApplied(applied.toProto());</span>
+    }
+<span class="nc" id="L698">    final TermIndex committed = log.getTermIndex(log.getLastCommittedIndex());</span>
+<span class="nc bnc" id="L699" title="All 2 branches missed.">    if (committed != null) {</span>
+<span class="nc" id="L700">      logInfoBuilder.setCommitted(committed.toProto());</span>
+    }
+<span class="nc" id="L702">    final TermIndex entry = log.getLastEntryTermIndex();</span>
+<span class="nc bnc" id="L703" title="All 2 branches missed.">    if (entry != null) {</span>
+<span class="nc" id="L704">      logInfoBuilder.setLastEntry(entry.toProto());</span>
+    }
+<span class="nc" id="L706">    final SnapshotInfo snapshot = getStateMachine().getLatestSnapshot();</span>
+<span class="nc bnc" id="L707" title="All 2 branches missed.">    if (snapshot != null) {</span>
+<span class="nc" id="L708">      logInfoBuilder.setLastSnapshot(snapshot.getTermIndex().toProto());</span>
+    }
+<span class="nc" id="L710">    return logInfoBuilder.build();</span>
+  }
+
+  RoleInfoProto getRoleInfoProto() {
+<span class="nc" id="L714">    return role.buildRoleInfoProto(this);</span>
+  }
+
+  synchronized void changeToCandidate(boolean forceStartLeaderElection) {
+<span class="nc" id="L718">    Preconditions.assertTrue(getInfo().isFollower());</span>
+<span class="nc" id="L719">    role.shutdownFollowerState();</span>
+<span class="nc" id="L720">    setRole(RaftPeerRole.CANDIDATE, &quot;changeToCandidate&quot;);</span>
+<span class="nc bnc" id="L721" title="All 2 branches missed.">    if (state.shouldNotifyExtendedNoLeader()) {</span>
+<span class="nc" id="L722">      stateMachine.followerEvent().notifyExtendedNoLeader(getRoleInfoProto());</span>
+    }
+    // start election
+<span class="nc" id="L725">    role.startLeaderElection(this, forceStartLeaderElection);</span>
+<span class="nc" id="L726">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L730">    return role + &quot; &quot; + state + &quot; &quot; + lifeCycle.getCurrentState();</span>
+  }
+
+  RaftClientReply.Builder newReplyBuilder(RaftClientRequest request) {
+<span class="nc" id="L734">    return RaftClientReply.newBuilder()</span>
+<span class="nc" id="L735">        .setRequest(request)</span>
+<span class="nc" id="L736">        .setCommitInfos(getCommitInfos());</span>
+  }
+
+  private RaftClientReply.Builder newReplyBuilder(ClientInvocationId invocationId, long logIndex) {
+<span class="nc" id="L740">    return RaftClientReply.newBuilder()</span>
+<span class="nc" id="L741">        .setClientInvocationId(invocationId)</span>
+<span class="nc" id="L742">        .setLogIndex(logIndex)</span>
+<span class="nc" id="L743">        .setServerId(getMemberId())</span>
+<span class="nc" id="L744">        .setCommitInfos(getCommitInfos());</span>
+  }
+
+  RaftClientReply newSuccessReply(RaftClientRequest request) {
+<span class="nc" id="L748">    return newReplyBuilder(request)</span>
+<span class="nc" id="L749">        .setSuccess()</span>
+<span class="nc" id="L750">        .build();</span>
+  }
+
+  RaftClientReply newSuccessReply(RaftClientRequest request, long logIndex) {
+<span class="nc" id="L754">    return newReplyBuilder(request)</span>
+<span class="nc" id="L755">        .setSuccess()</span>
+<span class="nc" id="L756">        .setLogIndex(logIndex)</span>
+<span class="nc" id="L757">        .build();</span>
+  }
+
+  RaftClientReply newExceptionReply(RaftClientRequest request, RaftException exception) {
+<span class="nc" id="L761">    return newReplyBuilder(request)</span>
+<span class="nc" id="L762">        .setException(exception)</span>
+<span class="nc" id="L763">        .build();</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; checkLeaderState(RaftClientRequest request) {
+<span class="nc" id="L767">    return checkLeaderState(request, null);</span>
+  }
+
+  /**
+   * @return null if the server is in leader state.
+   */
+  private CompletableFuture&lt;RaftClientReply&gt; checkLeaderState(RaftClientRequest request, CacheEntry entry) {
+    try {
+<span class="nc" id="L775">      assertGroup(getMemberId(), request);</span>
+<span class="nc" id="L776">    } catch (GroupMismatchException e) {</span>
+<span class="nc" id="L777">      return RetryCacheImpl.failWithException(e, entry);</span>
+<span class="nc" id="L778">    }</span>
+
+<span class="nc bnc" id="L780" title="All 2 branches missed.">    if (!getInfo().isLeader()) {</span>
+<span class="nc" id="L781">      NotLeaderException exception = generateNotLeaderException();</span>
+<span class="nc" id="L782">      final RaftClientReply reply = newExceptionReply(request, exception);</span>
+<span class="nc" id="L783">      return RetryCacheImpl.failWithReply(reply, entry);</span>
+    }
+<span class="nc bnc" id="L785" title="All 2 branches missed.">    if (!getInfo().isLeaderReady()) {</span>
+<span class="nc" id="L786">      final CacheEntry cacheEntry = retryCache.getIfPresent(ClientInvocationId.valueOf(request));</span>
+<span class="nc bnc" id="L787" title="All 4 branches missed.">      if (cacheEntry != null &amp;&amp; cacheEntry.isCompletedNormally()) {</span>
+<span class="nc" id="L788">        return cacheEntry.getReplyFuture();</span>
+      }
+<span class="nc" id="L790">      final LeaderNotReadyException lnre = new LeaderNotReadyException(getMemberId());</span>
+<span class="nc" id="L791">      final RaftClientReply reply = newExceptionReply(request, lnre);</span>
+<span class="nc" id="L792">      return RetryCacheImpl.failWithReply(reply, entry);</span>
+    }
+
+<span class="nc bnc" id="L795" title="All 4 branches missed.">    if (!request.isReadOnly() &amp;&amp; isSteppingDown()) {</span>
+<span class="nc" id="L796">      final LeaderSteppingDownException lsde = new LeaderSteppingDownException(getMemberId() + &quot; is stepping down&quot;);</span>
+<span class="nc" id="L797">      final RaftClientReply reply = newExceptionReply(request, lsde);</span>
+<span class="nc" id="L798">      return RetryCacheImpl.failWithReply(reply, entry);</span>
+    }
+
+<span class="nc" id="L801">    return null;</span>
+  }
+
+  NotLeaderException generateNotLeaderException() {
+<span class="nc bnc" id="L805" title="All 2 branches missed.">    if (!lifeCycle.getCurrentState().isRunning()) {</span>
+<span class="nc" id="L806">      return new NotLeaderException(getMemberId(), null, null);</span>
+    }
+<span class="nc" id="L808">    RaftPeerId leaderId = state.getLeaderId();</span>
+<span class="nc bnc" id="L809" title="All 4 branches missed.">    if (leaderId == null || leaderId.equals(getId())) {</span>
+      // No idea about who is the current leader. Or the peer is the current
+      // leader, but it is about to step down. set the suggested leader as null.
+<span class="nc" id="L812">      leaderId = null;</span>
+    }
+<span class="nc" id="L814">    final RaftConfigurationImpl conf = getRaftConf();</span>
+<span class="nc" id="L815">    Collection&lt;RaftPeer&gt; peers = conf.getAllPeers();</span>
+<span class="nc" id="L816">    return new NotLeaderException(getMemberId(), conf.getPeer(leaderId), peers);</span>
+  }
+
+  void assertLifeCycleState(Set&lt;LifeCycle.State&gt; expected) throws ServerNotReadyException {
+<span class="nc" id="L820">    lifeCycle.assertCurrentState((n, c) -&gt; new ServerNotReadyException(</span>
+<span class="nc" id="L821">        getMemberId() + &quot; is not in &quot; + expected + &quot;: current state is &quot; + c), expected);</span>
+<span class="nc" id="L822">  }</span>
+
+  /**
+   * Append a transaction to the log for processing a client request.
+   * Note that the given request could be different from {@link TransactionContext#getClientRequest()}
+   * since the request could be converted; see {@link #convertRaftClientRequest(RaftClientRequest)}.
+   *
+   * @param request The client request.
+   * @param context The context of the transaction.
+   * @param cacheEntry the entry in the retry cache.
+   * @return a future of the reply.
+   */
+  private CompletableFuture&lt;RaftClientReply&gt; appendTransaction(
+      RaftClientRequest request, TransactionContextImpl context, CacheEntry cacheEntry) {
+<span class="nc" id="L836">    Objects.requireNonNull(request, &quot;request == null&quot;);</span>
+<span class="nc" id="L837">    CodeInjectionForTesting.execute(APPEND_TRANSACTION, getId(),</span>
+<span class="nc" id="L838">        request.getClientId(), request, context, cacheEntry);</span>
+
+    final PendingRequest pending;
+<span class="nc" id="L841">    synchronized (this) {</span>
+<span class="nc" id="L842">      final CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request, cacheEntry);</span>
+<span class="nc bnc" id="L843" title="All 2 branches missed.">      if (reply != null) {</span>
+<span class="nc" id="L844">        return reply;</span>
+      }
+
+      // append the message to its local log
+<span class="nc" id="L848">      final LeaderStateImpl leaderState = role.getLeaderStateNonNull();</span>
+<span class="nc" id="L849">      writeIndexCache.add(request.getClientId(), context.getLogIndexFuture());</span>
+
+<span class="nc" id="L851">      final PendingRequests.Permit permit = leaderState.tryAcquirePendingRequest(request.getMessage());</span>
+<span class="nc bnc" id="L852" title="All 2 branches missed.">      if (permit == null) {</span>
+<span class="nc" id="L853">        cacheEntry.failWithException(new ResourceUnavailableException(</span>
+<span class="nc" id="L854">            getMemberId() + &quot;: Failed to acquire a pending write request for &quot; + request));</span>
+<span class="nc" id="L855">        return cacheEntry.getReplyFuture();</span>
+      }
+      try {
+<span class="nc" id="L858">        assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L859">        state.appendLog(context);</span>
+<span class="nc" id="L860">      } catch (StateMachineException e) {</span>
+        // the StateMachineException is thrown by the SM in the preAppend stage.
+        // Return the exception in a RaftClientReply.
+<span class="nc" id="L863">        RaftClientReply exceptionReply = newExceptionReply(request, e);</span>
+<span class="nc" id="L864">        cacheEntry.failWithReply(exceptionReply);</span>
+        // leader will step down here
+<span class="nc bnc" id="L866" title="All 4 branches missed.">        if (e.leaderShouldStepDown() &amp;&amp; getInfo().isLeader()) {</span>
+<span class="nc" id="L867">          leaderState.submitStepDownEvent(LeaderState.StepDownReason.STATE_MACHINE_EXCEPTION);</span>
+        }
+<span class="nc" id="L869">        return CompletableFuture.completedFuture(exceptionReply);</span>
+<span class="nc" id="L870">      } catch (ServerNotReadyException e) {</span>
+<span class="nc" id="L871">        final RaftClientReply exceptionReply = newExceptionReply(request, e);</span>
+<span class="nc" id="L872">        return CompletableFuture.completedFuture(exceptionReply);</span>
+<span class="nc" id="L873">      }</span>
+
+      // put the request into the pending queue
+<span class="nc" id="L876">      pending = leaderState.addPendingRequest(permit, request, context);</span>
+<span class="nc bnc" id="L877" title="All 2 branches missed.">      if (pending == null) {</span>
+<span class="nc" id="L878">        cacheEntry.failWithException(new ResourceUnavailableException(</span>
+<span class="nc" id="L879">            getMemberId() + &quot;: Failed to add a pending write request for &quot; + request));</span>
+<span class="nc" id="L880">        return cacheEntry.getReplyFuture();</span>
+      }
+<span class="nc" id="L882">      leaderState.notifySenders();</span>
+<span class="nc" id="L883">    }</span>
+
+<span class="nc" id="L885">    return pending.getFuture();</span>
+  }
+
+  /** Wait until the given replication requirement is satisfied. */
+  private CompletableFuture&lt;RaftClientReply&gt; waitForReplication(RaftClientReply reply, ReplicationLevel replication) {
+<span class="nc bnc" id="L890" title="All 2 branches missed.">    if (!reply.isSuccess()) {</span>
+<span class="nc" id="L891">      return CompletableFuture.completedFuture(reply);</span>
+    }
+<span class="nc" id="L893">    final RaftClientRequest.Type type = RaftClientRequest.watchRequestType(reply.getLogIndex(), replication);</span>
+<span class="nc" id="L894">    final RaftClientRequest watch = RaftClientRequest.newBuilder()</span>
+<span class="nc" id="L895">        .setServerId(reply.getServerId())</span>
+<span class="nc" id="L896">        .setClientId(reply.getClientId())</span>
+<span class="nc" id="L897">        .setGroupId(reply.getRaftGroupId())</span>
+<span class="nc" id="L898">        .setCallId(reply.getCallId())</span>
+<span class="nc" id="L899">        .setType(type)</span>
+<span class="nc" id="L900">        .build();</span>
+<span class="nc" id="L901">    return watchAsync(watch).thenApply(watchReply -&gt; combineReplies(reply, watchReply));</span>
+  }
+
+  private RaftClientReply combineReplies(RaftClientReply reply, RaftClientReply watchReply) {
+<span class="nc" id="L905">    final RaftClientReply combinedReply = RaftClientReply.newBuilder()</span>
+<span class="nc" id="L906">        .setServerId(getMemberId())</span>
+        // from write reply
+<span class="nc" id="L908">        .setClientId(reply.getClientId())</span>
+<span class="nc" id="L909">        .setCallId(reply.getCallId())</span>
+<span class="nc" id="L910">        .setMessage(reply.getMessage())</span>
+<span class="nc" id="L911">        .setLogIndex(reply.getLogIndex())</span>
+        // from watchReply
+<span class="nc" id="L913">        .setSuccess(watchReply.isSuccess())</span>
+<span class="nc" id="L914">        .setException(watchReply.getException())</span>
+<span class="nc" id="L915">        .setCommitInfos(watchReply.getCommitInfos())</span>
+<span class="nc" id="L916">        .build();</span>
+<span class="nc" id="L917">    LOG.debug(&quot;combinedReply={}&quot;, combinedReply);</span>
+<span class="nc" id="L918">    return combinedReply;</span>
+  }
+
+  void stepDownOnJvmPause() {
+<span class="nc" id="L922">    role.getLeaderState().ifPresent(leader -&gt; leader.submitStepDownEvent(LeaderState.StepDownReason.JVM_PAUSE));</span>
+<span class="nc" id="L923">  }</span>
+
+  /** If the given request is {@link TypeCase#FORWARD}, convert it. */
+  static RaftClientRequest convertRaftClientRequest(RaftClientRequest request) throws InvalidProtocolBufferException {
+<span class="nc bnc" id="L927" title="All 2 branches missed.">    if (!request.is(TypeCase.FORWARD)) {</span>
+<span class="nc" id="L928">      return request;</span>
+    }
+<span class="nc" id="L930">    return ClientProtoUtils.toRaftClientRequest(RaftClientRequestProto.parseFrom(</span>
+<span class="nc" id="L931">        request.getMessage().getContent().asReadOnlyByteBuffer()));</span>
+  }
+
+  &lt;REPLY&gt; CompletableFuture&lt;REPLY&gt; executeSubmitServerRequestAsync(
+      CheckedSupplier&lt;CompletableFuture&lt;REPLY&gt;, IOException&gt; submitFunction) {
+<span class="nc" id="L936">    return CompletableFuture.supplyAsync(</span>
+<span class="nc" id="L937">        () -&gt; JavaUtils.callAsUnchecked(submitFunction, CompletionException::new),</span>
+<span class="nc" id="L938">        serverExecutor).join();</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; executeSubmitClientRequestAsync(
+      ReferenceCountedObject&lt;RaftClientRequest&gt; request) {
+<span class="nc" id="L943">    return CompletableFuture.supplyAsync(() -&gt; submitClientRequestAsync(request), clientExecutor).join();</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; submitClientRequestAsync(
+      ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L949">    final RaftClientRequest request = requestRef.retain();</span>
+    try {
+<span class="nc" id="L951">      LOG.debug(&quot;{}: receive client request({})&quot;, getMemberId(), request);</span>
+<span class="nc" id="L952">      assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+
+<span class="nc" id="L954">      RaftClientRequest.Type type = request.getType();</span>
+<span class="nc" id="L955">      final Timekeeper timer = raftServerMetrics.getClientRequestTimer(type);</span>
+<span class="nc" id="L956">      final Optional&lt;Timekeeper.Context&gt; timerContext = Optional.ofNullable(timer).map(Timekeeper::time);</span>
+<span class="nc" id="L957">      return replyFuture(requestRef).whenComplete((clientReply, exception) -&gt; {</span>
+<span class="nc" id="L958">        timerContext.ifPresent(Timekeeper.Context::stop);</span>
+<span class="nc bnc" id="L959" title="All 4 branches missed.">        if (exception != null || clientReply.getException() != null) {</span>
+<span class="nc" id="L960">          raftServerMetrics.incFailedRequestCount(type);</span>
+        }
+<span class="nc" id="L962">      });</span>
+<span class="nc" id="L963">    } catch (RaftException e) {</span>
+<span class="nc" id="L964">      return CompletableFuture.completedFuture(newExceptionReply(request, e));</span>
+<span class="nc" id="L965">    } catch (Throwable t) {</span>
+<span class="nc" id="L966">      LOG.error(&quot;{} Failed to submitClientRequestAsync for {}&quot;, getMemberId(), request, t);</span>
+<span class="nc" id="L967">      return CompletableFuture.completedFuture(newExceptionReply(request, new RaftException(t)));</span>
+    } finally {
+<span class="nc" id="L969">      requestRef.release();</span>
+    }
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; replyFuture(ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L974">    final RaftClientRequest request = requestRef.get();</span>
+<span class="nc" id="L975">    retryCache.invalidateRepliedRequests(request);</span>
+
+<span class="nc" id="L977">    final TypeCase type = request.getType().getTypeCase();</span>
+<span class="nc bnc" id="L978" title="All 6 branches missed.">    switch (type) {</span>
+      case STALEREAD:
+<span class="nc" id="L980">        return staleReadAsync(request);</span>
+      case READ:
+<span class="nc" id="L982">        return readAsync(request);</span>
+      case WATCH:
+<span class="nc" id="L984">        return watchAsync(request);</span>
+      case MESSAGESTREAM:
+<span class="nc" id="L986">        return messageStreamAsync(requestRef);</span>
+      case WRITE:
+      case FORWARD:
+<span class="nc" id="L989">        return writeAsync(requestRef);</span>
+      default:
+<span class="nc" id="L991">        throw new IllegalStateException(&quot;Unexpected request type: &quot; + type + &quot;, request=&quot; + request);</span>
+    }
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; writeAsync(ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L996">    final RaftClientRequest request = requestRef.get();</span>
+<span class="nc" id="L997">    final CompletableFuture&lt;RaftClientReply&gt; future = writeAsyncImpl(requestRef);</span>
+<span class="nc bnc" id="L998" title="All 2 branches missed.">    if (request.is(TypeCase.WRITE)) {</span>
+      // check replication
+<span class="nc" id="L1000">      final ReplicationLevel replication = request.getType().getWrite().getReplication();</span>
+<span class="nc bnc" id="L1001" title="All 2 branches missed.">      if (replication != ReplicationLevel.MAJORITY) {</span>
+<span class="nc" id="L1002">        return future.thenCompose(r -&gt; waitForReplication(r, replication));</span>
+      }
+    }
+<span class="nc" id="L1005">    return future;</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; writeAsyncImpl(ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L1009">    final RaftClientRequest request = requestRef.get();</span>
+<span class="nc" id="L1010">    final CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1011" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc" id="L1012">      return reply;</span>
+    }
+
+    // query the retry cache
+<span class="nc" id="L1016">    final RetryCacheImpl.CacheQueryResult queryResult = retryCache.queryCache(request);</span>
+<span class="nc" id="L1017">    final CacheEntry cacheEntry = queryResult.getEntry();</span>
+<span class="nc bnc" id="L1018" title="All 2 branches missed.">    if (queryResult.isRetry()) {</span>
+      // return the cached future.
+<span class="nc" id="L1020">      return cacheEntry.getReplyFuture();</span>
+    }
+    // TODO: this client request will not be added to pending requests until
+    // later which means that any failure in between will leave partial state in
+    // the state machine. We should call cancelTransaction() for failed requests
+    final TransactionContextImpl context;
+    try {
+<span class="nc" id="L1027">      context = (TransactionContextImpl) stateMachine.startTransaction(convertRaftClientRequest(request));</span>
+<span class="nc" id="L1028">    } catch (IOException e) {</span>
+<span class="nc" id="L1029">      final RaftClientReply exceptionReply = newExceptionReply(request,</span>
+          new RaftException(&quot;Failed to startTransaction for &quot; + request, e));
+<span class="nc" id="L1031">      cacheEntry.failWithReply(exceptionReply);</span>
+<span class="nc" id="L1032">      return CompletableFuture.completedFuture(exceptionReply);</span>
+<span class="nc" id="L1033">    }</span>
+<span class="nc bnc" id="L1034" title="All 2 branches missed.">    if (context.getException() != null) {</span>
+<span class="nc" id="L1035">      final StateMachineException e = new StateMachineException(getMemberId(), context.getException());</span>
+<span class="nc" id="L1036">      final RaftClientReply exceptionReply = newExceptionReply(request, e);</span>
+<span class="nc" id="L1037">      cacheEntry.failWithReply(exceptionReply);</span>
+<span class="nc" id="L1038">      return CompletableFuture.completedFuture(exceptionReply);</span>
+    }
+
+<span class="nc" id="L1041">    context.setDelegatedRef(requestRef);</span>
+<span class="nc" id="L1042">    return appendTransaction(request, context, cacheEntry);</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; watchAsync(RaftClientRequest request) {
+<span class="nc" id="L1046">    final CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1047" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc" id="L1048">      return reply;</span>
+    }
+
+<span class="nc" id="L1051">    return role.getLeaderState()</span>
+<span class="nc" id="L1052">        .map(ls -&gt; ls.addWatchRequest(request))</span>
+<span class="nc" id="L1053">        .orElseGet(() -&gt; CompletableFuture.completedFuture(</span>
+<span class="nc" id="L1054">            newExceptionReply(request, generateNotLeaderException())));</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; staleReadAsync(RaftClientRequest request) {
+<span class="nc" id="L1058">    final long minIndex = request.getType().getStaleRead().getMinIndex();</span>
+<span class="nc" id="L1059">    final long commitIndex = state.getLog().getLastCommittedIndex();</span>
+<span class="nc" id="L1060">    LOG.debug(&quot;{}: minIndex={}, commitIndex={}&quot;, getMemberId(), minIndex, commitIndex);</span>
+<span class="nc bnc" id="L1061" title="All 2 branches missed.">    if (commitIndex &lt; minIndex) {</span>
+<span class="nc" id="L1062">      final StaleReadException e = new StaleReadException(</span>
+          &quot;Unable to serve stale-read due to server commit index = &quot; + commitIndex + &quot; &lt; min = &quot; + minIndex);
+<span class="nc" id="L1064">      return CompletableFuture.completedFuture(</span>
+<span class="nc" id="L1065">          newExceptionReply(request, new StateMachineException(getMemberId(), e)));</span>
+    }
+<span class="nc" id="L1067">    return processQueryFuture(stateMachine.queryStale(request.getMessage(), minIndex), request);</span>
+  }
+
+  ReadRequests getReadRequests() {
+<span class="nc" id="L1071">    return getState().getReadRequests();</span>
+  }
+
+  private CompletableFuture&lt;ReadIndexReplyProto&gt; sendReadIndexAsync(RaftClientRequest clientRequest) {
+<span class="nc" id="L1075">    final RaftPeerId leaderId = getInfo().getLeaderId();</span>
+<span class="nc bnc" id="L1076" title="All 2 branches missed.">    if (leaderId == null) {</span>
+<span class="nc" id="L1077">      return JavaUtils.completeExceptionally(new ReadIndexException(getMemberId() + &quot;: Leader is unknown.&quot;));</span>
+    }
+<span class="nc" id="L1079">    final ReadIndexRequestProto request = toReadIndexRequestProto(clientRequest, getMemberId(), leaderId);</span>
+    try {
+<span class="nc" id="L1081">      return getServerRpc().async().readIndexAsync(request);</span>
+<span class="nc" id="L1082">    } catch (IOException e) {</span>
+<span class="nc" id="L1083">      return JavaUtils.completeExceptionally(e);</span>
+    }
+  }
+
+  private CompletableFuture&lt;Long&gt; getReadIndex(RaftClientRequest request, LeaderStateImpl leader) {
+<span class="nc" id="L1088">    return writeIndexCache.getWriteIndexFuture(request).thenCompose(leader::getReadIndex);</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; readAsync(RaftClientRequest request) {
+<span class="nc bnc" id="L1092" title="All 4 branches missed.">    if (request.getType().getRead().getPreferNonLinearizable()</span>
+        || readOption == RaftServerConfigKeys.Read.Option.DEFAULT) {
+<span class="nc" id="L1094">      final CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1095" title="All 2 branches missed.">       if (reply != null) {</span>
+<span class="nc" id="L1096">         return reply;</span>
+       }
+<span class="nc" id="L1098">       return queryStateMachine(request);</span>
+<span class="nc bnc" id="L1099" title="All 2 branches missed.">    } else if (readOption == RaftServerConfigKeys.Read.Option.LINEARIZABLE){</span>
+      /*
+        Linearizable read using ReadIndex. See Raft paper section 6.4.
+        1. First obtain readIndex from Leader.
+        2. Then waits for statemachine to advance at least as far as readIndex.
+        3. Finally, query the statemachine and return the result.
+       */
+<span class="nc" id="L1106">      final LeaderStateImpl leader = role.getLeaderState().orElse(null);</span>
+
+      final CompletableFuture&lt;Long&gt; replyFuture;
+<span class="nc bnc" id="L1109" title="All 2 branches missed.">      if (leader != null) {</span>
+<span class="nc" id="L1110">        replyFuture = getReadIndex(request, leader);</span>
+      } else {
+<span class="nc" id="L1112">        replyFuture = sendReadIndexAsync(request).thenApply(reply   -&gt; {</span>
+<span class="nc bnc" id="L1113" title="All 2 branches missed.">          if (reply.getServerReply().getSuccess()) {</span>
+<span class="nc" id="L1114">            return reply.getReadIndex();</span>
+          } else {
+<span class="nc" id="L1116">            throw new CompletionException(new ReadIndexException(getId() +</span>
+                &quot;: Failed to get read index from the leader: &quot; + reply));
+          }
+        });
+      }
+
+<span class="nc" id="L1122">      return replyFuture</span>
+<span class="nc" id="L1123">          .thenCompose(readIndex -&gt; getReadRequests().waitToAdvance(readIndex))</span>
+<span class="nc" id="L1124">          .thenCompose(readIndex -&gt; queryStateMachine(request))</span>
+<span class="nc" id="L1125">          .exceptionally(e -&gt; readException2Reply(request, e));</span>
+    } else {
+<span class="nc" id="L1127">      throw new IllegalStateException(&quot;Unexpected read option: &quot; + readOption);</span>
+    }
+  }
+
+  private RaftClientReply readException2Reply(RaftClientRequest request, Throwable e) {
+<span class="nc" id="L1132">    e = JavaUtils.unwrapCompletionException(e);</span>
+<span class="nc bnc" id="L1133" title="All 2 branches missed.">    if (e instanceof StateMachineException ) {</span>
+<span class="nc" id="L1134">      return newExceptionReply(request, (StateMachineException) e);</span>
+<span class="nc bnc" id="L1135" title="All 2 branches missed.">    } else if (e instanceof ReadException) {</span>
+<span class="nc" id="L1136">      return newExceptionReply(request, (ReadException) e);</span>
+<span class="nc bnc" id="L1137" title="All 2 branches missed.">    } else if (e instanceof ReadIndexException) {</span>
+<span class="nc" id="L1138">      return newExceptionReply(request, (ReadIndexException) e);</span>
+    } else {
+<span class="nc" id="L1140">      throw new CompletionException(e);</span>
+    }
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; messageStreamAsync(ReferenceCountedObject&lt;RaftClientRequest&gt; requestRef) {
+<span class="nc" id="L1145">    final RaftClientRequest request = requestRef.get();</span>
+<span class="nc" id="L1146">    final CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1147" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc" id="L1148">      return reply;</span>
+    }
+
+<span class="nc bnc" id="L1151" title="All 2 branches missed.">    if (request.getType().getMessageStream().getEndOfRequest()) {</span>
+<span class="nc" id="L1152">      final CompletableFuture&lt;ReferenceCountedObject&lt;RaftClientRequest&gt;&gt; f = streamEndOfRequestAsync(requestRef);</span>
+<span class="nc bnc" id="L1153" title="All 2 branches missed.">      if (f.isCompletedExceptionally()) {</span>
+<span class="nc" id="L1154">        return f.thenApply(r -&gt; null);</span>
+      }
+      // the message stream has ended and the request become a WRITE request
+<span class="nc" id="L1157">      ReferenceCountedObject&lt;RaftClientRequest&gt; joinedRequest = f.join();</span>
+      try {
+<span class="nc" id="L1159">        return replyFuture(joinedRequest);</span>
+      } finally {
+        // Released pending streaming requests.
+<span class="nc" id="L1162">        joinedRequest.release();</span>
+      }
+    }
+
+<span class="nc" id="L1166">    return role.getLeaderState()</span>
+<span class="nc" id="L1167">        .map(ls -&gt; ls.streamAsync(requestRef))</span>
+<span class="nc" id="L1168">        .orElseGet(() -&gt; CompletableFuture.completedFuture(</span>
+<span class="nc" id="L1169">            newExceptionReply(request, generateNotLeaderException())));</span>
+  }
+
+  private CompletableFuture&lt;ReferenceCountedObject&lt;RaftClientRequest&gt;&gt; streamEndOfRequestAsync(
+      ReferenceCountedObject&lt;RaftClientRequest&gt; request) {
+<span class="nc" id="L1174">    return role.getLeaderState()</span>
+<span class="nc" id="L1175">        .map(ls -&gt; ls.streamEndOfRequestAsync(request))</span>
+<span class="nc" id="L1176">        .orElse(null);</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; queryStateMachine(RaftClientRequest request) {
+<span class="nc" id="L1180">    return processQueryFuture(stateMachine.query(request.getMessage()), request);</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; processQueryFuture(
+      CompletableFuture&lt;Message&gt; queryFuture, RaftClientRequest request) {
+<span class="nc" id="L1185">    return queryFuture.thenApply(r -&gt; newReplyBuilder(request).setSuccess().setMessage(r).build())</span>
+<span class="nc" id="L1186">        .exceptionally(e -&gt; {</span>
+<span class="nc" id="L1187">          e = JavaUtils.unwrapCompletionException(e);</span>
+<span class="nc bnc" id="L1188" title="All 2 branches missed.">          if (e instanceof StateMachineException) {</span>
+<span class="nc" id="L1189">            return newExceptionReply(request, (StateMachineException)e);</span>
+          }
+<span class="nc" id="L1191">          throw new CompletionException(e);</span>
+        });
+  }
+
+  @Override
+  public RaftClientReply submitClientRequest(RaftClientRequest request)
+      throws IOException {
+<span class="nc" id="L1198">    return waitForReply(request, submitClientRequestAsync(request));</span>
+  }
+
+  RaftClientReply waitForReply(RaftClientRequest request, CompletableFuture&lt;RaftClientReply&gt; future)
+      throws IOException {
+<span class="nc" id="L1203">    return waitForReply(getMemberId(), request, future, e -&gt; newExceptionReply(request, e));</span>
+  }
+
+  static &lt;REPLY extends RaftClientReply&gt; REPLY waitForReply(
+      Object id, RaftClientRequest request, CompletableFuture&lt;REPLY&gt; future,
+      Function&lt;RaftException, REPLY&gt; exceptionReply)
+      throws IOException {
+    try {
+<span class="nc" id="L1211">      return future.get();</span>
+<span class="nc" id="L1212">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L1213">      final String s = id + &quot;: Interrupted when waiting for reply, request=&quot; + request;</span>
+<span class="nc" id="L1214">      LOG.info(s, e);</span>
+<span class="nc" id="L1215">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L1216">      throw IOUtils.toInterruptedIOException(s, e);</span>
+<span class="nc" id="L1217">    } catch (ExecutionException e) {</span>
+<span class="nc" id="L1218">      final Throwable cause = e.getCause();</span>
+<span class="nc bnc" id="L1219" title="All 2 branches missed.">      if (cause == null) {</span>
+<span class="nc" id="L1220">        throw new IOException(e);</span>
+      }
+<span class="nc bnc" id="L1222" title="All 4 branches missed.">      if (cause instanceof NotLeaderException ||</span>
+          cause instanceof StateMachineException) {
+<span class="nc" id="L1224">        final REPLY reply = exceptionReply.apply((RaftException) cause);</span>
+<span class="nc bnc" id="L1225" title="All 2 branches missed.">        if (reply != null) {</span>
+<span class="nc" id="L1226">          return reply;</span>
+        }
+      }
+<span class="nc" id="L1229">      throw IOUtils.asIOException(cause);</span>
+    }
+  }
+
+  RaftClientReply transferLeadership(TransferLeadershipRequest request) throws IOException {
+<span class="nc" id="L1234">    return waitForReply(request, transferLeadershipAsync(request));</span>
+  }
+
+  private CompletableFuture&lt;RaftClientReply&gt; logAndReturnTransferLeadershipFail(
+      TransferLeadershipRequest request, String msg) {
+<span class="nc" id="L1239">    LOG.warn(msg);</span>
+<span class="nc" id="L1240">    return CompletableFuture.completedFuture(</span>
+<span class="nc" id="L1241">        newExceptionReply(request, new TransferLeadershipException(msg)));</span>
+  }
+
+  boolean isSteppingDown() {
+<span class="nc" id="L1245">    return transferLeadership.isSteppingDown();</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; transferLeadershipAsync(TransferLeadershipRequest request)
+      throws IOException {
+<span class="nc bnc" id="L1250" title="All 2 branches missed.">    if (request.getNewLeader() == null) {</span>
+<span class="nc" id="L1251">      return stepDownLeaderAsync(request);</span>
+    }
+
+<span class="nc" id="L1254">    LOG.info(&quot;{}: receive transferLeadership {}&quot;, getMemberId(), request);</span>
+<span class="nc" id="L1255">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1256">    assertGroup(getMemberId(), request);</span>
+
+<span class="nc" id="L1258">    synchronized (this) {</span>
+<span class="nc" id="L1259">      CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1260" title="All 2 branches missed.">      if (reply != null) {</span>
+<span class="nc" id="L1261">        return reply;</span>
+      }
+
+<span class="nc bnc" id="L1264" title="All 2 branches missed.">      if (getId().equals(request.getNewLeader())) {</span>
+<span class="nc" id="L1265">        return CompletableFuture.completedFuture(newSuccessReply(request));</span>
+      }
+
+<span class="nc" id="L1268">      final RaftConfigurationImpl conf = getRaftConf();</span>
+<span class="nc" id="L1269">      final LeaderStateImpl leaderState = role.getLeaderStateNonNull();</span>
+
+      // make sure there is no raft reconfiguration in progress
+<span class="nc bnc" id="L1272" title="All 6 branches missed.">      if (!conf.isStable() || leaderState.inStagingState() || !state.isConfCommitted()) {</span>
+<span class="nc" id="L1273">        String msg = getMemberId() + &quot; refused to transfer leadership to peer &quot; + request.getNewLeader() +</span>
+            &quot; when raft reconfiguration in progress.&quot;;
+<span class="nc" id="L1275">        return logAndReturnTransferLeadershipFail(request, msg);</span>
+      }
+
+<span class="nc bnc" id="L1278" title="All 2 branches missed.">      if (!conf.containsInConf(request.getNewLeader())) {</span>
+<span class="nc" id="L1279">        String msg = getMemberId() + &quot; refused to transfer leadership to peer &quot; + request.getNewLeader() +</span>
+            &quot; as it is not in &quot; + conf;
+<span class="nc" id="L1281">        return logAndReturnTransferLeadershipFail(request, msg);</span>
+      }
+
+<span class="nc bnc" id="L1284" title="All 2 branches missed.">      if (!conf.isHighestPriority(request.getNewLeader())) {</span>
+<span class="nc" id="L1285">        String msg = getMemberId() + &quot; refused to transfer leadership to peer &quot; + request.getNewLeader() +</span>
+            &quot; as it does not has highest priority in &quot; + conf;
+<span class="nc" id="L1287">        return logAndReturnTransferLeadershipFail(request, msg);</span>
+      }
+
+<span class="nc" id="L1290">      return transferLeadership.start(leaderState, request);</span>
+    }
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; takeSnapshotAsync(SnapshotManagementRequest request) throws IOException {
+<span class="nc" id="L1295">    LOG.info(&quot;{}: takeSnapshotAsync {}&quot;, getMemberId(), request);</span>
+<span class="nc" id="L1296">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1297">    assertGroup(getMemberId(), request);</span>
+<span class="nc" id="L1298">    Preconditions.assertNotNull(request.getCreate(), &quot;create&quot;);</span>
+
+<span class="nc" id="L1300">    final long creationGap = request.getCreate().getCreationGap();</span>
+<span class="nc bnc" id="L1301" title="All 2 branches missed.">    long minGapValue = creationGap &gt; 0? creationGap : RaftServerConfigKeys.Snapshot.creationGap(proxy.getProperties());</span>
+<span class="nc" id="L1302">    final long lastSnapshotIndex = Optional.ofNullable(stateMachine.getLatestSnapshot())</span>
+<span class="nc" id="L1303">        .map(SnapshotInfo::getIndex)</span>
+<span class="nc" id="L1304">        .orElse(0L);</span>
+<span class="nc bnc" id="L1305" title="All 2 branches missed.">    if (state.getLastAppliedIndex() - lastSnapshotIndex &lt; minGapValue) {</span>
+<span class="nc" id="L1306">      return CompletableFuture.completedFuture(newSuccessReply(request, lastSnapshotIndex));</span>
+    }
+
+<span class="nc" id="L1309">    synchronized (this) {</span>
+<span class="nc" id="L1310">      final long installSnapshot = snapshotInstallationHandler.getInProgressInstallSnapshotIndex();</span>
+      // check snapshot install/load
+<span class="nc bnc" id="L1312" title="All 2 branches missed.">      if (installSnapshot != RaftLog.INVALID_LOG_INDEX) {</span>
+<span class="nc" id="L1313">        String msg = String.format(&quot;%s: Failed do snapshot as snapshot (%s) installation is in progress&quot;,</span>
+<span class="nc" id="L1314">            getMemberId(), installSnapshot);</span>
+<span class="nc" id="L1315">        LOG.warn(msg);</span>
+<span class="nc" id="L1316">        return CompletableFuture.completedFuture(newExceptionReply(request,new RaftException(msg)));</span>
+      }
+<span class="nc" id="L1318">      return snapshotRequestHandler.takingSnapshotAsync(request);</span>
+    }
+  }
+
+  SnapshotManagementRequestHandler getSnapshotRequestHandler() {
+<span class="nc" id="L1323">    return snapshotRequestHandler;</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; leaderElectionManagementAsync(LeaderElectionManagementRequest request)
+      throws IOException {
+<span class="nc" id="L1328">    LOG.info(&quot;{} receive leaderElectionManagement request {}&quot;, getMemberId(), request);</span>
+<span class="nc" id="L1329">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1330">    assertGroup(getMemberId(), request);</span>
+
+<span class="nc" id="L1332">    final LeaderElectionManagementRequest.Pause pause = request.getPause();</span>
+<span class="nc bnc" id="L1333" title="All 2 branches missed.">    if (pause != null) {</span>
+<span class="nc" id="L1334">      getRole().setLeaderElectionPause(true);</span>
+<span class="nc" id="L1335">      return CompletableFuture.completedFuture(newSuccessReply(request));</span>
+    }
+<span class="nc" id="L1337">    final LeaderElectionManagementRequest.Resume resume = request.getResume();</span>
+<span class="nc bnc" id="L1338" title="All 2 branches missed.">    if (resume != null) {</span>
+<span class="nc" id="L1339">      getRole().setLeaderElectionPause(false);</span>
+<span class="nc" id="L1340">      return CompletableFuture.completedFuture(newSuccessReply(request));</span>
+    }
+<span class="nc" id="L1342">    return JavaUtils.completeExceptionally(new UnsupportedOperationException(</span>
+<span class="nc" id="L1343">        getId() + &quot;: Request not supported &quot; + request));</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; stepDownLeaderAsync(TransferLeadershipRequest request) throws IOException {
+<span class="nc" id="L1347">    LOG.info(&quot;{} receive stepDown leader request {}&quot;, getMemberId(), request);</span>
+<span class="nc" id="L1348">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1349">    assertGroup(getMemberId(), request);</span>
+
+<span class="nc" id="L1351">    return role.getLeaderState().map(leader -&gt; leader.submitStepDownRequestAsync(request))</span>
+<span class="nc" id="L1352">        .orElseGet(() -&gt; CompletableFuture.completedFuture(</span>
+<span class="nc" id="L1353">            newExceptionReply(request, generateNotLeaderException())));</span>
+  }
+
+  public RaftClientReply setConfiguration(SetConfigurationRequest request) throws IOException {
+<span class="nc" id="L1357">    return waitForReply(request, setConfigurationAsync(request));</span>
+  }
+
+  /**
+   * Handle a raft configuration change request from client.
+   */
+  public CompletableFuture&lt;RaftClientReply&gt; setConfigurationAsync(SetConfigurationRequest request) throws IOException {
+<span class="nc" id="L1364">    LOG.info(&quot;{}: receive setConfiguration {}&quot;, getMemberId(), request);</span>
+<span class="nc" id="L1365">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1366">    assertGroup(getMemberId(), request);</span>
+
+<span class="nc" id="L1368">    CompletableFuture&lt;RaftClientReply&gt; reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1369" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc" id="L1370">      return reply;</span>
+    }
+
+<span class="nc" id="L1373">    final SetConfigurationRequest.Arguments arguments = request.getArguments();</span>
+    final PendingRequest pending;
+<span class="nc" id="L1375">    synchronized (this) {</span>
+<span class="nc" id="L1376">      reply = checkLeaderState(request);</span>
+<span class="nc bnc" id="L1377" title="All 2 branches missed.">      if (reply != null) {</span>
+<span class="nc" id="L1378">        return reply;</span>
+      }
+
+<span class="nc" id="L1381">      final RaftConfigurationImpl current = getRaftConf();</span>
+<span class="nc" id="L1382">      final LeaderStateImpl leaderState = role.getLeaderStateNonNull();</span>
+      // make sure there is no other raft reconfiguration in progress
+<span class="nc bnc" id="L1384" title="All 6 branches missed.">      if (!current.isStable() || leaderState.inStagingState() || !state.isConfCommitted()) {</span>
+<span class="nc" id="L1385">        throw new ReconfigurationInProgressException(</span>
+            &quot;Reconfiguration is already in progress: &quot; + current);
+      }
+
+      final List&lt;RaftPeer&gt; serversInNewConf;
+      final List&lt;RaftPeer&gt; listenersInNewConf;
+<span class="nc bnc" id="L1391" title="All 2 branches missed.">      if (arguments.getMode() == SetConfigurationRequest.Mode.ADD) {</span>
+<span class="nc" id="L1392">        serversInNewConf = add(RaftPeerRole.FOLLOWER, current, arguments);</span>
+<span class="nc" id="L1393">        listenersInNewConf = add(RaftPeerRole.LISTENER, current, arguments);</span>
+<span class="nc bnc" id="L1394" title="All 2 branches missed.">      } else if (arguments.getMode() == SetConfigurationRequest.Mode.COMPARE_AND_SET) {</span>
+<span class="nc" id="L1395">        final Comparator&lt;RaftPeer&gt; comparator = Comparator.comparing(RaftPeer::getId,</span>
+<span class="nc" id="L1396">            Comparator.comparing(RaftPeerId::toString));</span>
+<span class="nc bnc" id="L1397" title="All 2 branches missed.">        if (CollectionUtils.equalsIgnoreOrder(arguments.getServersInCurrentConf(),</span>
+<span class="nc" id="L1398">            current.getAllPeers(RaftPeerRole.FOLLOWER), comparator)</span>
+<span class="nc bnc" id="L1399" title="All 2 branches missed.">            &amp;&amp; CollectionUtils.equalsIgnoreOrder(arguments.getListenersInCurrentConf(),</span>
+<span class="nc" id="L1400">            current.getAllPeers(RaftPeerRole.LISTENER), comparator)) {</span>
+<span class="nc" id="L1401">          serversInNewConf = arguments.getPeersInNewConf(RaftPeerRole.FOLLOWER);</span>
+<span class="nc" id="L1402">          listenersInNewConf = arguments.getPeersInNewConf(RaftPeerRole.LISTENER);</span>
+        } else {
+<span class="nc" id="L1404">          throw new SetConfigurationException(&quot;Failed to set configuration: current configuration &quot;</span>
+              + current + &quot; is different than the request &quot; + request);
+        }
+<span class="nc" id="L1407">      } else {</span>
+<span class="nc" id="L1408">        serversInNewConf = arguments.getPeersInNewConf(RaftPeerRole.FOLLOWER);</span>
+<span class="nc" id="L1409">        listenersInNewConf = arguments.getPeersInNewConf(RaftPeerRole.LISTENER);</span>
+      }
+
+      // return success with a null message if the new conf is the same as the current
+<span class="nc bnc" id="L1413" title="All 2 branches missed.">      if (current.hasNoChange(serversInNewConf, listenersInNewConf)) {</span>
+<span class="nc" id="L1414">        pending = new PendingRequest(request);</span>
+<span class="nc" id="L1415">        pending.setReply(newSuccessReply(request));</span>
+<span class="nc" id="L1416">        return pending.getFuture();</span>
+      }
+<span class="nc bnc" id="L1418" title="All 2 branches missed.">      if (current.changeMajority(serversInNewConf)) {</span>
+<span class="nc bnc" id="L1419" title="All 2 branches missed.">        if (!memberMajorityAddEnabled) {</span>
+<span class="nc" id="L1420">          throw new SetConfigurationException(&quot;Failed to set configuration: request &quot; + request</span>
+              + &quot; changes a majority set of the current configuration &quot; + current);
+        }
+<span class="nc" id="L1423">        LOG.warn(&quot;Try to add/replace a majority of servers in a single setConf: {}&quot;, request);</span>
+      }
+
+<span class="nc" id="L1426">      getRaftServer().addRaftPeers(serversInNewConf);</span>
+<span class="nc" id="L1427">      getRaftServer().addRaftPeers(listenersInNewConf);</span>
+      // add staging state into the leaderState
+<span class="nc" id="L1429">      pending = leaderState.startSetConfiguration(request, serversInNewConf);</span>
+<span class="nc" id="L1430">    }</span>
+<span class="nc" id="L1431">    return pending.getFuture();</span>
+  }
+
+  static List&lt;RaftPeer&gt; add(RaftPeerRole role, RaftConfigurationImpl conf, SetConfigurationRequest.Arguments args) {
+<span class="nc" id="L1435">    final Map&lt;RaftPeerId, RaftPeer&gt; inConfs = conf.getAllPeers(role).stream()</span>
+<span class="nc" id="L1436">        .collect(Collectors.toMap(RaftPeer::getId, Function.identity()));</span>
+
+<span class="nc" id="L1438">    final List&lt;RaftPeer&gt; toAdds = args.getPeersInNewConf(role);</span>
+<span class="nc" id="L1439">    toAdds.stream().map(RaftPeer::getId).forEach(inConfs::remove);</span>
+
+<span class="nc" id="L1441">    return Stream.concat(toAdds.stream(), inConfs.values().stream()).collect(Collectors.toList());</span>
+  }
+
+  /**
+   * The remote peer should shut down if all the following are true.
+   * 1. this is the current leader
+   * 2. current conf is stable and has been committed
+   * 3. candidate is not in the current conf
+   * 4. candidate last entry index &lt; conf index (the candidate was removed)
+   */
+  private boolean shouldSendShutdown(RaftPeerId candidateId, TermIndex candidateLastEntry) {
+<span class="nc bnc" id="L1452" title="All 2 branches missed.">    return getInfo().isLeader()</span>
+<span class="nc bnc" id="L1453" title="All 2 branches missed.">        &amp;&amp; getRaftConf().isStable()</span>
+<span class="nc bnc" id="L1454" title="All 2 branches missed.">        &amp;&amp; getState().isConfCommitted()</span>
+<span class="nc bnc" id="L1455" title="All 2 branches missed.">        &amp;&amp; !getRaftConf().containsInConf(candidateId)</span>
+<span class="nc bnc" id="L1456" title="All 2 branches missed.">        &amp;&amp; candidateLastEntry.getIndex() &lt; getRaftConf().getLogEntryIndex()</span>
+<span class="nc bnc" id="L1457" title="All 4 branches missed.">        &amp;&amp; role.getLeaderState().map(ls -&gt; !ls.isBootStrappingPeer(candidateId)).orElse(false);</span>
+  }
+
+  @Override
+  public RequestVoteReplyProto requestVote(RequestVoteRequestProto r) throws IOException {
+<span class="nc" id="L1462">    final RaftRpcRequestProto request = r.getServerRequest();</span>
+<span class="nc bnc" id="L1463" title="All 2 branches missed.">    return requestVote(r.getPreVote() ? Phase.PRE_VOTE : Phase.ELECTION,</span>
+<span class="nc" id="L1464">        RaftPeerId.valueOf(request.getRequestorId()),</span>
+<span class="nc" id="L1465">        ProtoUtils.toRaftGroupId(request.getRaftGroupId()),</span>
+<span class="nc" id="L1466">        r.getCandidateTerm(),</span>
+<span class="nc" id="L1467">        TermIndex.valueOf(r.getCandidateLastEntry()));</span>
+  }
+
+  private RequestVoteReplyProto requestVote(Phase phase,
+      RaftPeerId candidateId, RaftGroupId candidateGroupId,
+      long candidateTerm, TermIndex candidateLastEntry) throws IOException {
+<span class="nc" id="L1473">    CodeInjectionForTesting.execute(REQUEST_VOTE, getId(),</span>
+<span class="nc" id="L1474">        candidateId, candidateTerm, candidateLastEntry);</span>
+<span class="nc" id="L1475">    LOG.info(&quot;{}: receive requestVote({}, {}, {}, {}, {})&quot;,</span>
+<span class="nc" id="L1476">        getMemberId(), phase, candidateId, candidateGroupId, candidateTerm, candidateLastEntry);</span>
+<span class="nc" id="L1477">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1478">    assertGroup(getMemberId(), candidateId, candidateGroupId);</span>
+
+<span class="nc" id="L1480">    boolean shouldShutdown = false;</span>
+    final RequestVoteReplyProto reply;
+<span class="nc" id="L1482">    CompletableFuture&lt;Void&gt; future = null;</span>
+<span class="nc" id="L1483">    synchronized (this) {</span>
+      // Check life cycle state again to avoid the PAUSING/PAUSED state.
+<span class="nc" id="L1485">      assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+
+<span class="nc" id="L1487">      final VoteContext context = new VoteContext(this, phase, candidateId);</span>
+<span class="nc" id="L1488">      final RaftPeer candidate = context.recognizeCandidate(candidateTerm);</span>
+<span class="nc" id="L1489">      final boolean voteGranted = context.decideVote(candidate, candidateLastEntry);</span>
+<span class="nc bnc" id="L1490" title="All 4 branches missed.">      if (candidate != null &amp;&amp; phase == Phase.ELECTION) {</span>
+        // change server state in the ELECTION phase
+<span class="nc" id="L1492">        final AtomicBoolean termUpdated = new AtomicBoolean();</span>
+<span class="nc" id="L1493">        future = changeToFollower(candidateTerm, true, false, &quot;candidate:&quot; + candidateId, termUpdated);</span>
+<span class="nc bnc" id="L1494" title="All 2 branches missed.">        if (voteGranted) {</span>
+<span class="nc" id="L1495">          state.grantVote(candidate.getId());</span>
+        }
+<span class="nc bnc" id="L1497" title="All 4 branches missed.">        if (termUpdated.get() || voteGranted) {</span>
+<span class="nc" id="L1498">          state.persistMetadata(); // sync metafile</span>
+        }
+      }
+<span class="nc bnc" id="L1501" title="All 2 branches missed.">      if (voteGranted) {</span>
+<span class="nc" id="L1502">        role.getFollowerState().ifPresent(fs -&gt; fs.updateLastRpcTime(FollowerState.UpdateType.REQUEST_VOTE));</span>
+<span class="nc bnc" id="L1503" title="All 2 branches missed.">      } else if(shouldSendShutdown(candidateId, candidateLastEntry)) {</span>
+<span class="nc" id="L1504">        shouldShutdown = true;</span>
+      }
+<span class="nc" id="L1506">      reply = toRequestVoteReplyProto(candidateId, getMemberId(),</span>
+<span class="nc" id="L1507">          voteGranted, state.getCurrentTerm(), shouldShutdown);</span>
+<span class="nc bnc" id="L1508" title="All 2 branches missed.">      if (LOG.isInfoEnabled()) {</span>
+<span class="nc" id="L1509">        LOG.info(&quot;{} replies to {} vote request: {}. Peer's state: {}&quot;,</span>
+<span class="nc" id="L1510">            getMemberId(), phase, toRequestVoteReplyString(reply), state);</span>
+      }
+<span class="nc" id="L1512">    }</span>
+<span class="nc bnc" id="L1513" title="All 2 branches missed.">    if (future != null) {</span>
+<span class="nc" id="L1514">      future.join();</span>
+    }
+<span class="nc" id="L1516">    return reply;</span>
+  }
+
+  @Override
+  public AppendEntriesReplyProto appendEntries(AppendEntriesRequestProto r)
+      throws IOException {
+    try {
+<span class="nc" id="L1523">      return appendEntriesAsync(ReferenceCountedObject.wrap(r)).join();</span>
+<span class="nc" id="L1524">    } catch (CompletionException e) {</span>
+<span class="nc" id="L1525">      throw IOUtils.asIOException(JavaUtils.unwrapCompletionException(e));</span>
+    }
+  }
+
+  @Override
+  public CompletableFuture&lt;AppendEntriesReplyProto&gt; appendEntriesAsync(
+      ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; requestRef) throws IOException {
+<span class="nc" id="L1532">    final AppendEntriesRequestProto r = requestRef.retain();</span>
+<span class="nc" id="L1533">    final RaftRpcRequestProto request = r.getServerRequest();</span>
+<span class="nc bnc" id="L1534" title="All 2 branches missed.">    final TermIndex previous = r.hasPreviousLog()? TermIndex.valueOf(r.getPreviousLog()) : null;</span>
+    try {
+<span class="nc" id="L1536">      final RaftPeerId leaderId = RaftPeerId.valueOf(request.getRequestorId());</span>
+<span class="nc" id="L1537">      final RaftGroupId leaderGroupId = ProtoUtils.toRaftGroupId(request.getRaftGroupId());</span>
+
+<span class="nc" id="L1539">      CodeInjectionForTesting.execute(APPEND_ENTRIES, getId(), leaderId, previous, r);</span>
+
+<span class="nc" id="L1541">      assertLifeCycleState(LifeCycle.States.STARTING_OR_RUNNING);</span>
+<span class="nc bnc" id="L1542" title="All 2 branches missed.">      if (!startComplete.get()) {</span>
+<span class="nc" id="L1543">        throw new ServerNotReadyException(getMemberId() + &quot;: The server role is not yet initialized.&quot;);</span>
+      }
+<span class="nc" id="L1545">      assertGroup(getMemberId(), leaderId, leaderGroupId);</span>
+<span class="nc" id="L1546">      assertEntries(r, previous, state);</span>
+
+<span class="nc" id="L1548">      return appendEntriesAsync(leaderId, request.getCallId(), previous, requestRef);</span>
+<span class="nc" id="L1549">    } catch(Exception t) {</span>
+<span class="nc" id="L1550">      LOG.error(&quot;{}: Failed appendEntries* {}&quot;, getMemberId(),</span>
+<span class="nc" id="L1551">          toAppendEntriesRequestString(r, stateMachine::toStateMachineLogEntryString), t);</span>
+<span class="nc" id="L1552">      throw IOUtils.asIOException(t);</span>
+    } finally {
+<span class="nc" id="L1554">      requestRef.release();</span>
+    }
+  }
+
+  @Override
+  public CompletableFuture&lt;ReadIndexReplyProto&gt; readIndexAsync(ReadIndexRequestProto request) throws IOException {
+<span class="nc" id="L1560">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+
+<span class="nc" id="L1562">    final RaftPeerId peerId = RaftPeerId.valueOf(request.getServerRequest().getRequestorId());</span>
+
+<span class="nc" id="L1564">    final LeaderStateImpl leader = role.getLeaderState().orElse(null);</span>
+<span class="nc bnc" id="L1565" title="All 2 branches missed.">    if (leader == null) {</span>
+<span class="nc" id="L1566">      return CompletableFuture.completedFuture(toReadIndexReplyProto(peerId, getMemberId()));</span>
+    }
+
+<span class="nc" id="L1569">    return getReadIndex(ClientProtoUtils.toRaftClientRequest(request.getClientRequest()), leader)</span>
+<span class="nc" id="L1570">        .thenApply(index -&gt; toReadIndexReplyProto(peerId, getMemberId(), true, index))</span>
+<span class="nc" id="L1571">        .exceptionally(throwable -&gt; toReadIndexReplyProto(peerId, getMemberId()));</span>
+  }
+
+  static void logAppendEntries(boolean isHeartbeat, Supplier&lt;String&gt; message) {
+<span class="nc bnc" id="L1575" title="All 2 branches missed.">    if (isHeartbeat) {</span>
+<span class="nc bnc" id="L1576" title="All 2 branches missed.">      if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L1577">        LOG.trace(&quot;HEARTBEAT: &quot; + message.get());</span>
+      }
+    } else {
+<span class="nc bnc" id="L1580" title="All 2 branches missed.">      if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L1581">        LOG.debug(message.get());</span>
+      }
+    }
+<span class="nc" id="L1584">  }</span>
+
+  Optional&lt;FollowerState&gt; updateLastRpcTime(FollowerState.UpdateType updateType) {
+<span class="nc" id="L1587">    final Optional&lt;FollowerState&gt; fs = role.getFollowerState();</span>
+<span class="nc bnc" id="L1588" title="All 4 branches missed.">    if (fs.isPresent() &amp;&amp; lifeCycle.getCurrentState().isRunning()) {</span>
+<span class="nc" id="L1589">      fs.get().updateLastRpcTime(updateType);</span>
+<span class="nc" id="L1590">      return fs;</span>
+    } else {
+<span class="nc" id="L1592">      return Optional.empty();</span>
+    }
+  }
+
+  private long updateCommitInfoCache() {
+<span class="nc" id="L1597">    return commitInfoCache.update(getId(), state.getLog().getLastCommittedIndex());</span>
+  }
+
+  ExecutorService getServerExecutor() {
+<span class="nc" id="L1601">    return serverExecutor;</span>
+  }
+
+  private CompletableFuture&lt;AppendEntriesReplyProto&gt; appendEntriesAsync(RaftPeerId leaderId, long callId,
+      TermIndex previous, ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; requestRef) throws IOException {
+<span class="nc" id="L1606">    final AppendEntriesRequestProto proto = requestRef.get();</span>
+<span class="nc" id="L1607">    final List&lt;LogEntryProto&gt; entries = proto.getEntriesList();</span>
+<span class="nc" id="L1608">    final boolean isHeartbeat = entries.isEmpty();</span>
+<span class="nc" id="L1609">    logAppendEntries(isHeartbeat, () -&gt; getMemberId() + &quot;: appendEntries* &quot;</span>
+<span class="nc" id="L1610">        + toAppendEntriesRequestString(proto, stateMachine::toStateMachineLogEntryString));</span>
+
+<span class="nc" id="L1612">    final long leaderTerm = proto.getLeaderTerm();</span>
+    final long currentTerm;
+<span class="nc" id="L1614">    final long followerCommit = state.getLog().getLastCommittedIndex();</span>
+    final Optional&lt;FollowerState&gt; followerState;
+<span class="nc" id="L1616">    final Timekeeper.Context timer = raftServerMetrics.getFollowerAppendEntryTimer(isHeartbeat).time();</span>
+    final CompletableFuture&lt;Void&gt; future;
+<span class="nc" id="L1618">    synchronized (this) {</span>
+      // Check life cycle state again to avoid the PAUSING/PAUSED state.
+<span class="nc" id="L1620">      assertLifeCycleState(LifeCycle.States.STARTING_OR_RUNNING);</span>
+<span class="nc" id="L1621">      currentTerm = state.getCurrentTerm();</span>
+<span class="nc" id="L1622">      final boolean recognized = state.recognizeLeader(Op.APPEND_ENTRIES, leaderId, leaderTerm);</span>
+<span class="nc bnc" id="L1623" title="All 2 branches missed.">      if (!recognized) {</span>
+<span class="nc" id="L1624">        return CompletableFuture.completedFuture(toAppendEntriesReplyProto(</span>
+<span class="nc" id="L1625">            leaderId, getMemberId(), currentTerm, followerCommit, state.getNextIndex(),</span>
+            AppendResult.NOT_LEADER, callId, RaftLog.INVALID_LOG_INDEX, isHeartbeat));
+      }
+      try {
+<span class="nc" id="L1629">        future = changeToFollowerAndPersistMetadata(leaderTerm, true, &quot;appendEntries&quot;);</span>
+<span class="nc" id="L1630">      } catch (IOException e) {</span>
+<span class="nc" id="L1631">        return JavaUtils.completeExceptionally(e);</span>
+<span class="nc" id="L1632">      }</span>
+<span class="nc" id="L1633">      state.setLeader(leaderId, &quot;appendEntries&quot;);</span>
+
+<span class="nc bnc" id="L1635" title="All 4 branches missed.">      if (!proto.getInitializing() &amp;&amp; lifeCycle.compareAndTransition(State.STARTING, State.RUNNING)) {</span>
+<span class="nc" id="L1636">        role.startFollowerState(this, Op.APPEND_ENTRIES);</span>
+      }
+<span class="nc" id="L1638">      followerState = updateLastRpcTime(FollowerState.UpdateType.APPEND_START);</span>
+
+      // Check that the append entries are not inconsistent. There are 3
+      // scenarios which can result in inconsistency:
+      //      1. There is a snapshot installation in progress
+      //      2. There is an overlap between the snapshot index and the entries
+      //      3. There is a gap between the local log and the entries
+      // In any of these scenarios, we should return an INCONSISTENCY reply
+      // back to leader so that the leader can update this follower's next index.
+<span class="nc" id="L1647">      final long inconsistencyReplyNextIndex = checkInconsistentAppendEntries(previous, entries);</span>
+<span class="nc bnc" id="L1648" title="All 2 branches missed.">      if (inconsistencyReplyNextIndex &gt; RaftLog.INVALID_LOG_INDEX) {</span>
+<span class="nc" id="L1649">        final AppendEntriesReplyProto reply = toAppendEntriesReplyProto(</span>
+<span class="nc" id="L1650">            leaderId, getMemberId(), currentTerm, followerCommit, inconsistencyReplyNextIndex,</span>
+            AppendResult.INCONSISTENCY, callId, RaftLog.INVALID_LOG_INDEX, isHeartbeat);
+<span class="nc" id="L1652">        LOG.info(&quot;{}: appendEntries* reply {}&quot;, getMemberId(), toAppendEntriesReplyString(reply));</span>
+<span class="nc" id="L1653">        followerState.ifPresent(fs -&gt; fs.updateLastRpcTime(FollowerState.UpdateType.APPEND_COMPLETE));</span>
+<span class="nc" id="L1654">        return future.thenApply(dummy -&gt; reply);</span>
+      }
+
+<span class="nc" id="L1657">      state.updateConfiguration(entries);</span>
+<span class="nc" id="L1658">    }</span>
+<span class="nc" id="L1659">    future.join();</span>
+<span class="nc bnc" id="L1660" title="All 2 branches missed.">    final CompletableFuture&lt;Void&gt; appendLog = entries.isEmpty()? CompletableFuture.completedFuture(null)</span>
+<span class="nc" id="L1661">        : appendLog(requestRef.delegate(entries));</span>
+
+<span class="nc" id="L1663">    proto.getCommitInfosList().forEach(commitInfoCache::update);</span>
+
+<span class="nc" id="L1665">    CodeInjectionForTesting.execute(LOG_SYNC, getId(), null);</span>
+<span class="nc bnc" id="L1666" title="All 2 branches missed.">    if (!isHeartbeat) {</span>
+<span class="nc" id="L1667">      final long installedIndex = snapshotInstallationHandler.getInstalledIndex();</span>
+<span class="nc bnc" id="L1668" title="All 2 branches missed.">      if (installedIndex &gt;= RaftLog.LEAST_VALID_LOG_INDEX) {</span>
+<span class="nc" id="L1669">        LOG.info(&quot;{}: Follower has completed install the snapshot {}.&quot;, this, installedIndex);</span>
+<span class="nc" id="L1670">        stateMachine.event().notifySnapshotInstalled(InstallSnapshotResult.SUCCESS, installedIndex, getPeer());</span>
+      }
+    }
+
+<span class="nc" id="L1674">    final long commitIndex = effectiveCommitIndex(proto.getLeaderCommit(), previous, entries.size());</span>
+<span class="nc bnc" id="L1675" title="All 2 branches missed.">    final long matchIndex = isHeartbeat? RaftLog.INVALID_LOG_INDEX: entries.get(entries.size() - 1).getIndex();</span>
+<span class="nc" id="L1676">    return appendLog.whenCompleteAsync((r, t) -&gt; {</span>
+<span class="nc" id="L1677">      followerState.ifPresent(fs -&gt; fs.updateLastRpcTime(FollowerState.UpdateType.APPEND_COMPLETE));</span>
+<span class="nc" id="L1678">      timer.stop();</span>
+<span class="nc" id="L1679">    }, getServerExecutor()).thenApply(v -&gt; {</span>
+<span class="nc" id="L1680">      final boolean updated = state.updateCommitIndex(commitIndex, currentTerm, false);</span>
+<span class="nc bnc" id="L1681" title="All 2 branches missed.">      if (updated) {</span>
+<span class="nc" id="L1682">        updateCommitInfoCache();</span>
+      }
+<span class="nc bnc" id="L1684" title="All 2 branches missed.">      final long nextIndex = isHeartbeat? state.getNextIndex(): matchIndex + 1;</span>
+<span class="nc bnc" id="L1685" title="All 2 branches missed.">      final AppendEntriesReplyProto reply = toAppendEntriesReplyProto(leaderId, getMemberId(),</span>
+<span class="nc" id="L1686">          currentTerm, updated? commitIndex : state.getLog().getLastCommittedIndex(),</span>
+          nextIndex, AppendResult.SUCCESS, callId, matchIndex, isHeartbeat);
+<span class="nc" id="L1688">      logAppendEntries(isHeartbeat, () -&gt; getMemberId()</span>
+<span class="nc" id="L1689">          + &quot;: appendEntries* reply &quot; + toAppendEntriesReplyString(reply));</span>
+<span class="nc" id="L1690">      return reply;</span>
+    });
+  }
+  private CompletableFuture&lt;Void&gt; appendLog(ReferenceCountedObject&lt;List&lt;LogEntryProto&gt;&gt; entriesRef) {
+    final List&lt;ConsecutiveIndices&gt; entriesTermIndices;
+<span class="nc" id="L1695">    try(UncheckedAutoCloseableSupplier&lt;List&lt;LogEntryProto&gt;&gt; entries =  entriesRef.retainAndReleaseOnClose()) {</span>
+<span class="nc" id="L1696">      entriesTermIndices = ConsecutiveIndices.convert(entries.get());</span>
+<span class="nc" id="L1697">      appendLogTermIndices.append(entriesTermIndices);</span>
+    }
+
+<span class="nc" id="L1700">    entriesRef.retain();</span>
+<span class="nc" id="L1701">    return appendLogFuture.updateAndGet(f -&gt; f.thenCompose(</span>
+<span class="nc" id="L1702">            ignored -&gt; JavaUtils.allOf(state.getLog().append(entriesRef))))</span>
+<span class="nc" id="L1703">        .whenComplete((v, e) -&gt; {</span>
+<span class="nc" id="L1704">          entriesRef.release();</span>
+<span class="nc" id="L1705">          appendLogTermIndices.removeExisting(entriesTermIndices);</span>
+<span class="nc" id="L1706">        });</span>
+  }
+
+  private long checkInconsistentAppendEntries(TermIndex previous, List&lt;LogEntryProto&gt; entries) {
+    // Check if a snapshot installation through state machine is in progress.
+<span class="nc" id="L1711">    final long installSnapshot = snapshotInstallationHandler.getInProgressInstallSnapshotIndex();</span>
+<span class="nc bnc" id="L1712" title="All 2 branches missed.">    if (installSnapshot != RaftLog.INVALID_LOG_INDEX) {</span>
+<span class="nc" id="L1713">      LOG.info(&quot;{}: Failed appendEntries as snapshot ({}) installation is in progress&quot;, getMemberId(), installSnapshot);</span>
+<span class="nc" id="L1714">      return state.getNextIndex();</span>
+    }
+
+    // Check that the first log entry is greater than the snapshot index in the latest snapshot and follower's last
+    // committed index. If not, reply to the leader the new next index.
+<span class="nc bnc" id="L1719" title="All 4 branches missed.">    if (entries != null &amp;&amp; !entries.isEmpty()) {</span>
+<span class="nc" id="L1720">      final long firstEntryIndex = entries.get(0).getIndex();</span>
+<span class="nc" id="L1721">      final long snapshotIndex = state.getSnapshotIndex();</span>
+<span class="nc" id="L1722">      final long commitIndex =  state.getLog().getLastCommittedIndex();</span>
+<span class="nc" id="L1723">      final long nextIndex = Math.max(snapshotIndex, commitIndex);</span>
+<span class="nc bnc" id="L1724" title="All 4 branches missed.">      if (nextIndex &gt; RaftLog.INVALID_LOG_INDEX &amp;&amp; nextIndex &gt;= firstEntryIndex) {</span>
+<span class="nc" id="L1725">        LOG.info(&quot;{}: Failed appendEntries as the first entry (index {})&quot; +</span>
+                &quot; already exists (snapshotIndex: {}, commitIndex: {})&quot;,
+<span class="nc" id="L1727">            getMemberId(), firstEntryIndex, snapshotIndex, commitIndex);</span>
+<span class="nc" id="L1728">        return nextIndex + 1;</span>
+      }
+    }
+
+    // Check if &quot;previous&quot; is contained in current state.
+<span class="nc bnc" id="L1733" title="All 6 branches missed.">    if (previous != null &amp;&amp; !(appendLogTermIndices.contains(previous) || state.containsTermIndex(previous))) {</span>
+<span class="nc" id="L1734">      final long replyNextIndex = Math.min(state.getNextIndex(), previous.getIndex());</span>
+<span class="nc" id="L1735">      LOG.info(&quot;{}: Failed appendEntries as previous log entry ({}) is not found&quot;, getMemberId(), previous);</span>
+<span class="nc" id="L1736">      return replyNextIndex;</span>
+    }
+
+<span class="nc" id="L1739">    return RaftLog.INVALID_LOG_INDEX;</span>
+  }
+
+  @Override
+  public InstallSnapshotReplyProto installSnapshot(InstallSnapshotRequestProto request) throws IOException {
+<span class="nc" id="L1744">    return snapshotInstallationHandler.installSnapshot(request);</span>
+  }
+
+  boolean pause() {
+    // TODO: should pause() be limited on only working for a follower?
+
+    // Now the state of lifeCycle should be PAUSING, which will prevent future other operations.
+    // Pause() should pause ongoing operations:
+    //  a. call {@link StateMachine#pause()}.
+<span class="nc" id="L1753">    synchronized (this) {</span>
+<span class="nc bnc" id="L1754" title="All 2 branches missed.">      if (!lifeCycle.compareAndTransition(State.RUNNING, State.PAUSING)) {</span>
+<span class="nc" id="L1755">        return false;</span>
+      }
+      // TODO: any other operations that needs to be paused?
+<span class="nc" id="L1758">      stateMachine.pause();</span>
+<span class="nc" id="L1759">      lifeCycle.compareAndTransition(State.PAUSING, State.PAUSED);</span>
+<span class="nc" id="L1760">    }</span>
+<span class="nc" id="L1761">    return true;</span>
+  }
+
+  boolean resume() throws IOException {
+<span class="nc" id="L1765">    synchronized (this) {</span>
+<span class="nc bnc" id="L1766" title="All 2 branches missed.">      if (!lifeCycle.compareAndTransition(State.PAUSED, State.STARTING)) {</span>
+<span class="nc" id="L1767">        return false;</span>
+      }
+      // TODO: any other operations that needs to be resumed?
+      try {
+<span class="nc" id="L1771">        stateMachine.reinitialize();</span>
+<span class="nc" id="L1772">      } catch (IOException e) {</span>
+<span class="nc" id="L1773">        LOG.warn(&quot;Failed to reinitialize statemachine: {}&quot;, stateMachine);</span>
+<span class="nc" id="L1774">        lifeCycle.compareAndTransition(State.STARTING, State.EXCEPTION);</span>
+<span class="nc" id="L1775">        throw e;</span>
+<span class="nc" id="L1776">      }</span>
+<span class="nc" id="L1777">      lifeCycle.compareAndTransition(State.STARTING, State.RUNNING);</span>
+<span class="nc" id="L1778">    }</span>
+<span class="nc" id="L1779">    return true;</span>
+  }
+
+  @Override
+  public StartLeaderElectionReplyProto startLeaderElection(StartLeaderElectionRequestProto request) throws IOException {
+<span class="nc" id="L1784">    final RaftRpcRequestProto r = request.getServerRequest();</span>
+<span class="nc" id="L1785">    final RaftPeerId leaderId = RaftPeerId.valueOf(r.getRequestorId());</span>
+<span class="nc" id="L1786">    final RaftGroupId leaderGroupId = ProtoUtils.toRaftGroupId(r.getRaftGroupId());</span>
+<span class="nc" id="L1787">    CodeInjectionForTesting.execute(START_LEADER_ELECTION, getId(), leaderId, request);</span>
+
+<span class="nc bnc" id="L1789" title="All 2 branches missed.">    if (!request.hasLeaderLastEntry()) {</span>
+      // It should have a leaderLastEntry since there is a placeHolder entry.
+<span class="nc" id="L1791">      LOG.warn(&quot;{}: leaderLastEntry is missing in {}&quot;, getMemberId(), request);</span>
+<span class="nc" id="L1792">      return toStartLeaderElectionReplyProto(leaderId, getMemberId(), false);</span>
+    }
+
+<span class="nc" id="L1795">    final TermIndex leaderLastEntry = TermIndex.valueOf(request.getLeaderLastEntry());</span>
+<span class="nc" id="L1796">    LOG.debug(&quot;{}: receive startLeaderElection from {} with lastEntry {}&quot;, getMemberId(), leaderId, leaderLastEntry);</span>
+
+<span class="nc" id="L1798">    assertLifeCycleState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L1799">    assertGroup(getMemberId(), leaderId, leaderGroupId);</span>
+
+<span class="nc" id="L1801">    synchronized (this) {</span>
+      // Check life cycle state again to avoid the PAUSING/PAUSED state.
+<span class="nc" id="L1803">      assertLifeCycleState(LifeCycle.States.STARTING_OR_RUNNING);</span>
+<span class="nc" id="L1804">      final boolean recognized = state.recognizeLeader(&quot;startLeaderElection&quot;, leaderId, leaderLastEntry.getTerm());</span>
+<span class="nc bnc" id="L1805" title="All 2 branches missed.">      if (!recognized) {</span>
+<span class="nc" id="L1806">        return toStartLeaderElectionReplyProto(leaderId, getMemberId(), false);</span>
+      }
+
+<span class="nc bnc" id="L1809" title="All 2 branches missed.">      if (!getInfo().isFollower()) {</span>
+<span class="nc" id="L1810">        LOG.warn(&quot;{} refused StartLeaderElectionRequest from {}, because role is:{}&quot;,</span>
+<span class="nc" id="L1811">            getMemberId(), leaderId, role.getCurrentRole());</span>
+<span class="nc" id="L1812">        return toStartLeaderElectionReplyProto(leaderId, getMemberId(), false);</span>
+      }
+
+<span class="nc bnc" id="L1815" title="All 2 branches missed.">      if (ServerState.compareLog(state.getLastEntry(), leaderLastEntry) &lt; 0) {</span>
+<span class="nc" id="L1816">        LOG.warn(&quot;{} refused StartLeaderElectionRequest from {}, because lastEntry:{} less than leaderEntry:{}&quot;,</span>
+<span class="nc" id="L1817">            getMemberId(), leaderId, leaderLastEntry, state.getLastEntry());</span>
+<span class="nc" id="L1818">        return toStartLeaderElectionReplyProto(leaderId, getMemberId(), false);</span>
+      }
+
+<span class="nc" id="L1821">      changeToCandidate(true);</span>
+<span class="nc" id="L1822">      return toStartLeaderElectionReplyProto(leaderId, getMemberId(), true);</span>
+    }
+  }
+
+  void submitUpdateCommitEvent() {
+<span class="nc" id="L1827">    role.getLeaderState().ifPresent(LeaderStateImpl::submitUpdateCommitEvent);</span>
+<span class="nc" id="L1828">  }</span>
+
+  /**
+   * The log has been submitted to the state machine. Use the future to update
+   * the pending requests and retry cache.
+   * @param stateMachineFuture the future returned by the state machine
+   *                           from which we will get transaction result later
+   */
+  private CompletableFuture&lt;Message&gt; replyPendingRequest(
+      ClientInvocationId invocationId, TermIndex termIndex, CompletableFuture&lt;Message&gt; stateMachineFuture) {
+    // update the retry cache
+<span class="nc" id="L1839">    final CacheEntry cacheEntry = retryCache.getOrCreateEntry(invocationId);</span>
+<span class="nc" id="L1840">    Objects.requireNonNull(cacheEntry , &quot;cacheEntry == null&quot;);</span>
+<span class="nc bnc" id="L1841" title="All 4 branches missed.">    if (getInfo().isLeader() &amp;&amp; cacheEntry.isCompletedNormally()) {</span>
+<span class="nc" id="L1842">      LOG.warn(&quot;{} retry cache entry of leader should be pending: {}&quot;, this, cacheEntry);</span>
+    }
+<span class="nc bnc" id="L1844" title="All 2 branches missed.">    if (cacheEntry.isFailed()) {</span>
+<span class="nc" id="L1845">      retryCache.refreshEntry(new CacheEntry(cacheEntry.getKey()));</span>
+    }
+
+<span class="nc" id="L1848">    return stateMachineFuture.whenComplete((reply, exception) -&gt; {</span>
+<span class="nc" id="L1849">      getTransactionManager().remove(termIndex);</span>
+<span class="nc" id="L1850">      final RaftClientReply.Builder b = newReplyBuilder(invocationId, termIndex.getIndex());</span>
+      final RaftClientReply r;
+<span class="nc bnc" id="L1852" title="All 2 branches missed.">      if (exception == null) {</span>
+<span class="nc" id="L1853">        r = b.setSuccess().setMessage(reply).build();</span>
+      } else {
+        // the exception is coming from the state machine. wrap it into the
+        // reply as a StateMachineException
+<span class="nc" id="L1857">        final StateMachineException e = new StateMachineException(getMemberId(), exception);</span>
+<span class="nc" id="L1858">        r = b.setException(e).build();</span>
+      }
+
+      // update pending request
+<span class="nc" id="L1862">      role.getLeaderState().ifPresent(leader -&gt; leader.replyPendingRequest(termIndex, r));</span>
+<span class="nc" id="L1863">      cacheEntry.updateResult(r);</span>
+<span class="nc" id="L1864">    });</span>
+  }
+
+  TransactionManager getTransactionManager() {
+<span class="nc" id="L1868">    return transactionManager;</span>
+  }
+
+  @VisibleForTesting
+  Map&lt;TermIndex, MemoizedSupplier&lt;TransactionContext&gt;&gt; getTransactionContextMapForTesting() {
+<span class="nc" id="L1873">    return getTransactionManager().getMap();</span>
+  }
+
+  TransactionContext getTransactionContext(LogEntryProto entry, Boolean createNew) {
+<span class="nc bnc" id="L1877" title="All 2 branches missed.">    if (!entry.hasStateMachineLogEntry()) {</span>
+<span class="nc" id="L1878">      return null;</span>
+    }
+
+<span class="nc" id="L1881">    final TermIndex termIndex = TermIndex.valueOf(entry);</span>
+<span class="nc" id="L1882">    final Optional&lt;LeaderStateImpl&gt; leader = getRole().getLeaderState();</span>
+<span class="nc bnc" id="L1883" title="All 2 branches missed.">    if (leader.isPresent()) {</span>
+<span class="nc" id="L1884">      final TransactionContext context = leader.get().getTransactionContext(termIndex);</span>
+<span class="nc bnc" id="L1885" title="All 2 branches missed.">      if (context != null) {</span>
+<span class="nc" id="L1886">        return context;</span>
+      }
+    }
+
+<span class="nc bnc" id="L1890" title="All 2 branches missed.">    if (!createNew) {</span>
+<span class="nc" id="L1891">      return getTransactionManager().get(termIndex);</span>
+    }
+<span class="nc" id="L1893">    return getTransactionManager().computeIfAbsent(termIndex,</span>
+        // call startTransaction only once
+<span class="nc" id="L1895">        MemoizedSupplier.valueOf(() -&gt; stateMachine.startTransaction(entry, getInfo().getCurrentRole())));</span>
+  }
+
+  CompletableFuture&lt;Message&gt; applyLogToStateMachine(ReferenceCountedObject&lt;LogEntryProto&gt; nextRef)
+      throws RaftLogIOException {
+<span class="nc" id="L1900">    LogEntryProto next = nextRef.get();</span>
+<span class="nc" id="L1901">    CompletableFuture&lt;Message&gt; messageFuture = null;</span>
+
+<span class="nc bnc" id="L1903" title="All 4 branches missed.">    switch (next.getLogEntryBodyCase()) {</span>
+    case CONFIGURATIONENTRY:
+      // the reply should have already been set. only need to record
+      // the new conf in the metadata file and notify the StateMachine.
+<span class="nc" id="L1907">      state.writeRaftConfiguration(next);</span>
+<span class="nc" id="L1908">      stateMachine.event().notifyConfigurationChanged(next.getTerm(), next.getIndex(),</span>
+<span class="nc" id="L1909">          next.getConfigurationEntry());</span>
+<span class="nc" id="L1910">      role.getLeaderState().ifPresent(leader -&gt; leader.checkReady(next));</span>
+<span class="nc" id="L1911">      break;</span>
+    case STATEMACHINELOGENTRY:
+<span class="nc" id="L1913">      TransactionContext trx = getTransactionContext(next, true);</span>
+<span class="nc" id="L1914">      final ClientInvocationId invocationId = ClientInvocationId.valueOf(next.getStateMachineLogEntry());</span>
+<span class="nc" id="L1915">      writeIndexCache.add(invocationId.getClientId(), ((TransactionContextImpl) trx).getLogIndexFuture());</span>
+<span class="nc" id="L1916">      ((TransactionContextImpl) trx).setDelegatedRef(nextRef);</span>
+      try {
+        // Let the StateMachine inject logic for committed transactions in sequential order.
+<span class="nc" id="L1919">        trx = stateMachine.applyTransactionSerial(trx);</span>
+
+<span class="nc" id="L1921">        final CompletableFuture&lt;Message&gt; stateMachineFuture = stateMachine.applyTransaction(trx);</span>
+<span class="nc" id="L1922">        messageFuture = replyPendingRequest(invocationId, TermIndex.valueOf(next), stateMachineFuture);</span>
+<span class="nc" id="L1923">      } catch (Exception e) {</span>
+<span class="nc" id="L1924">        throw new RaftLogIOException(e);</span>
+<span class="nc" id="L1925">      }</span>
+      break;
+    case METADATAENTRY:
+<span class="nc" id="L1928">      break;</span>
+    default:
+<span class="nc" id="L1930">      throw new IllegalStateException(&quot;Unexpected LogEntryBodyCase &quot; + next.getLogEntryBodyCase() + &quot;, next=&quot; + next);</span>
+    }
+
+<span class="nc bnc" id="L1933" title="All 2 branches missed.">    if (next.getLogEntryBodyCase() != LogEntryProto.LogEntryBodyCase.STATEMACHINELOGENTRY) {</span>
+<span class="nc" id="L1934">      stateMachine.event().notifyTermIndexUpdated(next.getTerm(), next.getIndex());</span>
+    }
+<span class="nc" id="L1936">    return messageFuture;</span>
+  }
+
+  /**
+   * The given log entry is being truncated.
+   * Fail the corresponding client request, if there is any.
+   *
+   * @param logEntry the log entry being truncated
+   */
+  void notifyTruncatedLogEntry(LogEntryProto logEntry) {
+<span class="nc" id="L1946">    Optional.ofNullable(getState()).ifPresent(s -&gt; s.truncate(logEntry.getIndex()));</span>
+<span class="nc bnc" id="L1947" title="All 2 branches missed.">    if (logEntry.hasStateMachineLogEntry()) {</span>
+<span class="nc" id="L1948">      getTransactionManager().remove(TermIndex.valueOf(logEntry));</span>
+
+<span class="nc" id="L1950">      final ClientInvocationId invocationId = ClientInvocationId.valueOf(logEntry.getStateMachineLogEntry());</span>
+<span class="nc" id="L1951">      final CacheEntry cacheEntry = getRetryCache().getIfPresent(invocationId);</span>
+<span class="nc bnc" id="L1952" title="All 2 branches missed.">      if (cacheEntry != null) {</span>
+<span class="nc" id="L1953">        cacheEntry.failWithReply(newReplyBuilder(invocationId, logEntry.getIndex())</span>
+<span class="nc" id="L1954">            .setException(generateNotLeaderException())</span>
+<span class="nc" id="L1955">            .build());</span>
+      }
+    }
+<span class="nc" id="L1958">  }</span>
+
+  LeaderElectionMetrics getLeaderElectionMetrics() {
+<span class="nc" id="L1961">    return leaderElectionMetrics;</span>
+  }
+
+  @Override
+  public RaftServerMetricsImpl getRaftServerMetrics() {
+<span class="nc" id="L1966">    return raftServerMetrics;</span>
+  }
+
+  void onGroupLeaderElected() {
+<span class="nc" id="L1970">    transferLeadership.complete(TransferLeadership.Result.SUCCESS);</span>
+<span class="nc" id="L1971">  }</span>
+
+  boolean isRunning() {
+<span class="nc bnc" id="L1974" title="All 4 branches missed.">    return startComplete.get() &amp;&amp; lifeCycle.getCurrentState() == State.RUNNING;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

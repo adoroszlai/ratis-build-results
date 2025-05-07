@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftClientImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">RaftClientImpl.java</span></div><h1>RaftClientImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import org.apache.ratis.client.DataStreamClient;
+import org.apache.ratis.client.RaftClient;
+import org.apache.ratis.client.RaftClientRpc;
+import org.apache.ratis.client.api.DataStreamApi;
+import org.apache.ratis.client.api.LeaderElectionManagementApi;
+import org.apache.ratis.client.api.SnapshotManagementApi;
+import org.apache.ratis.client.retry.ClientRetryEvent;
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.SlidingWindowEntry;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.exceptions.LeaderNotReadyException;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.protocol.exceptions.RaftRetryFailureException;
+import org.apache.ratis.protocol.exceptions.ResourceUnavailableException;
+import org.apache.ratis.retry.RetryPolicy;
+import org.apache.ratis.thirdparty.com.google.common.cache.Cache;
+import org.apache.ratis.thirdparty.com.google.common.cache.CacheBuilder;
+import org.apache.ratis.util.CollectionUtils;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.TimeoutExecutor;
+import org.apache.ratis.util.Timestamp;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/** A client who sends requests to a raft service. */
+public final class RaftClientImpl implements RaftClient {
+<span class="nc" id="L79">  private static final Cache&lt;RaftGroupId, RaftPeerId&gt; LEADER_CACHE = CacheBuilder.newBuilder()</span>
+<span class="nc" id="L80">      .expireAfterAccess(60, TimeUnit.SECONDS)</span>
+<span class="nc" id="L81">      .maximumSize(1024)</span>
+<span class="nc" id="L82">      .build();</span>
+
+<span class="nc" id="L84">  public abstract static class PendingClientRequest {</span>
+<span class="nc" id="L85">    private final Timestamp creationTime = Timestamp.currentTime();</span>
+<span class="nc" id="L86">    private final CompletableFuture&lt;RaftClientReply&gt; replyFuture = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L87">    private final AtomicInteger attemptCount = new AtomicInteger();</span>
+<span class="nc" id="L88">    private final Map&lt;Class&lt;?&gt;, Integer&gt; exceptionCounts = new ConcurrentHashMap&lt;&gt;();</span>
+
+    public abstract RaftClientRequest newRequestImpl();
+
+    final RaftClientRequest newRequest() {
+<span class="nc" id="L93">      final int attempt = attemptCount.incrementAndGet();</span>
+<span class="nc" id="L94">      final RaftClientRequest request = newRequestImpl();</span>
+<span class="nc" id="L95">      LOG.debug(&quot;attempt #{}, newRequest {}&quot;, attempt, request);</span>
+<span class="nc" id="L96">      return request;</span>
+    }
+
+    CompletableFuture&lt;RaftClientReply&gt; getReplyFuture() {
+<span class="nc" id="L100">      return replyFuture;</span>
+    }
+
+    public int getAttemptCount() {
+<span class="nc" id="L104">      return attemptCount.get();</span>
+    }
+
+    public ClientRetryEvent newClientRetryEvent(RaftClientRequest request, Throwable throwable) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">      final int exceptionCount = throwable == null? 0</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">          : exceptionCounts.compute(throwable.getClass(), (k, v) -&gt; v == null? 1: v+1);</span>
+<span class="nc" id="L110">      return new ClientRetryEvent(getAttemptCount(), request, exceptionCount, throwable, creationTime);</span>
+    }
+  }
+
+<span class="nc" id="L114">  static class RaftPeerList implements Iterable&lt;RaftPeer&gt; {</span>
+<span class="nc" id="L115">    private final AtomicReference&lt;List&lt;RaftPeer&gt;&gt; list = new AtomicReference&lt;&gt;();</span>
+
+    @Override
+    public Iterator&lt;RaftPeer&gt; iterator() {
+<span class="nc" id="L119">      return list.get().iterator();</span>
+    }
+
+    void set(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">      Preconditions.assertTrue(!newPeers.isEmpty(), &quot;newPeers is empty.&quot;);</span>
+<span class="nc" id="L124">      list.set(Collections.unmodifiableList(new ArrayList&lt;&gt;(newPeers)));</span>
+<span class="nc" id="L125">    }</span>
+  }
+
+  static class RepliedCallIds {
+    private final Object name;
+    /** The replied callIds. */
+<span class="nc" id="L131">    private Set&lt;Long&gt; replied = new TreeSet&lt;&gt;();</span>
+    /**
+     * Map: callId to-be-sent -&gt; replied callIds to-be-included.
+     * When retrying the same callId, the request will include the same set of replied callIds.
+     *
+     * @see RaftClientRequest#getRepliedCallIds()
+     */
+<span class="nc" id="L138">    private final ConcurrentMap&lt;Long, Set&lt;Long&gt;&gt; sent = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="nc" id="L140">    RepliedCallIds(Object name) {</span>
+<span class="nc" id="L141">      this.name = name;</span>
+<span class="nc" id="L142">    }</span>
+
+    /** The given callId is replied. */
+    void add(long repliedCallId) {
+<span class="nc" id="L146">      LOG.debug(&quot;{}: add replied callId {}&quot;, name, repliedCallId);</span>
+<span class="nc" id="L147">      synchronized (this) {</span>
+        // synchronized to avoid adding to a previous set.
+<span class="nc" id="L149">        replied.add(repliedCallId);</span>
+<span class="nc" id="L150">      }</span>
+<span class="nc" id="L151">      sent.remove(repliedCallId);</span>
+<span class="nc" id="L152">    }</span>
+
+    /** @return the replied callIds for the given callId. */
+    Iterable&lt;Long&gt; get(long callId) {
+<span class="nc" id="L156">      final Supplier&lt;Set&lt;Long&gt;&gt; supplier = MemoizedSupplier.valueOf(this::getAndReset);</span>
+<span class="nc" id="L157">      final Set&lt;Long&gt; set = Collections.unmodifiableSet(sent.computeIfAbsent(callId, cid -&gt; supplier.get()));</span>
+<span class="nc" id="L158">      LOG.debug(&quot;{}: get {} returns {}&quot;, name, callId, set);</span>
+<span class="nc" id="L159">      return set;</span>
+    }
+
+    private synchronized Set&lt;Long&gt; getAndReset() {
+<span class="nc" id="L163">      final Set&lt;Long&gt; previous = replied;</span>
+<span class="nc" id="L164">      replied = new TreeSet&lt;&gt;();</span>
+<span class="nc" id="L165">      return previous;</span>
+    }
+  }
+
+  private final ClientId clientId;
+  private final RaftClientRpc clientRpc;
+<span class="nc" id="L171">  private final RaftPeerList peers = new RaftPeerList();</span>
+  private final RaftGroupId groupId;
+  private final RetryPolicy retryPolicy;
+
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile RaftPeerId leaderId;
+  /** The callIds of the replied requests. */
+  private final RepliedCallIds repliedCallIds;
+
+<span class="nc" id="L180">  private final TimeoutExecutor scheduler = TimeoutExecutor.getInstance();</span>
+
+  private final Supplier&lt;OrderedAsync&gt; orderedAsync;
+  private final Supplier&lt;AsyncImpl&gt; asyncApi;
+  private final Supplier&lt;BlockingImpl&gt; blockingApi;
+  private final Supplier&lt;MessageStreamImpl&gt; messageStreamApi;
+  private final MemoizedSupplier&lt;DataStreamApi&gt; dataStreamApi;
+
+  private final Supplier&lt;AdminImpl&gt; adminApi;
+<span class="nc" id="L189">  private final ConcurrentMap&lt;RaftPeerId, GroupManagementImpl&gt; groupManagement = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="nc" id="L190">  private final ConcurrentMap&lt;RaftPeerId, SnapshotManagementApi&gt; snapshotManagement = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="nc" id="L191">  private final ConcurrentMap&lt;RaftPeerId, LeaderElectionManagementApi&gt;</span>
+      leaderElectionManagement = new ConcurrentHashMap&lt;&gt;();
+
+<span class="nc" id="L194">  private final AtomicBoolean closed = new AtomicBoolean();</span>
+
+  @SuppressWarnings(&quot;checkstyle:ParameterNumber&quot;)
+  RaftClientImpl(ClientId clientId, RaftGroup group, RaftPeerId leaderId, RaftPeer primaryDataStreamServer,
+<span class="nc" id="L198">      RaftClientRpc clientRpc, RetryPolicy retryPolicy, RaftProperties properties, Parameters parameters) {</span>
+<span class="nc" id="L199">    this.clientId = clientId;</span>
+<span class="nc" id="L200">    this.peers.set(group.getPeers());</span>
+<span class="nc" id="L201">    this.groupId = group.getGroupId();</span>
+
+<span class="nc" id="L203">    this.leaderId = Objects.requireNonNull(computeLeaderId(leaderId, group),</span>
+<span class="nc" id="L204">        () -&gt; &quot;this.leaderId is set to null, leaderId=&quot; + leaderId + &quot;, group=&quot; + group);</span>
+<span class="nc" id="L205">    this.repliedCallIds = new RepliedCallIds(clientId);</span>
+<span class="nc" id="L206">    this.retryPolicy = Objects.requireNonNull(retryPolicy, &quot;retry policy can't be null&quot;);</span>
+
+<span class="nc" id="L208">    clientRpc.addRaftPeers(group.getPeers());</span>
+<span class="nc" id="L209">    this.clientRpc = clientRpc;</span>
+
+<span class="nc" id="L211">    this.orderedAsync = JavaUtils.memoize(() -&gt; OrderedAsync.newInstance(this, properties));</span>
+<span class="nc" id="L212">    this.messageStreamApi = JavaUtils.memoize(() -&gt; MessageStreamImpl.newInstance(this, properties));</span>
+<span class="nc" id="L213">    this.asyncApi = JavaUtils.memoize(() -&gt; new AsyncImpl(this));</span>
+<span class="nc" id="L214">    this.blockingApi = JavaUtils.memoize(() -&gt; new BlockingImpl(this));</span>
+<span class="nc" id="L215">    this.dataStreamApi = JavaUtils.memoize(() -&gt; DataStreamClient.newBuilder(this)</span>
+<span class="nc" id="L216">        .setDataStreamServer(primaryDataStreamServer)</span>
+<span class="nc" id="L217">        .setProperties(properties)</span>
+<span class="nc" id="L218">        .setParameters(parameters)</span>
+<span class="nc" id="L219">        .build());</span>
+<span class="nc" id="L220">    this.adminApi = JavaUtils.memoize(() -&gt; new AdminImpl(this));</span>
+<span class="nc" id="L221">  }</span>
+
+  @Override
+  public RaftPeerId getLeaderId() {
+<span class="nc" id="L225">    return leaderId;</span>
+  }
+
+  @Override
+  public RaftGroupId getGroupId() {
+<span class="nc" id="L230">    return groupId;</span>
+  }
+
+  private static RaftPeerId computeLeaderId(RaftPeerId leaderId, RaftGroup group) {
+<span class="nc bnc" id="L234" title="All 2 branches missed.">    if (leaderId != null) {</span>
+<span class="nc" id="L235">      return leaderId;</span>
+    }
+<span class="nc" id="L237">    final RaftPeerId cached = LEADER_CACHE.getIfPresent(group.getGroupId());</span>
+<span class="nc bnc" id="L238" title="All 4 branches missed.">    if (cached != null &amp;&amp; group.getPeer(cached) != null) {</span>
+<span class="nc" id="L239">      return cached;</span>
+    }
+<span class="nc" id="L241">    return getHighestPriorityPeer(group).getId();</span>
+  }
+
+  private static RaftPeer getHighestPriorityPeer(RaftGroup group) {
+<span class="nc" id="L245">    final Iterator&lt;RaftPeer&gt; i = group.getPeers().iterator();</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">    if (!i.hasNext()) {</span>
+<span class="nc" id="L247">      throw new IllegalArgumentException(&quot;Group peers is empty in &quot; + group);</span>
+    }
+
+<span class="nc" id="L250">    RaftPeer highest = i.next();</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">    for(; i.hasNext(); ) {</span>
+<span class="nc" id="L252">      final RaftPeer peer = i.next();</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">      if (peer.getPriority() &gt; highest.getPriority()) {</span>
+<span class="nc" id="L254">        highest = peer;</span>
+      }
+<span class="nc" id="L256">    }</span>
+<span class="nc" id="L257">    return highest;</span>
+  }
+
+  @Override
+  public ClientId getId() {
+<span class="nc" id="L262">    return clientId;</span>
+  }
+
+  RetryPolicy getRetryPolicy() {
+<span class="nc" id="L266">    return retryPolicy;</span>
+  }
+
+  TimeDuration getEffectiveSleepTime(Throwable t, TimeDuration sleepDefault) {
+<span class="nc bnc" id="L270" title="All 4 branches missed.">    return t instanceof NotLeaderException &amp;&amp; ((NotLeaderException) t).getSuggestedLeader() != null ?</span>
+        TimeDuration.ZERO : sleepDefault;
+  }
+
+  TimeoutExecutor getScheduler() {
+<span class="nc" id="L275">    return scheduler;</span>
+  }
+
+  OrderedAsync getOrderedAsync() {
+<span class="nc" id="L279">    return orderedAsync.get();</span>
+  }
+
+  RaftClientRequest newRaftClientRequest(
+      RaftPeerId server, long callId, Message message, RaftClientRequest.Type type,
+      SlidingWindowEntry slidingWindowEntry) {
+<span class="nc" id="L285">    final RaftClientRequest.Builder b = RaftClientRequest.newBuilder();</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">    if (server != null) {</span>
+<span class="nc" id="L287">      b.setServerId(server);</span>
+    } else {
+<span class="nc" id="L289">      b.setLeaderId(getLeaderId())</span>
+<span class="nc" id="L290">       .setRepliedCallIds(repliedCallIds.get(callId));</span>
+    }
+<span class="nc" id="L292">    return b.setClientId(clientId)</span>
+<span class="nc" id="L293">        .setGroupId(groupId)</span>
+<span class="nc" id="L294">        .setCallId(callId)</span>
+<span class="nc" id="L295">        .setMessage(message)</span>
+<span class="nc" id="L296">        .setType(type)</span>
+<span class="nc" id="L297">        .setSlidingWindowEntry(slidingWindowEntry)</span>
+<span class="nc" id="L298">        .build();</span>
+  }
+
+  @Override
+  public AdminImpl admin() {
+<span class="nc" id="L303">    return adminApi.get();</span>
+  }
+
+  @Override
+  public GroupManagementImpl getGroupManagementApi(RaftPeerId server) {
+<span class="nc" id="L308">    return groupManagement.computeIfAbsent(server, id -&gt; new GroupManagementImpl(id, this));</span>
+  }
+
+  @Override
+  public SnapshotManagementApi getSnapshotManagementApi() {
+<span class="nc" id="L313">    return JavaUtils.memoize(() -&gt; new SnapshotManagementImpl(null, this)).get();</span>
+  }
+
+  @Override
+  public SnapshotManagementApi getSnapshotManagementApi(RaftPeerId server) {
+<span class="nc" id="L318">    return snapshotManagement.computeIfAbsent(server, id -&gt; new SnapshotManagementImpl(id, this));</span>
+  }
+
+  @Override
+  public LeaderElectionManagementApi getLeaderElectionManagementApi(RaftPeerId server) {
+<span class="nc" id="L323">    return leaderElectionManagement.computeIfAbsent(server, id -&gt; new LeaderElectionManagementImpl(id, this));</span>
+  }
+
+  @Override
+  public BlockingImpl io() {
+<span class="nc" id="L328">    return blockingApi.get();</span>
+  }
+
+  @Override
+  public AsyncImpl async() {
+<span class="nc" id="L333">    return asyncApi.get();</span>
+  }
+
+  @Override
+  public MessageStreamImpl getMessageStreamApi() {
+<span class="nc" id="L338">    return messageStreamApi.get();</span>
+  }
+
+  @Override
+  public DataStreamApi getDataStreamApi() {
+<span class="nc" id="L343">    return dataStreamApi.get();</span>
+  }
+
+  IOException noMoreRetries(ClientRetryEvent event) {
+<span class="nc" id="L347">    final int attemptCount = event.getAttemptCount();</span>
+<span class="nc" id="L348">    final Throwable throwable = event.getCause();</span>
+<span class="nc bnc" id="L349" title="All 4 branches missed.">    if (attemptCount == 1 &amp;&amp; throwable != null) {</span>
+<span class="nc" id="L350">      return IOUtils.asIOException(throwable);</span>
+    }
+<span class="nc" id="L352">    return new RaftRetryFailureException(event.getRequest(), attemptCount, retryPolicy, throwable);</span>
+  }
+
+  RaftClientReply handleReply(RaftClientRequest request, RaftClientReply reply) {
+<span class="nc bnc" id="L356" title="All 4 branches missed.">    if (request.isToLeader() &amp;&amp; reply != null) {</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">      if (!request.getType().isReadOnly()) {</span>
+<span class="nc" id="L358">        repliedCallIds.add(reply.getCallId());</span>
+      }
+
+<span class="nc bnc" id="L361" title="All 2 branches missed.">      if (reply.getException() == null) {</span>
+<span class="nc" id="L362">        LEADER_CACHE.put(reply.getRaftGroupId(), reply.getServerId());</span>
+      }
+    }
+<span class="nc" id="L365">    return reply;</span>
+  }
+
+  static &lt;E extends Throwable&gt; RaftClientReply handleRaftException(
+      RaftClientReply reply, Function&lt;RaftException, E&gt; converter) throws E {
+<span class="nc bnc" id="L370" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc" id="L371">      final RaftException e = reply.getException();</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">      if (e != null) {</span>
+<span class="nc" id="L373">        throw converter.apply(e);</span>
+      }
+    }
+<span class="nc" id="L376">    return reply;</span>
+  }
+
+  /**
+   * @return null if the reply is null or it has
+   * {@link NotLeaderException} or {@link LeaderNotReadyException}
+   * otherwise return the same reply.
+   */
+  RaftClientReply handleLeaderException(RaftClientRequest request, RaftClientReply reply) {
+<span class="nc bnc" id="L385" title="All 4 branches missed.">    if (reply == null || reply.getException() instanceof LeaderNotReadyException) {</span>
+<span class="nc" id="L386">      return null;</span>
+    }
+<span class="nc" id="L388">    final NotLeaderException nle = reply.getNotLeaderException();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">    if (nle == null) {</span>
+<span class="nc" id="L390">      return reply;</span>
+    }
+<span class="nc" id="L392">    return handleNotLeaderException(request, nle, null);</span>
+  }
+
+  RaftClientReply handleNotLeaderException(RaftClientRequest request, NotLeaderException nle,
+      Consumer&lt;RaftClientRequest&gt; handler) {
+<span class="nc" id="L397">    refreshPeers(nle.getPeers());</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">    final RaftPeerId newLeader = nle.getSuggestedLeader() == null ? null</span>
+<span class="nc" id="L399">        : nle.getSuggestedLeader().getId();</span>
+<span class="nc" id="L400">    handleIOException(request, nle, newLeader, handler);</span>
+<span class="nc" id="L401">    return null;</span>
+  }
+
+  private void refreshPeers(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="nc bnc" id="L405" title="All 4 branches missed.">    if (newPeers != null &amp;&amp; !newPeers.isEmpty()) {</span>
+<span class="nc" id="L406">      peers.set(newPeers);</span>
+      // also refresh the rpc proxies for these peers
+<span class="nc" id="L408">      clientRpc.addRaftPeers(newPeers);</span>
+    }
+<span class="nc" id="L410">  }</span>
+
+  void handleIOException(RaftClientRequest request, IOException ioe) {
+<span class="nc" id="L413">    handleIOException(request, ioe, null, null);</span>
+<span class="nc" id="L414">  }</span>
+
+  void handleIOException(RaftClientRequest request, IOException ioe,
+      RaftPeerId newLeader, Consumer&lt;RaftClientRequest&gt; handler) {
+<span class="nc" id="L418">    LOG.debug(&quot;{}: suggested new leader: {}. Failed {}&quot;, clientId, newLeader, request, ioe);</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">    if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L420">      LOG.trace(&quot;Stack trace&quot;, new Throwable(&quot;TRACE&quot;));</span>
+    }
+
+<span class="nc" id="L423">    Optional.ofNullable(handler).ifPresent(h -&gt; h.accept(request));</span>
+
+<span class="nc bnc" id="L425" title="All 4 branches missed.">    if (ioe instanceof LeaderNotReadyException || ioe instanceof ResourceUnavailableException) {</span>
+<span class="nc" id="L426">      return;</span>
+    }
+
+<span class="nc" id="L429">    final RaftPeerId oldLeader = request.getServerId();</span>
+<span class="nc" id="L430">    final RaftPeerId curLeader = getLeaderId();</span>
+<span class="nc" id="L431">    final boolean stillLeader = oldLeader.equals(curLeader);</span>
+<span class="nc bnc" id="L432" title="All 4 branches missed.">    if (newLeader == null &amp;&amp; stillLeader) {</span>
+<span class="nc" id="L433">      newLeader = CollectionUtils.random(oldLeader,</span>
+<span class="nc" id="L434">          CollectionUtils.as(peers, RaftPeer::getId));</span>
+    }
+<span class="nc" id="L436">    LOG.debug(&quot;{}: oldLeader={},  curLeader={}, newLeader={}&quot;, clientId, oldLeader, curLeader, newLeader);</span>
+
+<span class="nc bnc" id="L438" title="All 4 branches missed.">    final boolean changeLeader = newLeader != null &amp;&amp; stillLeader;</span>
+<span class="nc bnc" id="L439" title="All 4 branches missed.">    final boolean reconnect = changeLeader || clientRpc.shouldReconnect(ioe);</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">    if (reconnect) {</span>
+<span class="nc bnc" id="L441" title="All 4 branches missed.">      if (changeLeader &amp;&amp; oldLeader.equals(getLeaderId())) {</span>
+<span class="nc" id="L442">        LOG.debug(&quot;{} changes Leader from {} to {} for {}&quot;,</span>
+            clientId, oldLeader, newLeader, groupId, ioe);
+<span class="nc" id="L444">        this.leaderId = newLeader;</span>
+      }
+<span class="nc" id="L446">      clientRpc.handleException(oldLeader, ioe, true);</span>
+    }
+<span class="nc" id="L448">  }</span>
+
+  @Override
+  public RaftClientRpc getClientRpc() {
+<span class="nc" id="L452">    return clientRpc;</span>
+  }
+
+  boolean isClosed() {
+<span class="nc" id="L456">    return closed.get();</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc bnc" id="L461" title="All 2 branches missed.">    if (!closed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L462">      return;</span>
+    }
+
+<span class="nc" id="L465">    LOG.debug(&quot;close {}&quot;, getId());</span>
+<span class="nc" id="L466">    clientRpc.close();</span>
+<span class="nc bnc" id="L467" title="All 2 branches missed.">    if (dataStreamApi.isInitialized()) {</span>
+<span class="nc" id="L468">      dataStreamApi.get().close();</span>
+    }
+<span class="nc" id="L470">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

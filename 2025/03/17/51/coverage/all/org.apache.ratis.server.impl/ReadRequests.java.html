@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReadRequests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">ReadRequests.java</span></div><h1>ReadRequests.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.exceptions.ReadException;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.TimeoutExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.NavigableMap;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+
+/** For supporting linearizable read. */
+class ReadRequests {
+<span class="nc" id="L36">  private static final Logger LOG = LoggerFactory.getLogger(ReadRequests.class);</span>
+
+  static class ReadIndexQueue {
+<span class="nc" id="L39">    private final TimeoutExecutor scheduler = TimeoutExecutor.getInstance();</span>
+<span class="nc" id="L40">    private final NavigableMap&lt;Long, CompletableFuture&lt;Long&gt;&gt; sorted = new TreeMap&lt;&gt;();</span>
+    private final TimeDuration readTimeout;
+
+<span class="nc" id="L43">    ReadIndexQueue(TimeDuration readTimeout) {</span>
+<span class="nc" id="L44">      this.readTimeout = readTimeout;</span>
+<span class="nc" id="L45">    }</span>
+
+    CompletableFuture&lt;Long&gt; add(long readIndex) {
+      final CompletableFuture&lt;Long&gt; returned;
+      final boolean create;
+<span class="nc" id="L50">      synchronized (this) {</span>
+        // The same as computeIfAbsent except that it also tells if a new value is created.
+<span class="nc" id="L52">        final CompletableFuture&lt;Long&gt; existing = sorted.get(readIndex);</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        create = existing == null;</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if (create) {</span>
+<span class="nc" id="L55">          returned = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L56">          sorted.put(readIndex, returned);</span>
+        } else {
+<span class="nc" id="L58">          returned = existing;</span>
+        }
+<span class="nc" id="L60">      }</span>
+
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      if (create) {</span>
+<span class="nc" id="L63">        scheduler.onTimeout(readTimeout, () -&gt; handleTimeout(readIndex),</span>
+<span class="nc" id="L64">            LOG, () -&gt; &quot;Failed to handle read timeout for index &quot; + readIndex);</span>
+      }
+<span class="nc" id="L66">      return returned;</span>
+    }
+
+    private void handleTimeout(long readIndex) {
+      final CompletableFuture&lt;Long&gt; removed;
+<span class="nc" id="L71">      synchronized (this) {</span>
+<span class="nc" id="L72">        removed = sorted.remove(readIndex);</span>
+<span class="nc" id="L73">      }</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">      if (removed == null) {</span>
+<span class="nc" id="L75">        return;</span>
+      }
+<span class="nc" id="L77">      removed.completeExceptionally(new ReadException(&quot;Read timeout &quot; + readTimeout + &quot; for index &quot; + readIndex));</span>
+<span class="nc" id="L78">    }</span>
+
+
+    /** Complete all the entries less than or equal to the given applied index. */
+    synchronized void complete(Long appliedIndex) {
+<span class="nc" id="L83">      final NavigableMap&lt;Long, CompletableFuture&lt;Long&gt;&gt; headMap = sorted.headMap(appliedIndex, true);</span>
+<span class="nc" id="L84">      headMap.values().forEach(f -&gt; f.complete(appliedIndex));</span>
+<span class="nc" id="L85">      headMap.clear();</span>
+<span class="nc" id="L86">    }</span>
+  }
+
+  private final ReadIndexQueue readIndexQueue;
+  private final StateMachine stateMachine;
+
+<span class="nc" id="L92">  ReadRequests(RaftProperties properties, StateMachine stateMachine) {</span>
+<span class="nc" id="L93">    this.readIndexQueue = new ReadIndexQueue(RaftServerConfigKeys.Read.timeout(properties));</span>
+<span class="nc" id="L94">    this.stateMachine = stateMachine;</span>
+<span class="nc" id="L95">  }</span>
+
+  Consumer&lt;Long&gt; getAppliedIndexConsumer() {
+<span class="nc" id="L98">    return readIndexQueue::complete;</span>
+  }
+
+  CompletableFuture&lt;Long&gt; waitToAdvance(long readIndex) {
+<span class="nc" id="L102">    final long lastApplied = stateMachine.getLastAppliedTermIndex().getIndex();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (lastApplied &gt;= readIndex) {</span>
+<span class="nc" id="L104">      return CompletableFuture.completedFuture(lastApplied);</span>
+    }
+<span class="nc" id="L106">    final CompletableFuture&lt;Long&gt; f = readIndexQueue.add(readIndex);</span>
+<span class="nc" id="L107">    final long current = stateMachine.getLastAppliedTermIndex().getIndex();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">    if (current &gt; lastApplied) {</span>
+<span class="nc" id="L109">      readIndexQueue.complete(current);</span>
+    }
+<span class="nc" id="L111">    return f;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

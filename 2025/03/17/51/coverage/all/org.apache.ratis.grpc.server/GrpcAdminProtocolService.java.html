@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcAdminProtocolService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.server</a> &gt; <span class="el_source">GrpcAdminProtocolService.java</span></div><h1>GrpcAdminProtocolService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.server;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.protocol.AdminAsynchronousProtocol;
+import org.apache.ratis.protocol.GroupInfoRequest;
+import org.apache.ratis.protocol.GroupListRequest;
+import org.apache.ratis.protocol.GroupManagementRequest;
+import org.apache.ratis.protocol.LeaderElectionManagementRequest;
+import org.apache.ratis.protocol.SetConfigurationRequest;
+import org.apache.ratis.protocol.SnapshotManagementRequest;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.proto.RaftProtos.RaftClientReplyProto;
+import org.apache.ratis.proto.RaftProtos.GroupManagementRequestProto;
+import org.apache.ratis.proto.grpc.AdminProtocolServiceGrpc.AdminProtocolServiceImplBase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class GrpcAdminProtocolService extends AdminProtocolServiceImplBase {
+<span class="nc" id="L39">  static final Logger LOG = LoggerFactory.getLogger(GrpcAdminProtocolService.class);</span>
+
+  private final AdminAsynchronousProtocol protocol;
+
+<span class="nc" id="L43">  public GrpcAdminProtocolService(AdminAsynchronousProtocol protocol) {</span>
+<span class="nc" id="L44">    this.protocol = protocol;</span>
+<span class="nc" id="L45">  }</span>
+
+  @Override
+  public void groupManagement(GroupManagementRequestProto proto,
+        StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="nc" id="L50">    final GroupManagementRequest request = ClientProtoUtils.toGroupManagementRequest(proto);</span>
+<span class="nc" id="L51">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.groupManagementAsync(request),</span>
+        ClientProtoUtils::toRaftClientReplyProto,
+<span class="nc" id="L53">        t -&gt; LOG.warn(&quot;Failed groupManagement: {}, {}&quot;, proto.getOpCase(), request, t));</span>
+<span class="nc" id="L54">  }</span>
+
+  @Override
+  public void groupList(GroupListRequestProto proto,
+        StreamObserver&lt;GroupListReplyProto&gt; responseObserver) {
+<span class="nc" id="L59">    final GroupListRequest request = ClientProtoUtils.toGroupListRequest(proto);</span>
+<span class="nc" id="L60">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.getGroupListAsync(request),</span>
+        ClientProtoUtils::toGroupListReplyProto,
+<span class="nc" id="L62">        t -&gt; LOG.warn(&quot;Failed to groupList: {}&quot;, request, t));</span>
+<span class="nc" id="L63">  }</span>
+
+  @Override
+  public void groupInfo(GroupInfoRequestProto proto, StreamObserver&lt;GroupInfoReplyProto&gt; responseObserver) {
+<span class="nc" id="L67">    final GroupInfoRequest request = ClientProtoUtils.toGroupInfoRequest(proto);</span>
+<span class="nc" id="L68">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.getGroupInfoAsync(request),</span>
+        ClientProtoUtils::toGroupInfoReplyProto,
+<span class="nc" id="L70">        t -&gt; LOG.warn(&quot;Failed to groupInfo: {}&quot;, request, t));</span>
+<span class="nc" id="L71">  }</span>
+
+  @Override
+  public void setConfiguration(SetConfigurationRequestProto proto,
+      StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="nc" id="L76">    final SetConfigurationRequest request = ClientProtoUtils.toSetConfigurationRequest(proto);</span>
+<span class="nc" id="L77">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.setConfigurationAsync(request),</span>
+        ClientProtoUtils::toRaftClientReplyProto,
+<span class="nc" id="L79">        t -&gt; LOG.warn(&quot;Failed to setConfiguration: {}&quot;, request, t));</span>
+<span class="nc" id="L80">  }</span>
+
+  @Override
+  public void transferLeadership(TransferLeadershipRequestProto proto,
+      StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="nc" id="L85">    final TransferLeadershipRequest request = ClientProtoUtils.toTransferLeadershipRequest(proto);</span>
+<span class="nc" id="L86">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.transferLeadershipAsync(request),</span>
+        ClientProtoUtils::toRaftClientReplyProto,
+<span class="nc" id="L88">        t -&gt; LOG.warn(&quot;Failed to transferLeadership: {}&quot;, request, t));</span>
+<span class="nc" id="L89">  }</span>
+
+  @Override
+  public void snapshotManagement(SnapshotManagementRequestProto proto,
+      StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="nc" id="L94">    final SnapshotManagementRequest request = ClientProtoUtils.toSnapshotManagementRequest(proto);</span>
+<span class="nc" id="L95">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.snapshotManagementAsync(request),</span>
+        ClientProtoUtils::toRaftClientReplyProto,
+<span class="nc" id="L97">    t -&gt; LOG.warn(&quot;Failed snapshotManagement: {}, {}&quot;, proto.getOpCase(), request, t));</span>
+<span class="nc" id="L98">  }</span>
+
+  @Override
+  public void leaderElectionManagement(LeaderElectionManagementRequestProto proto,
+      StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="nc" id="L103">    final LeaderElectionManagementRequest request = ClientProtoUtils.toLeaderElectionManagementRequest(proto);</span>
+<span class="nc" id="L104">    GrpcUtil.asyncCall(responseObserver, () -&gt; protocol.leaderElectionManagementAsync(request),</span>
+        ClientProtoUtils::toRaftClientReplyProto,
+<span class="nc" id="L106">        t -&gt; LOG.warn(&quot;Failed leaderElectionManagement: {}, {}&quot;, proto.getOpCase(), request, t));</span>
+<span class="nc" id="L107">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

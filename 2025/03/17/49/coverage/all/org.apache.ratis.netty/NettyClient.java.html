@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty</a> &gt; <span class="el_source">NettyClient.java</span></div><h1>NettyClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.netty;
+
+import org.apache.ratis.thirdparty.io.netty.bootstrap.Bootstrap;
+import org.apache.ratis.thirdparty.io.netty.channel.Channel;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelFuture;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInitializer;
+import org.apache.ratis.thirdparty.io.netty.channel.EventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LogLevel;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LoggingHandler;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.NetUtils;
+
+import java.io.Closeable;
+import java.net.InetSocketAddress;
+
+public class NettyClient implements Closeable {
+  private final LifeCycle lifeCycle;
+  private final String serverAddress;
+  private Channel channel;
+
+<span class="nc" id="L40">  NettyClient(String serverAddress) {</span>
+<span class="nc" id="L41">    this.lifeCycle = new LifeCycle(JavaUtils.getClassSimpleName(getClass()) + &quot;-&quot; + serverAddress);</span>
+<span class="nc" id="L42">    this.serverAddress = serverAddress;</span>
+<span class="nc" id="L43">  }</span>
+
+  /** Connects to the given server address. */
+  public void connect(EventLoopGroup group, ChannelInitializer&lt;SocketChannel&gt; initializer)
+      throws InterruptedException {
+<span class="nc" id="L48">    final InetSocketAddress address = NetUtils.createSocketAddr(serverAddress);</span>
+
+<span class="nc" id="L50">    lifeCycle.startAndTransition(</span>
+<span class="nc" id="L51">        () -&gt; channel = new Bootstrap()</span>
+<span class="nc" id="L52">            .group(group)</span>
+<span class="nc" id="L53">            .channel(NettyUtils.getSocketChannelClass(group))</span>
+<span class="nc" id="L54">            .handler(new LoggingHandler(LogLevel.INFO))</span>
+<span class="nc" id="L55">            .handler(initializer)</span>
+<span class="nc" id="L56">            .connect(address)</span>
+<span class="nc" id="L57">            .sync()</span>
+<span class="nc" id="L58">            .channel(),</span>
+        InterruptedException.class);
+<span class="nc" id="L60">  }</span>
+
+  @Override
+  public void close() {
+<span class="nc" id="L64">    lifeCycle.checkStateAndClose(() -&gt; NettyUtils.closeChannel(channel, serverAddress));</span>
+<span class="nc" id="L65">  }</span>
+
+  public ChannelFuture writeAndFlush(Object msg) {
+<span class="nc" id="L68">    lifeCycle.assertCurrentState(LifeCycle.States.RUNNING);</span>
+<span class="nc" id="L69">    return channel.writeAndFlush(msg);</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L74">    return lifeCycle.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftServerAsynchronousProtocol.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.protocol</a> &gt; <span class="el_source">RaftServerAsynchronousProtocol.java</span></div><h1>RaftServerAsynchronousProtocol.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.server.protocol;
+
+import org.apache.ratis.proto.RaftProtos.ReadIndexRequestProto;
+import org.apache.ratis.proto.RaftProtos.ReadIndexReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.util.ReferenceCountedObject;
+
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+
+public interface RaftServerAsynchronousProtocol {
+
+  /**
+   * It is recommended to override {@link #appendEntriesAsync(ReferenceCountedObject)} instead.
+   * Then, it does not have to override this method.
+   */
+  default CompletableFuture&lt;AppendEntriesReplyProto&gt; appendEntriesAsync(AppendEntriesRequestProto request)
+      throws IOException {
+<span class="nc" id="L38">    throw new UnsupportedOperationException();</span>
+  }
+
+  /**
+   * A referenced counted request is submitted from a client for processing.
+   * Implementations of this method should retain the request, process it and then release it.
+   * The request may be retained even after the future returned by this method has completed.
+   *
+   * @return a future of the reply
+   * @see ReferenceCountedObject
+   */
+  default CompletableFuture&lt;AppendEntriesReplyProto&gt; appendEntriesAsync(
+      ReferenceCountedObject&lt;AppendEntriesRequestProto&gt; requestRef) throws IOException {
+    // Default implementation for backward compatibility.
+    try {
+<span class="nc" id="L53">      return appendEntriesAsync(requestRef.retain());</span>
+    } finally {
+<span class="nc" id="L55">      requestRef.release();</span>
+    }
+  }
+
+  CompletableFuture&lt;ReadIndexReplyProto&gt; readIndexAsync(ReadIndexRequestProto request)
+      throws IOException;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

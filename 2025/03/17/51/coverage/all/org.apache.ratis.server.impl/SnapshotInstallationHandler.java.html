@@ -1,0 +1,404 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SnapshotInstallationHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">SnapshotInstallationHandler.java</span></div><h1>SnapshotInstallationHandler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.FollowerInfoProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotReplyProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotResult;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerProto;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.RaftProtos.RoleInfoProto;
+import org.apache.ratis.proto.RaftProtos.ServerRpcProto;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.protocol.RaftServerProtocol;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.util.BatchLogger;
+import org.apache.ratis.util.CodeInjectionForTesting;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.Timestamp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.apache.ratis.server.impl.ServerProtoUtils.toInstallSnapshotReplyProto;
+import static org.apache.ratis.server.impl.ServerProtoUtils.toServerRpcProto;
+import static org.apache.ratis.server.raftlog.RaftLog.INVALID_LOG_INDEX;
+
+class SnapshotInstallationHandler {
+<span class="nc" id="L61">  static final Logger LOG = LoggerFactory.getLogger(SnapshotInstallationHandler.class);</span>
+
+<span class="nc" id="L63">  private enum BatchLogKey implements BatchLogger.Key {</span>
+<span class="nc" id="L64">    INSTALL_SNAPSHOT_REQUEST,</span>
+<span class="nc" id="L65">    INSTALL_SNAPSHOT_REPLY</span>
+  }
+
+<span class="nc" id="L68">  static final TermIndex INVALID_TERM_INDEX = TermIndex.valueOf(0, INVALID_LOG_INDEX);</span>
+
+  private final RaftServerImpl server;
+  private final ServerState state;
+
+  private final boolean installSnapshotEnabled;
+<span class="nc" id="L74">  private final AtomicLong inProgressInstallSnapshotIndex = new AtomicLong(INVALID_LOG_INDEX);</span>
+<span class="nc" id="L75">  private final AtomicReference&lt;TermIndex&gt; installedSnapshotTermIndex =</span>
+    new AtomicReference&lt;&gt;(INVALID_TERM_INDEX);
+<span class="nc" id="L77">  private final AtomicBoolean isSnapshotNull = new AtomicBoolean();</span>
+<span class="nc" id="L78">  private final AtomicLong installedIndex = new AtomicLong(INVALID_LOG_INDEX);</span>
+<span class="nc" id="L79">  private final AtomicInteger nextChunkIndex = new AtomicInteger(-1);</span>
+  /** The callId of the chunk with index 0. */
+<span class="nc" id="L81">  private final AtomicLong chunk0CallId = new AtomicLong(-1);</span>
+
+<span class="nc" id="L83">  SnapshotInstallationHandler(RaftServerImpl server, RaftProperties properties) {</span>
+<span class="nc" id="L84">    this.server = server;</span>
+<span class="nc" id="L85">    this.state = server.getState();</span>
+<span class="nc" id="L86">    this.installSnapshotEnabled = RaftServerConfigKeys.Log.Appender.installSnapshotEnabled(properties);</span>
+<span class="nc" id="L87">  }</span>
+
+  RaftGroupMemberId getMemberId() {
+<span class="nc" id="L90">    return state.getMemberId();</span>
+  }
+
+  long getInstalledIndex() {
+<span class="nc" id="L94">    return installedIndex.getAndSet(INVALID_LOG_INDEX);</span>
+  }
+
+  long getInProgressInstallSnapshotIndex() {
+<span class="nc" id="L98">    return inProgressInstallSnapshotIndex.get();</span>
+  }
+
+  InstallSnapshotReplyProto installSnapshot(InstallSnapshotRequestProto request) throws IOException {
+<span class="nc" id="L102">    BatchLogger.print(BatchLogKey.INSTALL_SNAPSHOT_REQUEST, getMemberId(),</span>
+<span class="nc" id="L103">        suffix -&gt; LOG.info(&quot;{}: receive installSnapshot: {} {}&quot;,</span>
+<span class="nc" id="L104">            getMemberId(), ServerStringUtils.toInstallSnapshotRequestString(request), suffix));</span>
+    final InstallSnapshotReplyProto reply;
+    try {
+<span class="nc" id="L107">      reply = installSnapshotImpl(request);</span>
+<span class="nc" id="L108">    } catch (Exception e) {</span>
+<span class="nc" id="L109">      LOG.error(&quot;{}: installSnapshot failed&quot;, getMemberId(), e);</span>
+<span class="nc" id="L110">      throw e;</span>
+<span class="nc" id="L111">    }</span>
+<span class="nc" id="L112">    BatchLogger.print(BatchLogKey.INSTALL_SNAPSHOT_REPLY, getMemberId(),</span>
+<span class="nc" id="L113">        suffix -&gt; LOG.info(&quot;{}: reply installSnapshot: {} {}&quot;,</span>
+<span class="nc" id="L114">          getMemberId(), ServerStringUtils.toInstallSnapshotReplyString(reply), suffix));</span>
+<span class="nc" id="L115">    return reply;</span>
+  }
+
+  private InstallSnapshotReplyProto installSnapshotImpl(InstallSnapshotRequestProto request) throws IOException {
+<span class="nc" id="L119">    final RaftRpcRequestProto r = request.getServerRequest();</span>
+<span class="nc" id="L120">    final RaftPeerId leaderId = RaftPeerId.valueOf(r.getRequestorId());</span>
+<span class="nc" id="L121">    final RaftGroupId leaderGroupId = ProtoUtils.toRaftGroupId(r.getRaftGroupId());</span>
+<span class="nc" id="L122">    CodeInjectionForTesting.execute(RaftServerImpl.INSTALL_SNAPSHOT, server.getId(), leaderId, request);</span>
+
+<span class="nc" id="L124">    server.assertLifeCycleState(LifeCycle.States.STARTING_OR_RUNNING);</span>
+<span class="nc" id="L125">    ServerImplUtils.assertGroup(getMemberId(), leaderId, leaderGroupId);</span>
+
+<span class="nc" id="L127">    InstallSnapshotReplyProto reply = null;</span>
+    // Check if install snapshot from Leader is enabled
+<span class="nc bnc" id="L129" title="All 2 branches missed.">    if (installSnapshotEnabled) {</span>
+      // Leader has sent InstallSnapshot request with SnapshotInfo. Install the snapshot.
+<span class="nc bnc" id="L131" title="All 2 branches missed.">      if (request.hasSnapshotChunk()) {</span>
+<span class="nc" id="L132">        reply = checkAndInstallSnapshot(request, leaderId).join();</span>
+      }
+    } else {
+      // Leader has only sent a notification to install snapshot. Inform State Machine to install snapshot.
+<span class="nc bnc" id="L136" title="All 2 branches missed.">      if (request.hasNotification()) {</span>
+<span class="nc" id="L137">        reply = notifyStateMachineToInstallSnapshot(request, leaderId).join();</span>
+      }
+    }
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    if (reply != null) {</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (request.hasLastRaftConfigurationLogEntryProto()) {</span>
+        // Set the configuration included in the snapshot
+<span class="nc" id="L144">        final LogEntryProto proto = request.getLastRaftConfigurationLogEntryProto();</span>
+<span class="nc" id="L145">        state.truncate(proto.getIndex());</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (!state.getRaftConf().equals(LogProtoUtils.toRaftConfiguration(proto))) {</span>
+<span class="nc" id="L147">          LOG.info(&quot;{}: set new configuration {} from snapshot&quot;, getMemberId(), proto);</span>
+<span class="nc" id="L148">          state.setRaftConf(proto);</span>
+<span class="nc" id="L149">          state.writeRaftConfiguration(proto);</span>
+<span class="nc" id="L150">          server.getStateMachine().event().notifyConfigurationChanged(</span>
+<span class="nc" id="L151">              proto.getTerm(), proto.getIndex(), proto.getConfigurationEntry());</span>
+        }
+      }
+<span class="nc" id="L154">      return reply;</span>
+    }
+
+    // There is a mismatch between configurations on leader and follower.
+<span class="nc" id="L158">    final InstallSnapshotReplyProto failedReply = toInstallSnapshotReplyProto(</span>
+<span class="nc" id="L159">        leaderId, getMemberId(), state.getCurrentTerm(), InstallSnapshotResult.CONF_MISMATCH);</span>
+<span class="nc" id="L160">    LOG.error(&quot;{}: Configuration Mismatch ({}): Leader {} has it set to {} but follower {} has it set to {}&quot;,</span>
+<span class="nc" id="L161">        getMemberId(), RaftServerConfigKeys.Log.Appender.INSTALL_SNAPSHOT_ENABLED_KEY,</span>
+<span class="nc" id="L162">        leaderId, request.hasSnapshotChunk(), server.getId(), installSnapshotEnabled);</span>
+<span class="nc" id="L163">    return failedReply;</span>
+  }
+
+  private CompletableFuture&lt;InstallSnapshotReplyProto&gt; checkAndInstallSnapshot(InstallSnapshotRequestProto request,
+      RaftPeerId leaderId) throws IOException {
+    final long currentTerm;
+<span class="nc" id="L169">    final long leaderTerm = request.getLeaderTerm();</span>
+<span class="nc" id="L170">    final InstallSnapshotRequestProto.SnapshotChunkProto snapshotChunkRequest = request.getSnapshotChunk();</span>
+<span class="nc" id="L171">    final TermIndex lastIncluded = TermIndex.valueOf(snapshotChunkRequest.getTermIndex());</span>
+<span class="nc" id="L172">    final long lastIncludedIndex = lastIncluded.getIndex();</span>
+    final CompletableFuture&lt;Void&gt; future;
+<span class="nc" id="L174">    synchronized (server) {</span>
+<span class="nc" id="L175">      final boolean recognized = state.recognizeLeader(RaftServerProtocol.Op.INSTALL_SNAPSHOT, leaderId, leaderTerm);</span>
+<span class="nc" id="L176">      currentTerm = state.getCurrentTerm();</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">      if (!recognized) {</span>
+<span class="nc" id="L178">        return CompletableFuture.completedFuture(toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+<span class="nc" id="L179">            currentTerm, snapshotChunkRequest.getRequestIndex(), InstallSnapshotResult.NOT_LEADER));</span>
+      }
+<span class="nc" id="L181">      future = server.changeToFollowerAndPersistMetadata(leaderTerm, true, &quot;installSnapshot&quot;);</span>
+<span class="nc" id="L182">      state.setLeader(leaderId, &quot;installSnapshot&quot;);</span>
+
+<span class="nc" id="L184">      server.updateLastRpcTime(FollowerState.UpdateType.INSTALL_SNAPSHOT_START);</span>
+<span class="nc" id="L185">      long callId = chunk0CallId.get();</span>
+      // 1. leaderTerm &lt; currentTerm will never come here
+      // 2. leaderTerm == currentTerm &amp;&amp; callId == request.getCallId()
+      //    means the snapshotRequest is staled with the same leader
+      // 3. leaderTerm &gt; currentTerm means this is a new snapshot request from a new leader,
+      //    chunk0CallId will be reset when a snapshot request with requestIndex == 0 is received .
+<span class="nc bnc" id="L191" title="All 4 branches missed.">      if (callId &gt; request.getServerRequest().getCallId() &amp;&amp; currentTerm == leaderTerm) {</span>
+<span class="nc" id="L192">        LOG.warn(&quot;{}: Snapshot Request Staled: chunk 0 callId is {} but {}&quot;, getMemberId(), callId,</span>
+<span class="nc" id="L193">            ServerStringUtils.toInstallSnapshotRequestString(request));</span>
+<span class="nc" id="L194">        InstallSnapshotReplyProto reply =  toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+<span class="nc" id="L195">            currentTerm, snapshotChunkRequest.getRequestIndex(), InstallSnapshotResult.SNAPSHOT_EXPIRED);</span>
+<span class="nc" id="L196">        return future.thenApply(dummy -&gt; reply);</span>
+      }
+<span class="nc bnc" id="L198" title="All 2 branches missed.">      if (snapshotChunkRequest.getRequestIndex() == 0) {</span>
+<span class="nc" id="L199">        nextChunkIndex.set(0);</span>
+<span class="nc" id="L200">        chunk0CallId.set(request.getServerRequest().getCallId());</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">      } else if (nextChunkIndex.get() != snapshotChunkRequest.getRequestIndex()) {</span>
+<span class="nc" id="L202">        throw new IOException(&quot;Snapshot request already failed at chunk index &quot; + nextChunkIndex.get()</span>
+<span class="nc" id="L203">                + &quot;; ignoring request with chunk index &quot; + snapshotChunkRequest.getRequestIndex());</span>
+      }
+      try {
+        // Check and append the snapshot chunk. We simply put this in lock
+        // considering a follower peer requiring a snapshot installation does not
+        // have a lot of requests
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (state.getLog().getLastCommittedIndex() &gt;= lastIncludedIndex) {</span>
+<span class="nc" id="L210">          nextChunkIndex.set(snapshotChunkRequest.getRequestIndex() + 1);</span>
+<span class="nc" id="L211">          final InstallSnapshotReplyProto reply =  toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+<span class="nc" id="L212">              currentTerm, snapshotChunkRequest.getRequestIndex(), InstallSnapshotResult.ALREADY_INSTALLED);</span>
+<span class="nc" id="L213">          return future.thenApply(dummy -&gt; reply);</span>
+        }
+
+        //TODO: We should only update State with installed snapshot once the request is done.
+<span class="nc" id="L217">        state.installSnapshot(request);</span>
+
+<span class="nc" id="L219">        final int expectedChunkIndex = nextChunkIndex.getAndIncrement();</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        if (expectedChunkIndex != snapshotChunkRequest.getRequestIndex()) {</span>
+<span class="nc" id="L221">          throw new IOException(&quot;Unexpected request chunk index: &quot; + snapshotChunkRequest.getRequestIndex()</span>
+              + &quot; (the expected index is &quot; + expectedChunkIndex + &quot;)&quot;);
+        }
+        // update the committed index
+        // re-load the state machine if this is the last chunk
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (snapshotChunkRequest.getDone()) {</span>
+<span class="nc" id="L227">          state.reloadStateMachine(lastIncluded);</span>
+<span class="nc" id="L228">          chunk0CallId.set(-1);</span>
+        }
+      } finally {
+<span class="nc" id="L231">        server.updateLastRpcTime(FollowerState.UpdateType.INSTALL_SNAPSHOT_COMPLETE);</span>
+      }
+<span class="nc" id="L233">    }</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">    if (snapshotChunkRequest.getDone()) {</span>
+<span class="nc" id="L235">      LOG.info(&quot;{}: successfully install the entire snapshot-{}&quot;, getMemberId(), lastIncludedIndex);</span>
+    }
+<span class="nc" id="L237">    final InstallSnapshotReplyProto reply = toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+<span class="nc" id="L238">        currentTerm, snapshotChunkRequest.getRequestIndex(), InstallSnapshotResult.SUCCESS);</span>
+<span class="nc" id="L239">    return future.thenApply(dummy -&gt; reply);</span>
+  }
+
+  private CompletableFuture&lt;InstallSnapshotReplyProto&gt; notifyStateMachineToInstallSnapshot(
+      InstallSnapshotRequestProto request, RaftPeerId leaderId) throws IOException {
+    final long currentTerm;
+<span class="nc" id="L245">    final long leaderTerm = request.getLeaderTerm();</span>
+<span class="nc" id="L246">    final TermIndex firstAvailableLogTermIndex = TermIndex.valueOf(</span>
+<span class="nc" id="L247">        request.getNotification().getFirstAvailableTermIndex());</span>
+<span class="nc" id="L248">    final long firstAvailableLogIndex = firstAvailableLogTermIndex.getIndex();</span>
+    final CompletableFuture&lt;Void&gt; future;
+<span class="nc" id="L250">    synchronized (server) {</span>
+<span class="nc" id="L251">      final boolean recognized = state.recognizeLeader(&quot;notifyInstallSnapshot&quot;, leaderId, leaderTerm);</span>
+<span class="nc" id="L252">      currentTerm = state.getCurrentTerm();</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">      if (!recognized) {</span>
+<span class="nc" id="L254">        return CompletableFuture.completedFuture(toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+            currentTerm, InstallSnapshotResult.NOT_LEADER));
+      }
+<span class="nc" id="L257">      future = server.changeToFollowerAndPersistMetadata(leaderTerm, true, &quot;installSnapshot&quot;);</span>
+<span class="nc" id="L258">      state.setLeader(leaderId, &quot;installSnapshot&quot;);</span>
+<span class="nc" id="L259">      server.updateLastRpcTime(FollowerState.UpdateType.INSTALL_SNAPSHOT_NOTIFICATION);</span>
+
+<span class="nc bnc" id="L261" title="All 2 branches missed.">      if (inProgressInstallSnapshotIndex.compareAndSet(INVALID_LOG_INDEX, firstAvailableLogIndex)) {</span>
+<span class="nc" id="L262">        LOG.info(&quot;{}: Received notification to install snapshot at index {}&quot;, getMemberId(), firstAvailableLogIndex);</span>
+        // Check if snapshot index is already at par or ahead of the first
+        // available log index of the Leader.
+<span class="nc" id="L265">        final long snapshotIndex = state.getLog().getSnapshotIndex();</span>
+<span class="nc bnc" id="L266" title="All 6 branches missed.">        if (snapshotIndex != INVALID_LOG_INDEX &amp;&amp; snapshotIndex + 1 &gt;= firstAvailableLogIndex &amp;&amp;</span>
+            firstAvailableLogIndex &gt; INVALID_LOG_INDEX) {
+          // State Machine has already installed the snapshot. Return the
+          // latest snapshot index to the Leader.
+
+<span class="nc" id="L271">          inProgressInstallSnapshotIndex.compareAndSet(firstAvailableLogIndex, INVALID_LOG_INDEX);</span>
+<span class="nc" id="L272">          LOG.info(&quot;{}: InstallSnapshot notification result: {}, current snapshot index: {}&quot;, getMemberId(),</span>
+<span class="nc" id="L273">              InstallSnapshotResult.ALREADY_INSTALLED, snapshotIndex);</span>
+<span class="nc" id="L274">          final InstallSnapshotReplyProto reply = toInstallSnapshotReplyProto(leaderId, getMemberId(), currentTerm,</span>
+              InstallSnapshotResult.ALREADY_INSTALLED, snapshotIndex);
+<span class="nc" id="L276">          return future.thenApply(dummy -&gt; reply);</span>
+        }
+
+        final RaftPeerProto leaderProto;
+<span class="nc bnc" id="L280" title="All 2 branches missed.">        if (!request.hasLastRaftConfigurationLogEntryProto()) {</span>
+<span class="nc" id="L281">          leaderProto = null;</span>
+        } else {
+<span class="nc" id="L283">          leaderProto = request.getLastRaftConfigurationLogEntryProto().getConfigurationEntry().getPeersList()</span>
+<span class="nc" id="L284">              .stream()</span>
+<span class="nc" id="L285">              .filter(p -&gt; RaftPeerId.valueOf(p.getId()).equals(leaderId))</span>
+<span class="nc" id="L286">              .findFirst()</span>
+<span class="nc" id="L287">              .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Leader &quot; + leaderId</span>
+                  + &quot; not found from the last configuration LogEntryProto, request = &quot; + request));
+        }
+
+        // For the cases where RaftConf is empty on newly started peer with empty peer list,
+        // we retrieve leader info from installSnapShotRequestProto.
+<span class="nc bnc" id="L293" title="All 4 branches missed.">        final RoleInfoProto proto = leaderProto == null || server.getRaftConf().getPeer(state.getLeaderId()) != null?</span>
+<span class="nc" id="L294">            server.getRoleInfoProto(): getRoleInfoProto(ProtoUtils.toRaftPeer(leaderProto));</span>
+        // This is the first installSnapshot notify request for this term and
+        // index. Notify the state machine to install the snapshot.
+<span class="nc" id="L297">        LOG.info(&quot;{}: notifyInstallSnapshot: nextIndex is {} but the leader's first available index is {}.&quot;,</span>
+<span class="nc" id="L298">            getMemberId(), state.getLog().getNextIndex(), firstAvailableLogIndex);</span>
+        // If notifyInstallSnapshotFromLeader future is done asynchronously, the main thread will go through the
+        // downside part. As the time consumed by user-defined statemachine is uncontrollable(e.g. the RocksDB
+        // checkpoint could be constantly increasing, the transmission will always exceed one boundary), we expect that
+        // once snapshot installed, follower could work ASAP. For the rest of time, server can respond snapshot
+        // installation in progress.
+
+        // There is another appendLog thread appending raft entries, which returns inconsistency entries with
+        // nextIndex and commitIndex to the leader when install snapshot in progress. The nextIndex on follower side
+        // is updated when state.reloadStateMachine. We shall keep this index upgraded synchronously with main thread,
+        // otherwise leader could get this follower's latest nextIndex from appendEntries instead of after
+        // acknowledging the SNAPSHOT_INSTALLED.
+<span class="nc" id="L310">        server.getStateMachine().followerEvent().notifyInstallSnapshotFromLeader(proto, firstAvailableLogTermIndex)</span>
+<span class="nc" id="L311">            .whenComplete((reply, exception) -&gt; {</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">              if (exception != null) {</span>
+<span class="nc" id="L313">                LOG.error(&quot;{}: Failed to notify StateMachine to InstallSnapshot. Exception: {}&quot;,</span>
+<span class="nc" id="L314">                    getMemberId(), exception.getMessage());</span>
+<span class="nc" id="L315">                inProgressInstallSnapshotIndex.compareAndSet(firstAvailableLogIndex, INVALID_LOG_INDEX);</span>
+<span class="nc" id="L316">                return;</span>
+              }
+
+<span class="nc bnc" id="L319" title="All 2 branches missed.">              if (reply != null) {</span>
+<span class="nc" id="L320">                LOG.info(&quot;{}: StateMachine successfully installed snapshot index {}. Reloading the StateMachine.&quot;,</span>
+<span class="nc" id="L321">                    getMemberId(), reply.getIndex());</span>
+<span class="nc" id="L322">                installedSnapshotTermIndex.set(reply);</span>
+              } else {
+<span class="nc" id="L324">                isSnapshotNull.set(true);</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">                if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L326">                  LOG.debug(&quot;{}: StateMachine could not install snapshot as it is not available&quot;, this);</span>
+                }
+              }
+<span class="nc" id="L329">            });</span>
+
+<span class="nc bnc" id="L331" title="All 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L332">          LOG.debug(&quot;{}: StateMachine is processing Snapshot Installation Request.&quot;, getMemberId());</span>
+        }
+<span class="nc" id="L334">      } else {</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L336">          LOG.debug(&quot;{}: StateMachine is already installing a snapshot.&quot;, getMemberId());</span>
+        }
+      }
+
+<span class="nc" id="L340">      final long inProgressInstallSnapshotIndexValue = getInProgressInstallSnapshotIndex();</span>
+<span class="nc bnc" id="L341" title="All 4 branches missed.">      Preconditions.assertTrue(inProgressInstallSnapshotIndexValue &lt;= firstAvailableLogIndex</span>
+              &amp;&amp; inProgressInstallSnapshotIndexValue &gt; INVALID_LOG_INDEX,
+          &quot;inProgressInstallSnapshotRequest: %s is not eligible, firstAvailableLogIndex: %s&quot;,
+<span class="nc" id="L344">          getInProgressInstallSnapshotIndex(), firstAvailableLogIndex);</span>
+
+      // If the snapshot is null or unavailable, return SNAPSHOT_UNAVAILABLE.
+<span class="nc bnc" id="L347" title="All 2 branches missed.">      if (isSnapshotNull.compareAndSet(true, false)) {</span>
+<span class="nc" id="L348">        LOG.info(&quot;{}: InstallSnapshot notification result: {}&quot;, getMemberId(),</span>
+            InstallSnapshotResult.SNAPSHOT_UNAVAILABLE);
+<span class="nc" id="L350">        inProgressInstallSnapshotIndex.set(INVALID_LOG_INDEX);</span>
+<span class="nc" id="L351">        server.getStateMachine().event().notifySnapshotInstalled(</span>
+<span class="nc" id="L352">            InstallSnapshotResult.SNAPSHOT_UNAVAILABLE, INVALID_LOG_INDEX, server.getPeer());</span>
+<span class="nc" id="L353">        final InstallSnapshotReplyProto reply =  toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+            currentTerm, InstallSnapshotResult.SNAPSHOT_UNAVAILABLE);
+<span class="nc" id="L355">        return future.thenApply(dummy -&gt; reply);</span>
+      }
+
+      // If a snapshot has been installed, return SNAPSHOT_INSTALLED with the installed snapshot index and reset
+      // installedSnapshotIndex to (0,-1).
+<span class="nc" id="L360">      final TermIndex latestInstalledSnapshotTermIndex = this.installedSnapshotTermIndex</span>
+<span class="nc" id="L361">          .getAndSet(INVALID_TERM_INDEX);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">      if (latestInstalledSnapshotTermIndex.getIndex() &gt; INVALID_LOG_INDEX) {</span>
+<span class="nc" id="L363">        server.getStateMachine().pause();</span>
+<span class="nc" id="L364">        state.reloadStateMachine(latestInstalledSnapshotTermIndex);</span>
+<span class="nc" id="L365">        LOG.info(&quot;{}: InstallSnapshot notification result: {}, at index: {}&quot;, getMemberId(),</span>
+            InstallSnapshotResult.SNAPSHOT_INSTALLED, latestInstalledSnapshotTermIndex);
+<span class="nc" id="L367">        inProgressInstallSnapshotIndex.set(INVALID_LOG_INDEX);</span>
+<span class="nc" id="L368">        final long latestInstalledIndex = latestInstalledSnapshotTermIndex.getIndex();</span>
+<span class="nc" id="L369">        server.getStateMachine().event().notifySnapshotInstalled(</span>
+<span class="nc" id="L370">            InstallSnapshotResult.SNAPSHOT_INSTALLED, latestInstalledIndex, server.getPeer());</span>
+<span class="nc" id="L371">        installedIndex.set(latestInstalledIndex);</span>
+<span class="nc" id="L372">        final InstallSnapshotReplyProto reply = toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+<span class="nc" id="L373">            currentTerm, InstallSnapshotResult.SNAPSHOT_INSTALLED, latestInstalledSnapshotTermIndex.getIndex());</span>
+<span class="nc" id="L374">        return future.thenApply(dummy -&gt; reply);</span>
+      }
+
+      // Otherwise, Snapshot installation is in progress.
+<span class="nc bnc" id="L378" title="All 2 branches missed.">      if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L379">        LOG.debug(&quot;{}: InstallSnapshot notification result: {}&quot;, getMemberId(),</span>
+            InstallSnapshotResult.IN_PROGRESS);
+      }
+<span class="nc" id="L382">      final InstallSnapshotReplyProto reply = toInstallSnapshotReplyProto(leaderId, getMemberId(),</span>
+          currentTerm, InstallSnapshotResult.IN_PROGRESS);
+<span class="nc" id="L384">      return future.thenApply(dummy -&gt; reply);</span>
+    }
+  }
+
+  private RoleInfoProto getRoleInfoProto(RaftPeer leader) {
+<span class="nc" id="L389">    final RoleInfo role = server.getRole();</span>
+<span class="nc" id="L390">    final Optional&lt;FollowerState&gt; fs = role.getFollowerState();</span>
+<span class="nc" id="L391">    final ServerRpcProto leaderInfo = toServerRpcProto(leader,</span>
+<span class="nc" id="L392">        fs.map(FollowerState::getLastRpcTime).map(Timestamp::elapsedTimeMs).orElse(0L));</span>
+<span class="nc" id="L393">    final FollowerInfoProto.Builder followerInfo = FollowerInfoProto.newBuilder()</span>
+<span class="nc" id="L394">        .setLeaderInfo(leaderInfo)</span>
+<span class="nc" id="L395">        .setOutstandingOp(fs.map(FollowerState::getOutstandingOp).orElse(0));</span>
+<span class="nc" id="L396">    return RoleInfoProto.newBuilder()</span>
+<span class="nc" id="L397">        .setSelf(server.getPeer().getRaftPeerProto())</span>
+<span class="nc" id="L398">        .setRole(role.getCurrentRole())</span>
+<span class="nc" id="L399">        .setRoleElapsedTimeMs(role.getRoleElapsedTimeMs())</span>
+<span class="nc" id="L400">        .setFollowerInfo(followerInfo)</span>
+<span class="nc" id="L401">        .build();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

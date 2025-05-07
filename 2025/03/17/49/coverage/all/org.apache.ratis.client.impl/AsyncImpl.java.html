@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AsyncImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">AsyncImpl.java</span></div><h1>AsyncImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+
+import org.apache.ratis.client.AsyncRpcApi;
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeerId;
+
+/** Async api implementations. */
+class AsyncImpl implements AsyncRpcApi {
+  private final RaftClientImpl client;
+
+<span class="nc" id="L35">  AsyncImpl(RaftClientImpl client) {</span>
+<span class="nc" id="L36">    this.client = Objects.requireNonNull(client, &quot;client == null&quot;);</span>
+<span class="nc" id="L37">  }</span>
+
+  CompletableFuture&lt;RaftClientReply&gt; send(
+      RaftClientRequest.Type type, Message message, RaftPeerId server) {
+<span class="nc" id="L41">    return client.getOrderedAsync().send(type, message, server);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; send(Message message, ReplicationLevel replication) {
+<span class="nc" id="L46">    return send(RaftClientRequest.writeRequestType(replication), message, null);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendReadOnly(Message message, RaftPeerId server) {
+<span class="nc" id="L51">    return send(RaftClientRequest.readRequestType(), message, server);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendReadAfterWrite(Message message) {
+<span class="nc" id="L56">    return send(RaftClientRequest.readAfterWriteConsistentRequestType(), message, null);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendReadOnlyNonLinearizable(Message message) {
+<span class="nc" id="L61">    return send(RaftClientRequest.readRequestType(true), message, null);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendReadOnlyUnordered(Message message, RaftPeerId server) {
+<span class="nc" id="L66">    return UnorderedAsync.send(RaftClientRequest.readRequestType(), message, server, client);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendStaleRead(Message message, long minIndex, RaftPeerId server) {
+<span class="nc" id="L71">    return send(RaftClientRequest.staleReadRequestType(minIndex), message, server);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; watch(long index, ReplicationLevel replication) {
+<span class="nc" id="L76">    return UnorderedAsync.send(RaftClientRequest.watchRequestType(index, replication), null, null, client);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;RaftClientReply&gt; sendForward(RaftClientRequest request) {
+<span class="nc" id="L81">    final RaftProtos.RaftClientRequestProto proto = ClientProtoUtils.toRaftClientRequestProto(request);</span>
+<span class="nc" id="L82">    return send(RaftClientRequest.forwardRequestType(), Message.valueOf(proto.toByteString()), null);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogAppenderDaemon.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.leader</a> &gt; <span class="el_source">LogAppenderDaemon.java</span></div><h1>LogAppenderDaemon.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.leader;
+
+import org.apache.ratis.util.Daemon;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+
+import java.io.InterruptedIOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.UnaryOperator;
+
+import org.apache.ratis.util.LifeCycle.State;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static org.apache.ratis.util.LifeCycle.State.CLOSED;
+import static org.apache.ratis.util.LifeCycle.State.CLOSING;
+import static org.apache.ratis.util.LifeCycle.State.EXCEPTION;
+import static org.apache.ratis.util.LifeCycle.State.NEW;
+import static org.apache.ratis.util.LifeCycle.State.RUNNING;
+import static org.apache.ratis.util.LifeCycle.State.STARTING;
+
+class LogAppenderDaemon {
+<span class="nc" id="L40">  public static final Logger LOG = LoggerFactory.getLogger(LogAppenderDaemon.class);</span>
+
+  private final String name;
+  private final LifeCycle lifeCycle;
+  private final Daemon daemon;
+
+  private final LogAppenderBase logAppender;
+<span class="nc" id="L47">  private final CompletableFuture&lt;State&gt; closeFuture = new CompletableFuture&lt;&gt;();</span>
+
+<span class="nc" id="L49">  LogAppenderDaemon(LogAppenderBase logAppender) {</span>
+<span class="nc" id="L50">    this.logAppender = logAppender;</span>
+<span class="nc" id="L51">    this.name = logAppender + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L52">    this.lifeCycle = new LifeCycle(name);</span>
+<span class="nc" id="L53">    this.daemon = Daemon.newBuilder().setName(name).setRunnable(this::run)</span>
+<span class="nc" id="L54">        .setThreadGroup(logAppender.getServer().getThreadGroup()).build();</span>
+<span class="nc" id="L55">  }</span>
+
+  public boolean isWorking() {
+<span class="nc bnc" id="L58" title="All 2 branches missed.">    return !LifeCycle.States.CLOSING_OR_CLOSED_OR_EXCEPTION.contains(lifeCycle.getCurrentState());</span>
+  }
+
+  public void tryToStart() {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (lifeCycle.compareAndTransition(NEW, STARTING)) {</span>
+<span class="nc" id="L63">      daemon.start();</span>
+    }
+<span class="nc" id="L65">  }</span>
+
+<span class="nc" id="L67">  static final UnaryOperator&lt;State&gt; TRY_TO_RUN = current -&gt; {</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (current == STARTING) {</span>
+<span class="nc" id="L69">      return RUNNING;</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">    } else if (LifeCycle.States.CLOSING_OR_CLOSED_OR_EXCEPTION.contains(current)) {</span>
+<span class="nc" id="L71">      return current;</span>
+    }
+    // Other states are illegal.
+<span class="nc" id="L74">    throw new IllegalArgumentException(&quot;Cannot to tryToRun from &quot; + current);</span>
+  };
+
+  private void run() {
+    try {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">      if (lifeCycle.transition(TRY_TO_RUN) == RUNNING) {</span>
+<span class="nc" id="L80">        logAppender.run();</span>
+      }
+<span class="nc" id="L82">      lifeCycle.compareAndTransition(RUNNING, CLOSING);</span>
+<span class="nc" id="L83">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L84">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L85">      LOG.info(this + &quot; was interrupted: &quot; + e);</span>
+<span class="nc" id="L86">    } catch (InterruptedIOException e) {</span>
+<span class="nc" id="L87">      LOG.info(this + &quot; I/O was interrupted: &quot; + e);</span>
+<span class="nc" id="L88">    } catch (Throwable e) {</span>
+<span class="nc" id="L89">      LOG.warn(this + &quot; failed&quot;, e);</span>
+<span class="nc" id="L90">      lifeCycle.transitionIfValid(EXCEPTION);</span>
+    } finally {
+<span class="nc" id="L92">      final State finalState = lifeCycle.transitionAndGet(TRANSITION_FINALLY);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">      if (finalState == EXCEPTION) {</span>
+<span class="nc" id="L94">        logAppender.restart();</span>
+      }
+<span class="nc" id="L96">      closeFuture.complete(finalState);</span>
+    }
+<span class="nc" id="L98">  }</span>
+
+<span class="nc" id="L100">  static final UnaryOperator&lt;State&gt; TRANSITION_FINALLY = current -&gt; {</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    if (State.isValid(current, CLOSED)) {</span>
+<span class="nc" id="L102">      return CLOSED;</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    } else if (State.isValid(current, EXCEPTION)) {</span>
+<span class="nc" id="L104">      return EXCEPTION;</span>
+    } else {
+<span class="nc" id="L106">      return current;</span>
+    }
+  };
+
+  public CompletableFuture&lt;State&gt; tryToClose() {
+<span class="nc" id="L111">    final State state = lifeCycle.transition(TRY_TO_CLOSE);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (state == CLOSING) {</span>
+<span class="nc" id="L113">      daemon.interrupt();</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">    } else if (state == CLOSED) {</span>
+<span class="nc" id="L115">      closeFuture.complete(state);</span>
+    }
+<span class="nc" id="L117">    return closeFuture;</span>
+  }
+
+<span class="nc" id="L120">  static final UnaryOperator&lt;State&gt; TRY_TO_CLOSE = current -&gt; {</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    if (current == NEW) {</span>
+<span class="nc" id="L122">      return CLOSED;</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">    } else if (current.isClosingOrClosed()) {</span>
+<span class="nc" id="L124">      return current;</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">    } else if (State.isValid(current, CLOSING)) {</span>
+<span class="nc" id="L126">      return CLOSING;</span>
+    }
+    // Other states are illegal.
+<span class="nc" id="L129">    throw new IllegalArgumentException(&quot;Cannot to tryToClose from &quot; + current);</span>
+  };
+
+  @Override
+  public String toString() {
+<span class="nc" id="L134">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,774 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLogWorker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">SegmentedRaftLogWorker.java</span></div><h1>SegmentedRaftLogWorker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.StateMachineLogEntryProto;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.metrics.SegmentedRaftLogMetrics;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.raftlog.RaftLogIndex;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.SegmentFileInfo;
+import org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.TruncationSegments;
+import org.apache.ratis.server.raftlog.segmented.SegmentedRaftLog.Task;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.StateMachine.DataStream;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.thirdparty.io.netty.util.internal.PlatformDependent;
+import org.apache.ratis.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.util.LinkedList;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/**
+ * This class takes the responsibility of all the raft log related I/O ops for a
+ * raft peer.
+ */
+class SegmentedRaftLogWorker {
+<span class="nc" id="L64">  static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogWorker.class);</span>
+
+<span class="nc" id="L66">  static final TimeDuration ONE_SECOND = TimeDuration.valueOf(1, TimeUnit.SECONDS);</span>
+
+<span class="nc" id="L68">  private static final String CLASS_NAME = JavaUtils.getClassSimpleName(SegmentedRaftLogWorker.class);</span>
+<span class="nc" id="L69">  static final String RUN_WORKER = CLASS_NAME + &quot;.runWorker&quot;;</span>
+
+  static class StateMachineDataPolicy {
+    private final boolean sync;
+    private final TimeDuration syncTimeout;
+    private final int syncTimeoutRetry;
+    private final SegmentedRaftLogMetrics metrics;
+
+<span class="nc" id="L77">    StateMachineDataPolicy(RaftProperties properties, SegmentedRaftLogMetrics metricRegistry) {</span>
+<span class="nc" id="L78">      this.sync = RaftServerConfigKeys.Log.StateMachineData.sync(properties);</span>
+<span class="nc" id="L79">      this.syncTimeout = RaftServerConfigKeys.Log.StateMachineData.syncTimeout(properties);</span>
+<span class="nc" id="L80">      this.syncTimeoutRetry = RaftServerConfigKeys.Log.StateMachineData.syncTimeoutRetry(properties);</span>
+<span class="nc" id="L81">      this.metrics = metricRegistry;</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">      Preconditions.assertTrue(syncTimeoutRetry &gt;= -1);</span>
+<span class="nc" id="L83">    }</span>
+
+    boolean isSync() {
+<span class="nc" id="L86">      return sync;</span>
+    }
+
+    void getFromFuture(CompletableFuture&lt;?&gt; future, Supplier&lt;Object&gt; getName) throws IOException {
+<span class="nc" id="L90">      Preconditions.assertTrue(isSync());</span>
+<span class="nc" id="L91">      TimeoutIOException lastException = null;</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">      for(int retry = 0; syncTimeoutRetry == -1 || retry &lt;= syncTimeoutRetry; retry++) {</span>
+        try {
+<span class="nc" id="L94">          IOUtils.getFromFuture(future, getName, syncTimeout);</span>
+<span class="nc" id="L95">          return;</span>
+<span class="nc" id="L96">        } catch(TimeoutIOException e) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">          LOG.warn(&quot;Timeout &quot; + retry + (syncTimeoutRetry == -1? &quot;/~&quot;: &quot;/&quot; + syncTimeoutRetry), e);</span>
+<span class="nc" id="L98">          lastException = e;</span>
+<span class="nc" id="L99">          metrics.onStateMachineDataWriteTimeout();</span>
+        }
+      }
+<span class="nc" id="L102">      Objects.requireNonNull(lastException, &quot;lastException == null&quot;);</span>
+<span class="nc" id="L103">      throw lastException;</span>
+    }
+  }
+
+<span class="nc" id="L107">  static class WriteLogTasks {</span>
+<span class="nc" id="L108">    private final Queue&lt;WriteLog&gt; q = new LinkedList&lt;&gt;();</span>
+    private volatile long index;
+
+    void offerOrCompleteFuture(WriteLog writeLog) {
+<span class="nc bnc" id="L112" title="All 4 branches missed.">      if (writeLog.getEndIndex() &lt;= index || !offer(writeLog)) {</span>
+<span class="nc" id="L113">        writeLog.completeFuture();</span>
+      }
+<span class="nc" id="L115">    }</span>
+
+    private synchronized boolean offer(WriteLog writeLog) {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">      if (writeLog.getEndIndex() &lt;= index) { // compare again synchronized</span>
+<span class="nc" id="L119">        return false;</span>
+      }
+<span class="nc" id="L121">      q.offer(writeLog);</span>
+<span class="nc" id="L122">      return true;</span>
+    }
+
+    synchronized void updateIndex(long i) {
+<span class="nc" id="L126">      index = i;</span>
+
+      for(;;) {
+<span class="nc" id="L129">        final Task peeked = q.peek();</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">        if (peeked == null || peeked.getEndIndex() &gt; index) {</span>
+<span class="nc" id="L131">          return;</span>
+        }
+<span class="nc" id="L133">        final Task polled = q.poll();</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        Preconditions.assertTrue(polled == peeked);</span>
+<span class="nc" id="L135">        polled.completeFuture();</span>
+<span class="nc" id="L136">      }</span>
+    }
+  }
+
+<span class="nc" id="L140">  private final Consumer&lt;Object&gt; infoIndexChange = s -&gt; LOG.info(&quot;{}: {}&quot;, this, s);</span>
+<span class="nc" id="L141">  private final Consumer&lt;Object&gt; traceIndexChange = s -&gt; LOG.trace(&quot;{}: {}&quot;, this, s);</span>
+
+  private final String name;
+  /**
+   * The task queue accessed by rpc handler threads and the io worker thread.
+   */
+  private final DataBlockingQueue&lt;Task&gt; queue;
+<span class="nc" id="L148">  private final WriteLogTasks writeTasks = new WriteLogTasks();</span>
+<span class="nc" id="L149">  private volatile boolean running = true;</span>
+  private final ExecutorService workerThreadExecutor;
+  private final RaftStorage storage;
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile SegmentedRaftLogOutputStream out;
+  private final Runnable submitUpdateCommitEvent;
+  private final StateMachine stateMachine;
+  private final SegmentedRaftLogMetrics raftLogMetrics;
+  private final ByteBuffer writeBuffer;
+
+  /**
+   * The number of entries that have been written into the SegmentedRaftLogOutputStream but
+   * has not been flushed.
+   */
+<span class="nc" id="L163">  private int pendingFlushNum = 0;</span>
+  /** the index of the last entry that has been written */
+  private long lastWrittenIndex;
+<span class="nc" id="L166">  private volatile int flushBatchSize = 0;</span>
+  /** the largest index of the entry that has been flushed */
+<span class="nc" id="L168">  private final RaftLogIndex flushIndex = new RaftLogIndex(&quot;flushIndex&quot;, 0);</span>
+  /** the index up to which cache can be evicted - max of snapshotIndex and
+   * largest index in a closed segment */
+<span class="nc" id="L171">  private final RaftLogIndex safeCacheEvictIndex = new RaftLogIndex(&quot;safeCacheEvictIndex&quot;, 0);</span>
+
+  private final int forceSyncNum;
+
+  private final long segmentMaxSize;
+  private final long preallocatedSize;
+  private final RaftServer.Division server;
+
+  private final boolean asyncFlush;
+  private final boolean unsafeFlush;
+  private final ExecutorService flushExecutor;
+
+  private final StateMachineDataPolicy stateMachineDataPolicy;
+
+  SegmentedRaftLogWorker(RaftGroupMemberId memberId, StateMachine stateMachine, Runnable submitUpdateCommitEvent,
+                         RaftServer.Division server, RaftStorage storage, RaftProperties properties,
+<span class="nc" id="L187">                         SegmentedRaftLogMetrics metricRegistry) {</span>
+<span class="nc" id="L188">    this.name = memberId + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L189">    LOG.info(&quot;new {} for {}&quot;, name, storage);</span>
+
+<span class="nc" id="L191">    this.submitUpdateCommitEvent = submitUpdateCommitEvent;</span>
+<span class="nc" id="L192">    this.stateMachine = stateMachine;</span>
+<span class="nc" id="L193">    this.raftLogMetrics = metricRegistry;</span>
+<span class="nc" id="L194">    this.storage = storage;</span>
+<span class="nc" id="L195">    this.server = server;</span>
+<span class="nc" id="L196">    final SizeInBytes queueByteLimit = RaftServerConfigKeys.Log.queueByteLimit(properties);</span>
+<span class="nc" id="L197">    final int queueElementLimit = RaftServerConfigKeys.Log.queueElementLimit(properties);</span>
+<span class="nc" id="L198">    this.queue =</span>
+        new DataBlockingQueue&lt;&gt;(name, queueByteLimit, queueElementLimit, Task::getSerializedSize);
+
+<span class="nc" id="L201">    this.segmentMaxSize = RaftServerConfigKeys.Log.segmentSizeMax(properties).getSize();</span>
+<span class="nc" id="L202">    this.preallocatedSize = RaftServerConfigKeys.Log.preallocatedSize(properties).getSize();</span>
+<span class="nc" id="L203">    this.forceSyncNum = RaftServerConfigKeys.Log.forceSyncNum(properties);</span>
+
+<span class="nc" id="L205">    this.stateMachineDataPolicy = new StateMachineDataPolicy(properties, metricRegistry);</span>
+
+<span class="nc" id="L207">    this.workerThreadExecutor = ConcurrentUtils.newSingleThreadExecutor(name);</span>
+
+    // Server Id can be null in unit tests
+<span class="nc" id="L210">    metricRegistry.addDataQueueSizeGauge(queue::getNumElements);</span>
+<span class="nc" id="L211">    metricRegistry.addLogWorkerQueueSizeGauge(writeTasks.q::size);</span>
+<span class="nc" id="L212">    metricRegistry.addFlushBatchSizeGauge(() -&gt; flushBatchSize);</span>
+
+<span class="nc" id="L214">    final int bufferSize = RaftServerConfigKeys.Log.writeBufferSize(properties).getSizeInt();</span>
+<span class="nc" id="L215">    this.writeBuffer = ByteBuffer.allocateDirect(bufferSize);</span>
+<span class="nc" id="L216">    final int logEntryLimit = RaftServerConfigKeys.Log.Appender.bufferByteLimit(properties).getSizeInt();</span>
+    // 4 bytes (serialized size) + logEntryLimit + 4 bytes (checksum)
+<span class="nc bnc" id="L218" title="All 2 branches missed.">    if (bufferSize &lt; logEntryLimit + 8) {</span>
+<span class="nc" id="L219">      throw new IllegalArgumentException(RaftServerConfigKeys.Log.WRITE_BUFFER_SIZE_KEY</span>
+          + &quot; (= &quot; + bufferSize
+          + &quot;) is less than &quot; + RaftServerConfigKeys.Log.Appender.BUFFER_BYTE_LIMIT_KEY
+          + &quot; + 8 (= &quot; + (logEntryLimit + 8) + &quot;)&quot;);
+    }
+<span class="nc" id="L224">    this.unsafeFlush = RaftServerConfigKeys.Log.unsafeFlushEnabled(properties);</span>
+<span class="nc" id="L225">    this.asyncFlush = RaftServerConfigKeys.Log.asyncFlushEnabled(properties);</span>
+<span class="nc bnc" id="L226" title="All 4 branches missed.">    if (asyncFlush &amp;&amp; unsafeFlush) {</span>
+<span class="nc" id="L227">      throw new IllegalStateException(&quot;Cannot enable both &quot; +  RaftServerConfigKeys.Log.UNSAFE_FLUSH_ENABLED_KEY +</span>
+          &quot; and &quot; + RaftServerConfigKeys.Log.ASYNC_FLUSH_ENABLED_KEY);
+    }
+<span class="nc bnc" id="L230" title="All 4 branches missed.">    this.flushExecutor = (!asyncFlush &amp;&amp; !unsafeFlush)? null</span>
+<span class="nc" id="L231">        : ConcurrentUtils.newSingleThreadExecutor(name + &quot;-flush&quot;);</span>
+<span class="nc" id="L232">  }</span>
+
+  void start(long latestIndex, long evictIndex, File openSegmentFile) throws IOException {
+<span class="nc" id="L235">    LOG.trace(&quot;{} start(latestIndex={}, openSegmentFile={})&quot;, name, latestIndex, openSegmentFile);</span>
+<span class="nc" id="L236">    lastWrittenIndex = latestIndex;</span>
+<span class="nc" id="L237">    flushIndex.setUnconditionally(latestIndex, infoIndexChange);</span>
+<span class="nc" id="L238">    safeCacheEvictIndex.setUnconditionally(evictIndex, infoIndexChange);</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">    if (openSegmentFile != null) {</span>
+<span class="nc" id="L240">      Preconditions.assertTrue(openSegmentFile.exists());</span>
+<span class="nc" id="L241">      allocateSegmentedRaftLogOutputStream(openSegmentFile, true);</span>
+    }
+<span class="nc" id="L243">    workerThreadExecutor.submit(this::run);</span>
+<span class="nc" id="L244">  }</span>
+
+  void close() {
+<span class="nc" id="L247">    queue.close();</span>
+<span class="nc" id="L248">    this.running = false;</span>
+<span class="nc" id="L249">    ConcurrentUtils.shutdownAndWait(TimeDuration.ONE_MINUTE, workerThreadExecutor,</span>
+<span class="nc" id="L250">        timeout -&gt; LOG.warn(&quot;{}: shutdown timeout in {}&quot;, name, timeout));</span>
+<span class="nc" id="L251">    Optional.ofNullable(flushExecutor).ifPresent(ExecutorService::shutdown);</span>
+<span class="nc" id="L252">    IOUtils.cleanup(LOG, out);</span>
+<span class="nc" id="L253">    PlatformDependent.freeDirectBuffer(writeBuffer);</span>
+<span class="nc" id="L254">    LOG.info(&quot;{} close()&quot;, name);</span>
+<span class="nc" id="L255">  }</span>
+
+  /**
+   * A snapshot has just been installed on the follower. Need to update the IO
+   * worker's state accordingly.
+   */
+  void syncWithSnapshot(long lastSnapshotIndex) {
+<span class="nc" id="L262">    queue.clear();</span>
+<span class="nc" id="L263">    lastWrittenIndex = lastSnapshotIndex;</span>
+<span class="nc" id="L264">    flushIndex.setUnconditionally(lastSnapshotIndex, infoIndexChange);</span>
+<span class="nc" id="L265">    safeCacheEvictIndex.setUnconditionally(lastSnapshotIndex, infoIndexChange);</span>
+<span class="nc" id="L266">    pendingFlushNum = 0;</span>
+<span class="nc" id="L267">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L271">    return name;</span>
+  }
+
+  /**
+   * This is protected by the RaftServer and RaftLog's lock.
+   */
+  private Task addIOTask(Task task) {
+<span class="nc" id="L278">    LOG.debug(&quot;{} adds IO task {}&quot;, name, task);</span>
+<span class="nc" id="L279">    try(UncheckedAutoCloseable ignored = raftLogMetrics.startQueuingDelayTimer()) {</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">      for(; !queue.offer(task, ONE_SECOND); ) {</span>
+<span class="nc" id="L281">        Preconditions.assertTrue(isAlive(),</span>
+            &quot;the worker thread is not alive&quot;);
+      }
+<span class="nc" id="L284">    } catch (Exception e) {</span>
+<span class="nc bnc" id="L285" title="All 4 branches missed.">      if (e instanceof InterruptedException &amp;&amp; !running) {</span>
+<span class="nc" id="L286">        LOG.info(&quot;Got InterruptedException when adding task &quot; + task</span>
+            + &quot;. The SegmentedRaftLogWorker already stopped.&quot;);
+<span class="nc" id="L288">        Thread.currentThread().interrupt();</span>
+      } else {
+<span class="nc" id="L290">        LOG.error(&quot;Failed to add IO task {}&quot;, task, e);</span>
+<span class="nc" id="L291">        Optional.ofNullable(server).ifPresent(RaftServer.Division::close);</span>
+      }
+<span class="nc" id="L293">      task.discard();</span>
+<span class="nc" id="L294">    }</span>
+<span class="nc" id="L295">    task.startTimerOnEnqueue(raftLogMetrics.getEnqueuedTimer());</span>
+<span class="nc" id="L296">    return task;</span>
+  }
+
+  boolean isAlive() {
+<span class="nc bnc" id="L300" title="All 4 branches missed.">    return running &amp;&amp; !workerThreadExecutor.isTerminated();</span>
+  }
+
+  private void run() {
+    // if and when a log task encounters an exception
+<span class="nc" id="L305">    RaftLogIOException logIOException = null;</span>
+
+<span class="nc bnc" id="L307" title="All 2 branches missed.">    CodeInjectionForTesting.execute(RUN_WORKER, server == null ? null : server.getId(), null, queue);</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">    while (running) {</span>
+      try {
+<span class="nc" id="L310">        Task task = queue.poll(ONE_SECOND);</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        if (task != null) {</span>
+<span class="nc" id="L312">          task.stopTimerOnDequeue();</span>
+          try {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (logIOException != null) {</span>
+<span class="nc" id="L315">              throw logIOException;</span>
+            } else {
+<span class="nc" id="L317">              try (UncheckedAutoCloseable ignored = raftLogMetrics.startTaskExecutionTimer(task.getClass())) {</span>
+<span class="nc" id="L318">                task.execute();</span>
+              }
+            }
+<span class="nc" id="L321">          } catch (IOException e) {</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            if (task.getEndIndex() &lt; lastWrittenIndex) {</span>
+<span class="nc" id="L323">              LOG.info(&quot;Ignore IOException when handling task &quot; + task</span>
+                  + &quot; which is smaller than the lastWrittenIndex.&quot;
+                  + &quot; There should be a snapshot installed.&quot;, e);
+            } else {
+<span class="nc" id="L327">              task.failed(e);</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">              if (logIOException == null) {</span>
+<span class="nc" id="L329">                logIOException = new RaftLogIOException(&quot;Log already failed&quot;</span>
+<span class="nc" id="L330">                    + &quot; at index &quot; + task.getEndIndex()</span>
+                    + &quot; for task &quot; + task, e);
+              }
+<span class="nc" id="L333">              continue;</span>
+            }
+<span class="nc" id="L335">          }</span>
+<span class="nc" id="L336">          task.done();</span>
+        }
+<span class="nc" id="L338">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L339">        Thread.currentThread().interrupt();</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        if (running) {</span>
+<span class="nc" id="L341">          LOG.warn(&quot;{} got interrupted while still running&quot;,</span>
+<span class="nc" id="L342">              Thread.currentThread().getName());</span>
+        }
+<span class="nc" id="L344">        LOG.info(Thread.currentThread().getName()</span>
+<span class="nc" id="L345">            + &quot; was interrupted, exiting. There are &quot; + queue.getNumElements()</span>
+            + &quot; tasks remaining in the queue.&quot;);
+<span class="nc" id="L347">        break;</span>
+<span class="nc" id="L348">      } catch (Exception e) {</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        if (!running) {</span>
+<span class="nc" id="L350">          LOG.info(&quot;{} got closed and hit exception&quot;,</span>
+<span class="nc" id="L351">              Thread.currentThread().getName(), e);</span>
+        } else {
+<span class="nc" id="L353">          LOG.error(&quot;{} hit exception&quot;, Thread.currentThread().getName(), e);</span>
+<span class="nc" id="L354">          Optional.ofNullable(server).ifPresent(RaftServer.Division::close);</span>
+        }
+<span class="nc" id="L356">      }</span>
+    }
+
+<span class="nc" id="L359">    queue.clear(Task::discard);</span>
+<span class="nc" id="L360">  }</span>
+
+  private boolean shouldFlush() {
+<span class="nc bnc" id="L363" title="All 2 branches missed.">    if (out == null) {</span>
+<span class="nc" id="L364">      return false;</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">    } else if (pendingFlushNum &gt;= forceSyncNum) {</span>
+<span class="nc" id="L366">      return true;</span>
+    }
+<span class="nc bnc" id="L368" title="All 4 branches missed.">    return pendingFlushNum &gt; 0 &amp;&amp; !(queue.peek() instanceof WriteLog);</span>
+  }
+
+  private void flushIfNecessary() throws IOException {
+<span class="nc bnc" id="L372" title="All 2 branches missed.">    if (shouldFlush()) {</span>
+<span class="nc" id="L373">      raftLogMetrics.onRaftLogFlush();</span>
+<span class="nc" id="L374">      LOG.debug(&quot;{}: flush {}&quot;, name, out);</span>
+<span class="nc" id="L375">      try(UncheckedAutoCloseable ignored = raftLogMetrics.startFlushTimer()) {</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">        final CompletableFuture&lt;Void&gt; f = stateMachine != null ?</span>
+<span class="nc" id="L377">            stateMachine.data().flush(lastWrittenIndex) :</span>
+<span class="nc" id="L378">            CompletableFuture.completedFuture(null);</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">        if (stateMachineDataPolicy.isSync()) {</span>
+<span class="nc" id="L380">          stateMachineDataPolicy.getFromFuture(f, () -&gt; this + &quot;-flushStateMachineData&quot;);</span>
+        }
+<span class="nc" id="L382">        flushBatchSize = (int)(lastWrittenIndex - flushIndex.get());</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        if (unsafeFlush) {</span>
+          // unsafe-flush: call updateFlushedIndexIncreasingly() without waiting the underlying FileChannel.force(..).
+<span class="nc" id="L385">          unsafeFlushOutStream();</span>
+<span class="nc" id="L386">          updateFlushedIndexIncreasingly();</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">        } else if (asyncFlush) {</span>
+<span class="nc" id="L388">          asyncFlushOutStream(f);</span>
+        } else {
+<span class="nc" id="L390">          flushOutStream();</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">          if (!stateMachineDataPolicy.isSync()) {</span>
+<span class="nc" id="L392">            IOUtils.getFromFuture(f, () -&gt; this + &quot;-flushStateMachineData&quot;);</span>
+          }
+<span class="nc" id="L394">          updateFlushedIndexIncreasingly();</span>
+        }
+      }
+    }
+<span class="nc" id="L398">  }</span>
+
+  private void unsafeFlushOutStream() throws IOException {
+<span class="nc" id="L401">    final Timekeeper.Context logSyncTimerContext = raftLogMetrics.getSyncTimer().time();</span>
+<span class="nc" id="L402">    out.asyncFlush(flushExecutor).whenComplete((v, e) -&gt; logSyncTimerContext.stop());</span>
+<span class="nc" id="L403">  }</span>
+
+  private void asyncFlushOutStream(CompletableFuture&lt;Void&gt; stateMachineFlush) throws IOException {
+<span class="nc" id="L406">    final Timekeeper.Context logSyncTimerContext = raftLogMetrics.getSyncTimer().time();</span>
+<span class="nc" id="L407">    out.asyncFlush(flushExecutor)</span>
+<span class="nc" id="L408">        .thenCombine(stateMachineFlush, (async, sm) -&gt; async)</span>
+<span class="nc" id="L409">        .whenComplete((v, e) -&gt; {</span>
+<span class="nc" id="L410">          updateFlushedIndexIncreasingly(lastWrittenIndex);</span>
+<span class="nc" id="L411">          logSyncTimerContext.stop();</span>
+<span class="nc" id="L412">        });</span>
+<span class="nc" id="L413">  }</span>
+
+  private void flushOutStream() throws IOException {
+<span class="nc" id="L416">    try(UncheckedAutoCloseable ignored = Timekeeper.start(raftLogMetrics.getSyncTimer())) {</span>
+<span class="nc" id="L417">      out.flush();</span>
+    }
+<span class="nc" id="L419">  }</span>
+
+  private void updateFlushedIndexIncreasingly() {
+<span class="nc" id="L422">    updateFlushedIndexIncreasingly(lastWrittenIndex);</span>
+<span class="nc" id="L423">  }</span>
+
+  private void updateFlushedIndexIncreasingly(long index) {
+<span class="nc" id="L426">    flushIndex.updateIncreasingly(index, traceIndexChange);</span>
+<span class="nc" id="L427">    postUpdateFlushedIndex(Math.toIntExact(lastWrittenIndex - index));</span>
+<span class="nc" id="L428">    writeTasks.updateIndex(index);</span>
+<span class="nc" id="L429">  }</span>
+
+  private void postUpdateFlushedIndex(int count) {
+<span class="nc" id="L432">    pendingFlushNum = count;</span>
+<span class="nc" id="L433">    Optional.ofNullable(submitUpdateCommitEvent).ifPresent(Runnable::run);</span>
+<span class="nc" id="L434">  }</span>
+
+  /**
+   * The following several methods (startLogSegment, rollLogSegment,
+   * writeLogEntry, and truncate) are only called by SegmentedRaftLog which is
+   * protected by RaftServer's lock.
+   * Thus all the tasks are created and added sequentially.
+   */
+  void startLogSegment(long startIndex) {
+<span class="nc" id="L443">    LOG.info(&quot;{}: Starting segment from index:{}&quot;, name, startIndex);</span>
+<span class="nc" id="L444">    addIOTask(new StartLogSegment(startIndex));</span>
+<span class="nc" id="L445">  }</span>
+
+  void rollLogSegment(LogSegment segmentToClose) {
+<span class="nc" id="L448">    LOG.info(&quot;{}: Rolling segment {} to index:{}&quot;, name,</span>
+<span class="nc" id="L449">        segmentToClose.toString(), segmentToClose.getEndIndex());</span>
+<span class="nc" id="L450">    addIOTask(new FinalizeLogSegment(segmentToClose));</span>
+<span class="nc" id="L451">    addIOTask(new StartLogSegment(segmentToClose.getEndIndex() + 1));</span>
+<span class="nc" id="L452">  }</span>
+
+  Task writeLogEntry(ReferenceCountedObject&lt;LogEntryProto&gt; entry,
+      LogEntryProto removedStateMachineData, TransactionContext context) {
+<span class="nc" id="L456">    return addIOTask(new WriteLog(entry, removedStateMachineData, context));</span>
+  }
+
+  Task truncate(TruncationSegments ts, long index) {
+<span class="nc" id="L460">    LOG.info(&quot;{}: Truncating segments {}, start index {}&quot;, name, ts, index);</span>
+<span class="nc" id="L461">    return addIOTask(new TruncateLog(ts, index));</span>
+  }
+
+  void closeLogSegment(LogSegment segmentToClose) {
+<span class="nc" id="L465">    LOG.info(&quot;{}: Closing segment {} to index: {}&quot;, name,</span>
+<span class="nc" id="L466">        segmentToClose.toString(), segmentToClose.getEndIndex());</span>
+<span class="nc" id="L467">    addIOTask(new FinalizeLogSegment(segmentToClose));</span>
+<span class="nc" id="L468">  }</span>
+
+  Task purge(TruncationSegments ts) {
+<span class="nc" id="L471">    return addIOTask(new PurgeLog(ts));</span>
+  }
+
+  private final class PurgeLog extends Task {
+    private final TruncationSegments segments;
+
+<span class="nc" id="L477">    private PurgeLog(TruncationSegments segments) {</span>
+<span class="nc" id="L478">      this.segments = segments;</span>
+<span class="nc" id="L479">    }</span>
+
+    @Override
+    void execute() throws IOException {
+<span class="nc bnc" id="L483" title="All 2 branches missed.">      if (segments.getToDelete() != null) {</span>
+<span class="nc" id="L484">        try(UncheckedAutoCloseable ignored = raftLogMetrics.startPurgeTimer()) {</span>
+<span class="nc" id="L485">          SegmentFileInfo[] toDeletes = segments.getToDelete();</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">          for (int i = toDeletes.length - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L487">            final Path deleted = FileUtils.deleteFile(toDeletes[i].getFile(storage));</span>
+<span class="nc" id="L488">            LOG.info(&quot;{}: Purged RaftLog segment: info={}, path={}&quot;, name, toDeletes[i], deleted);</span>
+          }
+        }
+      }
+<span class="nc" id="L492">    }</span>
+
+    @Override
+    long getEndIndex() {
+<span class="nc" id="L496">      return segments.maxEndIndex();</span>
+    }
+  }
+
+  private class WriteLog extends Task {
+    private final LogEntryProto entry;
+    private final CompletableFuture&lt;?&gt; stateMachineFuture;
+    private final CompletableFuture&lt;Long&gt; combined;
+<span class="nc" id="L504">    private final AtomicReference&lt;ReferenceCountedObject&lt;LogEntryProto&gt;&gt; ref = new AtomicReference&lt;&gt;();</span>
+
+    WriteLog(ReferenceCountedObject&lt;LogEntryProto&gt; entryRef, LogEntryProto removedStateMachineData,
+<span class="nc" id="L507">        TransactionContext context) {</span>
+<span class="nc" id="L508">      LogEntryProto origEntry = entryRef.get();</span>
+<span class="nc" id="L509">      this.entry = removedStateMachineData;</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">      if (this.entry == origEntry) {</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">        final StateMachineLogEntryProto proto = origEntry.hasStateMachineLogEntry() ?</span>
+<span class="nc" id="L512">            origEntry.getStateMachineLogEntry(): null;</span>
+<span class="nc bnc" id="L513" title="All 6 branches missed.">        if (stateMachine != null &amp;&amp; proto != null &amp;&amp; proto.getType() == StateMachineLogEntryProto.Type.DATASTREAM) {</span>
+<span class="nc" id="L514">          final ClientInvocationId invocationId = ClientInvocationId.valueOf(proto);</span>
+<span class="nc" id="L515">          final CompletableFuture&lt;DataStream&gt; removed = server.getDataStreamMap().remove(invocationId);</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">          this.stateMachineFuture = removed == null? stateMachine.data().link(null, origEntry)</span>
+<span class="nc" id="L517">              : removed.thenApply(stream -&gt; stateMachine.data().link(stream, origEntry));</span>
+<span class="nc" id="L518">        } else {</span>
+<span class="nc" id="L519">          this.stateMachineFuture = null;</span>
+        }
+<span class="nc" id="L521">        entryRef.retain();</span>
+<span class="nc" id="L522">        this.ref.set(entryRef);</span>
+<span class="nc" id="L523">      } else {</span>
+        try {
+          // this.entry != origEntry if it has state machine data
+<span class="nc" id="L526">          this.stateMachineFuture = stateMachine.data().write(entryRef, context);</span>
+<span class="nc" id="L527">        } catch (Exception e) {</span>
+<span class="nc" id="L528">          LOG.error(name + &quot;: writeStateMachineData failed for index &quot; + origEntry.getIndex()</span>
+<span class="nc" id="L529">              + &quot;, entry=&quot; + LogProtoUtils.toLogEntryString(origEntry, stateMachine::toStateMachineLogEntryString), e);</span>
+<span class="nc" id="L530">          throw e;</span>
+<span class="nc" id="L531">        }</span>
+      }
+<span class="nc bnc" id="L533" title="All 2 branches missed.">      this.combined = stateMachineFuture == null? super.getFuture()</span>
+<span class="nc" id="L534">          : super.getFuture().thenCombine(stateMachineFuture, (index, stateMachineResult) -&gt; index);</span>
+<span class="nc" id="L535">    }</span>
+
+    @Override
+    void failed(IOException e) {
+<span class="nc" id="L539">      stateMachine.event().notifyLogFailed(e, entry);</span>
+<span class="nc" id="L540">      super.failed(e);</span>
+<span class="nc" id="L541">      discard();</span>
+<span class="nc" id="L542">    }</span>
+
+    @Override
+    int getSerializedSize() {
+<span class="nc" id="L546">      return LogProtoUtils.getSerializedSize(entry);</span>
+    }
+
+    @Override
+    CompletableFuture&lt;Long&gt; getFuture() {
+<span class="nc" id="L551">      return combined;</span>
+    }
+
+    @Override
+    void done() {
+<span class="nc" id="L556">      writeTasks.offerOrCompleteFuture(this);</span>
+<span class="nc" id="L557">      discard();</span>
+<span class="nc" id="L558">    }</span>
+
+    @Override
+    void discard() {
+<span class="nc" id="L562">      final ReferenceCountedObject&lt;LogEntryProto&gt; entryRef = ref.getAndSet(null);</span>
+<span class="nc bnc" id="L563" title="All 2 branches missed.">      if (entryRef != null) {</span>
+<span class="nc" id="L564">        entryRef.release();</span>
+      }
+<span class="nc" id="L566">    }</span>
+
+    @Override
+    public void execute() throws IOException {
+<span class="nc bnc" id="L570" title="All 4 branches missed.">      if (stateMachineDataPolicy.isSync() &amp;&amp; stateMachineFuture != null) {</span>
+<span class="nc" id="L571">        stateMachineDataPolicy.getFromFuture(stateMachineFuture, () -&gt; this + &quot;-writeStateMachineData&quot;);</span>
+      }
+
+<span class="nc" id="L574">      raftLogMetrics.onRaftLogAppendEntry();</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">      Preconditions.assertTrue(out != null);</span>
+<span class="nc bnc" id="L576" title="All 2 branches missed.">      Preconditions.assertTrue(lastWrittenIndex + 1 == entry.getIndex(),</span>
+<span class="nc" id="L577">          &quot;lastWrittenIndex == %s, entry == %s&quot;, lastWrittenIndex, entry);</span>
+<span class="nc" id="L578">      out.write(entry);</span>
+<span class="nc" id="L579">      lastWrittenIndex = entry.getIndex();</span>
+<span class="nc" id="L580">      pendingFlushNum++;</span>
+<span class="nc" id="L581">      flushIfNecessary();</span>
+<span class="nc" id="L582">    }</span>
+
+    @Override
+    long getEndIndex() {
+<span class="nc" id="L586">      return entry.getIndex();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L591">      return super.toString() + &quot;: &quot; + LogProtoUtils.toLogEntryString(</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">          entry, stateMachine == null? null: stateMachine::toStateMachineLogEntryString);</span>
+    }
+  }
+
+  private File getFile(LogSegmentStartEnd startEnd) {
+<span class="nc" id="L597">    return startEnd.getFile(storage);</span>
+  }
+
+  private class FinalizeLogSegment extends Task {
+    private final long startIndex;
+    private final long endIndex;
+
+<span class="nc" id="L604">    FinalizeLogSegment(LogSegment segmentToClose) {</span>
+<span class="nc bnc" id="L605" title="All 2 branches missed.">      Preconditions.assertTrue(segmentToClose != null, &quot;Log segment to be rolled is null&quot;);</span>
+<span class="nc" id="L606">      this.startIndex = segmentToClose.getStartIndex();</span>
+<span class="nc" id="L607">      this.endIndex = segmentToClose.getEndIndex();</span>
+<span class="nc" id="L608">    }</span>
+
+    @Override
+    public void execute() throws IOException {
+<span class="nc" id="L612">      freeSegmentedRaftLogOutputStream();</span>
+
+<span class="nc" id="L614">      final LogSegmentStartEnd openStartEnd = LogSegmentStartEnd.valueOf(startIndex);</span>
+<span class="nc" id="L615">      final File openFile = getFile(openStartEnd);</span>
+<span class="nc" id="L616">      Preconditions.assertTrue(openFile.exists(),</span>
+<span class="nc" id="L617">          () -&gt; name + &quot;: File &quot; + openFile + &quot; to be rolled does not exist&quot;);</span>
+<span class="nc bnc" id="L618" title="All 2 branches missed.">      if (endIndex - startIndex + 1 &gt; 0) {</span>
+        // finalize the current open segment
+<span class="nc" id="L620">        final File dstFile = getFile(LogSegmentStartEnd.valueOf(startIndex, endIndex));</span>
+<span class="nc bnc" id="L621" title="All 2 branches missed.">        Preconditions.assertTrue(!dstFile.exists());</span>
+
+<span class="nc" id="L623">        FileUtils.move(openFile, dstFile);</span>
+<span class="nc" id="L624">        LOG.info(&quot;{}: Rolled log segment from {} to {}&quot;, name, openFile, dstFile);</span>
+<span class="nc" id="L625">      } else { // delete the file of the empty segment</span>
+<span class="nc" id="L626">        final Path deleted = FileUtils.deleteFile(openFile);</span>
+<span class="nc" id="L627">        LOG.info(&quot;{}: Deleted empty RaftLog segment: startEnd={}, path={}&quot;, name, openStartEnd, deleted);</span>
+      }
+<span class="nc" id="L629">      updateFlushedIndexIncreasingly();</span>
+<span class="nc" id="L630">      safeCacheEvictIndex.updateToMax(endIndex, traceIndexChange);</span>
+<span class="nc" id="L631">    }</span>
+
+    @Override
+    void failed(IOException e) {
+      // not failed for a specific log entry, but an entire segment
+<span class="nc" id="L636">      stateMachine.event().notifyLogFailed(e, null);</span>
+<span class="nc" id="L637">      super.failed(e);</span>
+<span class="nc" id="L638">    }</span>
+
+    @Override
+    long getEndIndex() {
+<span class="nc" id="L642">      return endIndex;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L647">      return super.toString() + &quot;: &quot; + &quot;startIndex=&quot; + startIndex + &quot; endIndex=&quot; + endIndex;</span>
+    }
+  }
+
+  private class StartLogSegment extends Task {
+    private final long newStartIndex;
+
+<span class="nc" id="L654">    StartLogSegment(long newStartIndex) {</span>
+<span class="nc" id="L655">      this.newStartIndex = newStartIndex;</span>
+<span class="nc" id="L656">    }</span>
+
+    @Override
+    void execute() throws IOException {
+<span class="nc" id="L660">      final File openFile = getFile(LogSegmentStartEnd.valueOf(newStartIndex));</span>
+<span class="nc bnc" id="L661" title="All 2 branches missed.">      Preconditions.assertTrue(!openFile.exists(), &quot;open file %s exists for %s&quot;,</span>
+<span class="nc" id="L662">          openFile, name);</span>
+<span class="nc bnc" id="L663" title="All 2 branches missed.">      Preconditions.assertTrue(pendingFlushNum == 0);</span>
+<span class="nc" id="L664">      allocateSegmentedRaftLogOutputStream(openFile, false);</span>
+<span class="nc" id="L665">      Preconditions.assertTrue(openFile.exists(), &quot;Failed to create file %s for %s&quot;,</span>
+<span class="nc" id="L666">          openFile.getAbsolutePath(), name);</span>
+<span class="nc" id="L667">      LOG.info(&quot;{}: created new log segment {}&quot;, name, openFile);</span>
+<span class="nc" id="L668">    }</span>
+
+    @Override
+    long getEndIndex() {
+<span class="nc" id="L672">      return newStartIndex;</span>
+    }
+  }
+
+  private class TruncateLog extends Task {
+    private final TruncationSegments segments;
+<span class="nc" id="L678">    private CompletableFuture&lt;Void&gt; stateMachineFuture = null;</span>
+
+<span class="nc" id="L680">    TruncateLog(TruncationSegments ts, long index) {</span>
+<span class="nc" id="L681">      this.segments = ts;</span>
+<span class="nc bnc" id="L682" title="All 2 branches missed.">      if (stateMachine != null) {</span>
+        // TruncateLog and WriteLog instance is created while taking a RaftLog write lock.
+        // StateMachine call is made inside the constructor so that it is lock
+        // protected. This is to make sure that stateMachine can determine which
+        // indexes to truncate as stateMachine calls would happen in the sequence
+        // of log operations.
+<span class="nc" id="L688">        stateMachineFuture = stateMachine.data().truncate(index);</span>
+      }
+<span class="nc" id="L690">    }</span>
+
+    @Override
+    void execute() throws IOException {
+<span class="nc" id="L694">      freeSegmentedRaftLogOutputStream();</span>
+
+<span class="nc bnc" id="L696" title="All 4 branches missed.">      if (segments.getToDelete() != null &amp;&amp; segments.getToDelete().length &gt; 0) {</span>
+<span class="nc" id="L697">        long minStart = segments.getToDelete()[0].getStartIndex();</span>
+<span class="nc bnc" id="L698" title="All 2 branches missed.">        for (SegmentFileInfo del : segments.getToDelete()) {</span>
+<span class="nc" id="L699">          final File delFile = del.getFile(storage);</span>
+<span class="nc" id="L700">          Preconditions.assertTrue(delFile.exists(),</span>
+              &quot;File %s to be deleted does not exist&quot;, delFile);
+<span class="nc" id="L702">          final Path deleted = FileUtils.deleteFile(delFile);</span>
+<span class="nc" id="L703">          LOG.info(&quot;{}: Deleted RaftLog segment for {}: path={}&quot;, name, segments.getReason(), deleted);</span>
+<span class="nc" id="L704">          minStart = Math.min(minStart, del.getStartIndex());</span>
+        }
+<span class="nc bnc" id="L706" title="All 2 branches missed.">        if (segments.getToTruncate() == null) {</span>
+<span class="nc" id="L707">          lastWrittenIndex = minStart - 1;</span>
+        }
+      }
+
+<span class="nc bnc" id="L711" title="All 2 branches missed.">      if (segments.getToTruncate() != null) {</span>
+<span class="nc" id="L712">        final File fileToTruncate = segments.getToTruncate().getFile(storage);</span>
+<span class="nc" id="L713">        Preconditions.assertTrue(fileToTruncate.exists(),</span>
+            &quot;File %s to be truncated does not exist&quot;, fileToTruncate);
+<span class="nc" id="L715">        FileUtils.truncateFile(fileToTruncate, segments.getToTruncate().getTargetLength());</span>
+
+        // rename the file
+<span class="nc" id="L718">        final File dstFile = segments.getToTruncate().getNewFile(storage);</span>
+<span class="nc bnc" id="L719" title="All 2 branches missed.">        Preconditions.assertTrue(!dstFile.exists(),</span>
+            &quot;Truncated file %s already exists &quot;, dstFile);
+<span class="nc" id="L721">        FileUtils.move(fileToTruncate, dstFile);</span>
+<span class="nc" id="L722">        LOG.info(&quot;{}: Truncated log file {} to length {} and moved it to {}&quot;, name,</span>
+<span class="nc" id="L723">            fileToTruncate, segments.getToTruncate().getTargetLength(), dstFile);</span>
+
+        // update lastWrittenIndex
+<span class="nc" id="L726">        lastWrittenIndex = segments.getToTruncate().getNewEndIndex();</span>
+      }
+
+<span class="nc bnc" id="L729" title="All 2 branches missed.">      if (stateMachineFuture != null) {</span>
+<span class="nc" id="L730">        IOUtils.getFromFuture(stateMachineFuture, () -&gt; this + &quot;-truncateStateMachineData&quot;);</span>
+      }
+<span class="nc" id="L732">      flushIndex.setUnconditionally(lastWrittenIndex, infoIndexChange);</span>
+<span class="nc" id="L733">      safeCacheEvictIndex.setUnconditionally(lastWrittenIndex, infoIndexChange);</span>
+<span class="nc" id="L734">      postUpdateFlushedIndex(0);</span>
+<span class="nc" id="L735">    }</span>
+
+    @Override
+    long getEndIndex() {
+<span class="nc bnc" id="L739" title="All 2 branches missed.">      if (segments.getToTruncate() != null) {</span>
+<span class="nc" id="L740">        return segments.getToTruncate().getNewEndIndex();</span>
+<span class="nc bnc" id="L741" title="All 2 branches missed.">      } else if (segments.getToDelete().length &gt; 0) {</span>
+<span class="nc" id="L742">        return segments.getToDelete()[segments.getToDelete().length - 1].getEndIndex();</span>
+      }
+<span class="nc" id="L744">      return RaftLog.INVALID_LOG_INDEX;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L749">      return super.toString() + &quot;: &quot; + segments;</span>
+    }
+  }
+
+  long getFlushIndex() {
+<span class="nc" id="L754">    return flushIndex.get();</span>
+  }
+
+  long getSafeCacheEvictIndex() {
+<span class="nc" id="L758">    return safeCacheEvictIndex.get();</span>
+  }
+
+  private void freeSegmentedRaftLogOutputStream() {
+<span class="nc" id="L762">    IOUtils.cleanup(LOG, out);</span>
+<span class="nc" id="L763">    out = null;</span>
+<span class="nc bnc" id="L764" title="All 2 branches missed.">    Preconditions.assertTrue(writeBuffer.position() == 0);</span>
+<span class="nc" id="L765">  }</span>
+
+  private void allocateSegmentedRaftLogOutputStream(File file, boolean append) throws IOException {
+<span class="nc" id="L768">    Preconditions.assertNull(out, &quot;out&quot;);</span>
+<span class="nc" id="L769">    Preconditions.assertSame(0, writeBuffer.position(), &quot;writeBuffer.position()&quot;);</span>
+<span class="nc" id="L770">    out = new SegmentedRaftLogOutputStream(file, append, segmentMaxSize,</span>
+        preallocatedSize, writeBuffer);
+<span class="nc" id="L772">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetricRegistries.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.metrics</a> &gt; <span class="el_source">MetricRegistries.java</span></div><h1>MetricRegistries.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * &lt;p&gt;
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * &lt;p&gt;
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.metrics;
+
+import org.apache.ratis.util.TimeDuration;
+
+import java.util.Collection;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Consumer;
+
+/**
+ * MetricRegistries is collection of MetricRegistry's. MetricsRegistries implementations should do
+ * ref-counting of MetricRegistry's via create() and remove() methods.
+ */
+<span class="nc" id="L32">public abstract class MetricRegistries {</span>
+
+  private static final class LazyHolder {
+<span class="nc" id="L35">    private static final MetricRegistries GLOBAL = MetricRegistriesLoader.load();</span>
+  }
+
+  /**
+   * Return the global singleton instance for the MetricRegistries.
+   *
+   * @return MetricRegistries implementation.
+   */
+  public static MetricRegistries global() {
+<span class="nc" id="L44">    return LazyHolder.GLOBAL;</span>
+  }
+
+  /**
+   * Removes all the MetricRegisties.
+   */
+  public abstract void clear();
+
+  /**
+   * Create or return MetricRegistry with the given info. MetricRegistry will only be created
+   * if current reference count is 0. Otherwise ref counted is incremented, and an existing instance
+   * will be returned.
+   *
+   * @param info the info object for the MetricRegistrytry.
+   * @return created or existing MetricRegistry.
+   */
+  public abstract RatisMetricRegistry create(MetricRegistryInfo info);
+
+  /**
+   * Decrements the ref count of the MetricRegistry, and removes if ref count == 0.
+   *
+   * @param key the info object for the MetricRegistrytry.
+   * @return true if metric registry is removed.
+   */
+  public abstract boolean remove(MetricRegistryInfo key);
+
+  /**
+   * Returns the MetricRegistry if found.
+   *
+   * @param info the info for the registry.
+   * @return a MetricRegistry optional.
+   */
+  public abstract Optional&lt;RatisMetricRegistry&gt; get(MetricRegistryInfo info);
+
+  /**
+   * Returns MetricRegistryInfo's for the MetricRegistry's created.
+   *
+   * @return MetricRegistryInfo's for the MetricRegistry's created.
+   */
+  public abstract Set&lt;MetricRegistryInfo&gt; getMetricRegistryInfos();
+
+  /**
+   * Returns MetricRegistry's created.
+   *
+   * @return MetricRegistry's created.
+   */
+  public abstract Collection&lt;RatisMetricRegistry&gt; getMetricRegistries();
+
+  /**
+   * Add hook to register reporter for the metricRegistry.
+   *
+   * @param reporterRegistration Consumer to create the reporter for the registry.
+   * @param stopReporter Consumer to stop the reporter for the registry.
+   */
+  public abstract void addReporterRegistration(Consumer&lt;RatisMetricRegistry&gt; reporterRegistration,
+      Consumer&lt;RatisMetricRegistry&gt; stopReporter);
+
+  /**
+   * Remove hook of reporter for the metricRegistry.
+   *
+   * @param reporterRegistration Consumer to create the reporter for the registry.
+   * @param stopReporter Consumer to stop the reporter for the registry.
+   */
+  public void removeReporterRegistration(Consumer&lt;RatisMetricRegistry&gt; reporterRegistration,
+      Consumer&lt;RatisMetricRegistry&gt; stopReporter) {
+<span class="nc" id="L109">  }</span>
+
+  /**
+   * Enable jmx reporter for the metricRegistry.
+   */
+  public abstract void enableJmxReporter();
+
+  /**
+   * Enable console reporter for the metricRegistry.
+   *
+   * @param consoleReportRate Console report rate.
+   */
+  public abstract void enableConsoleReporter(TimeDuration consoleReportRate);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

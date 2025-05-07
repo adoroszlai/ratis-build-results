@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseStateMachine.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.statemachine.impl</a> &gt; <span class="el_source">BaseStateMachine.java</span></div><h1>BaseStateMachine.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.statemachine.impl;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.statemachine.SnapshotRetentionPolicy;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.StateMachineStorage;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.Preconditions;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Base implementation for StateMachines.
+ */
+public class BaseStateMachine implements StateMachine, StateMachine.DataApi,
+    StateMachine.EventApi, StateMachine.LeaderEventApi, StateMachine.FollowerEventApi {
+<span class="nc" id="L52">  private final CompletableFuture&lt;RaftServer&gt; server = new CompletableFuture&lt;&gt;();</span>
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile RaftGroupId groupId;
+<span class="nc" id="L55">  private final LifeCycle lifeCycle = new LifeCycle(JavaUtils.getClassSimpleName(getClass()));</span>
+
+<span class="nc" id="L57">  private final AtomicReference&lt;TermIndex&gt; lastAppliedTermIndex = new AtomicReference&lt;&gt;();</span>
+
+<span class="nc" id="L59">  private final SortedMap&lt;Long, CompletableFuture&lt;Void&gt;&gt; transactionFutures = new TreeMap&lt;&gt;();</span>
+
+<span class="nc" id="L61">  public BaseStateMachine() {</span>
+<span class="nc" id="L62">    setLastAppliedTermIndex(TermIndex.INITIAL_VALUE);</span>
+<span class="nc" id="L63">  }</span>
+
+  public RaftPeerId getId() {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    return server.isDone()? server.join().getId(): null;</span>
+  }
+
+  public LifeCycle getLifeCycle() {
+<span class="nc" id="L70">    return lifeCycle;</span>
+  }
+
+  public CompletableFuture&lt;RaftServer&gt; getServer() {
+<span class="nc" id="L74">    return server;</span>
+  }
+
+  public RaftGroupId getGroupId() {
+<span class="nc" id="L78">    return groupId;</span>
+  }
+
+  @Override
+  public LifeCycle.State getLifeCycleState() {
+<span class="nc" id="L83">    return lifeCycle.getCurrentState();</span>
+  }
+
+  @Override
+  public void initialize(RaftServer raftServer, RaftGroupId raftGroupId, RaftStorage storage) throws IOException {
+<span class="nc" id="L88">    this.groupId = raftGroupId;</span>
+<span class="nc" id="L89">    this.server.complete(raftServer);</span>
+<span class="nc" id="L90">    lifeCycle.setName(&quot;&quot; + this);</span>
+<span class="nc" id="L91">  }</span>
+
+  @Override
+  public SnapshotInfo getLatestSnapshot() {
+<span class="nc" id="L95">    return getStateMachineStorage().getLatestSnapshot();</span>
+  }
+
+  @Override
+  public void pause() {
+<span class="nc" id="L100">  }</span>
+
+  @Override
+  public void reinitialize() throws IOException {
+<span class="nc" id="L104">  }</span>
+
+  @Override
+  public TransactionContext applyTransactionSerial(TransactionContext trx) throws InvalidProtocolBufferException {
+<span class="nc" id="L108">    return trx;</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;Message&gt; applyTransaction(TransactionContext trx) {
+    // return the same message contained in the entry
+<span class="nc" id="L114">    final LogEntryProto entry = Objects.requireNonNull(trx.getLogEntryUnsafe());</span>
+<span class="nc" id="L115">    updateLastAppliedTermIndex(entry.getTerm(), entry.getIndex());</span>
+<span class="nc" id="L116">    return CompletableFuture.completedFuture(</span>
+<span class="nc" id="L117">        Message.valueOf(entry.getStateMachineLogEntry().getLogData()));</span>
+  }
+
+  @Override
+  public TermIndex getLastAppliedTermIndex() {
+<span class="nc" id="L122">    return lastAppliedTermIndex.get();</span>
+  }
+
+  protected void setLastAppliedTermIndex(TermIndex newTI) {
+<span class="nc" id="L126">    lastAppliedTermIndex.set(newTI);</span>
+<span class="nc" id="L127">  }</span>
+
+  @Override
+  public void notifyTermIndexUpdated(long term, long index) {
+<span class="nc" id="L131">    updateLastAppliedTermIndex(term, index);</span>
+<span class="nc" id="L132">  }</span>
+
+  protected boolean updateLastAppliedTermIndex(long term, long index) {
+<span class="nc" id="L135">    return updateLastAppliedTermIndex(TermIndex.valueOf(term, index));</span>
+  }
+
+  protected boolean updateLastAppliedTermIndex(TermIndex newTI) {
+<span class="nc" id="L139">    Objects.requireNonNull(newTI, &quot;newTI == null&quot;);</span>
+<span class="nc" id="L140">    final TermIndex oldTI = lastAppliedTermIndex.getAndSet(newTI);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    if (!newTI.equals(oldTI)) {</span>
+<span class="nc" id="L142">      LOG.trace(&quot;{}: update lastAppliedTermIndex from {} to {}&quot;, getId(), oldTI, newTI);</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      if (oldTI != null) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        Preconditions.assertTrue(newTI.compareTo(oldTI) &gt;= 0,</span>
+<span class="nc" id="L145">            () -&gt; getId() + &quot;: Failed updateLastAppliedTermIndex: newTI = &quot;</span>
+                + newTI + &quot; &lt; oldTI = &quot; + oldTI);
+      }
+<span class="nc" id="L148">      return true;</span>
+    }
+
+<span class="nc" id="L151">    synchronized (transactionFutures) {</span>
+<span class="nc bnc" id="L152" title="All 4 branches missed.">      for(long i; !transactionFutures.isEmpty() &amp;&amp; (i = transactionFutures.firstKey()) &lt;= newTI.getIndex(); ) {</span>
+<span class="nc" id="L153">        transactionFutures.remove(i).complete(null);</span>
+      }
+<span class="nc" id="L155">    }</span>
+<span class="nc" id="L156">    return false;</span>
+  }
+
+  @Override
+  public long takeSnapshot() throws IOException {
+<span class="nc" id="L161">    return RaftLog.INVALID_LOG_INDEX;</span>
+  }
+
+  @Override
+  public StateMachineStorage getStateMachineStorage() {
+<span class="nc" id="L166">    return new StateMachineStorage() {</span>
+      @Override
+      public void init(RaftStorage raftStorage) throws IOException {
+<span class="nc" id="L169">      }</span>
+
+      @Override
+      public SnapshotInfo getLatestSnapshot() {
+<span class="nc" id="L173">        return null;</span>
+      }
+
+      @Override
+      public void format() throws IOException {
+<span class="nc" id="L178">      }</span>
+
+      @Override
+      public void cleanupOldSnapshots(SnapshotRetentionPolicy snapshotRetentionPolicy) {
+<span class="nc" id="L182">      }</span>
+    };
+  }
+
+  @Override
+  public CompletableFuture&lt;Message&gt; queryStale(Message request, long minIndex) {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">    if (getLastAppliedTermIndex().getIndex() &lt; minIndex) {</span>
+<span class="nc" id="L189">      synchronized (transactionFutures) {</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (getLastAppliedTermIndex().getIndex() &lt; minIndex) {</span>
+<span class="nc" id="L191">          return transactionFutures.computeIfAbsent(minIndex, key -&gt; new CompletableFuture&lt;&gt;())</span>
+<span class="nc" id="L192">              .thenCompose(v -&gt; query(request));</span>
+        }
+<span class="nc" id="L194">      }</span>
+    }
+<span class="nc" id="L196">    return query(request);</span>
+  }
+
+  @Override
+  public CompletableFuture&lt;Message&gt; query(Message request) {
+<span class="nc" id="L201">    return CompletableFuture.completedFuture(null);</span>
+  }
+
+  @Override
+  public TransactionContext startTransaction(RaftClientRequest request) throws IOException {
+<span class="nc" id="L206">    return TransactionContext.newBuilder()</span>
+<span class="nc" id="L207">        .setStateMachine(this)</span>
+<span class="nc" id="L208">        .setClientRequest(request)</span>
+<span class="nc" id="L209">        .build();</span>
+  }
+
+  @Override
+  public TransactionContext cancelTransaction(TransactionContext trx) throws IOException {
+<span class="nc" id="L214">    return trx;</span>
+  }
+
+  @Override
+  public TransactionContext preAppendTransaction(TransactionContext trx) throws IOException {
+<span class="nc" id="L219">    return trx;</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+    // do nothing
+<span class="nc" id="L225">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L229">    return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        + (!server.isDone()? &quot;uninitialized&quot;: getId() + &quot;:&quot; + groupId);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

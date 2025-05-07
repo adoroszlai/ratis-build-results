@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TraditionalBinaryPrefix.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">TraditionalBinaryPrefix.java</span></div><h1>TraditionalBinaryPrefix.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+/**
+ * The traditional binary prefixes, kilo, mega, ..., exa,
+ * which can be represented by a 64-bit integer.
+ * {@link TraditionalBinaryPrefix} symbols are case insensitive.
+ */
+<span class="nc" id="L25">public enum TraditionalBinaryPrefix {</span>
+<span class="nc" id="L26">  KILO(10),</span>
+<span class="nc" id="L27">  MEGA(KILO.bitShift + 10),</span>
+<span class="nc" id="L28">  GIGA(MEGA.bitShift + 10),</span>
+<span class="nc" id="L29">  TERA(GIGA.bitShift + 10),</span>
+<span class="nc" id="L30">  PETA(TERA.bitShift + 10),</span>
+<span class="nc" id="L31">  EXA (PETA.bitShift + 10);</span>
+
+  private final long value;
+  private final char symbol;
+  private final int bitShift;
+  private final long bitMask;
+
+<span class="nc" id="L38">  TraditionalBinaryPrefix(int bitShift) {</span>
+<span class="nc" id="L39">    this.bitShift = bitShift;</span>
+<span class="nc" id="L40">    this.value = 1L &lt;&lt; bitShift;</span>
+<span class="nc" id="L41">    this.bitMask = this.value - 1L;</span>
+<span class="nc" id="L42">    this.symbol = toString().charAt(0);</span>
+<span class="nc" id="L43">  }</span>
+
+  public long getValue() {
+<span class="nc" id="L46">    return value;</span>
+  }
+
+  public char getSymbol() {
+<span class="nc" id="L50">    return symbol;</span>
+  }
+
+  public long toLong(long n) {
+<span class="nc" id="L54">    final long shifted = n &lt;&lt; bitShift;</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    if (n != shifted &gt;&gt;&gt; bitShift) {</span>
+<span class="nc" id="L56">      throw new ArithmeticException(&quot;Long overflow: &quot; + toString(n)</span>
+          + &quot; cannot be assigned to a long.&quot;);
+    }
+<span class="nc" id="L59">    return shifted;</span>
+  }
+
+  public String toString(long n) {
+<span class="nc" id="L63">    return n + String.valueOf(symbol);</span>
+  }
+
+  /**
+   * @return The object corresponding to the symbol.
+   */
+  public static TraditionalBinaryPrefix valueOf(char symbol) {
+<span class="nc" id="L70">    symbol = Character.toUpperCase(symbol);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">    for(TraditionalBinaryPrefix prefix : TraditionalBinaryPrefix.values()) {</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">      if (symbol == prefix.symbol) {</span>
+<span class="nc" id="L73">        return prefix;</span>
+      }
+    }
+<span class="nc" id="L76">    throw new IllegalArgumentException(&quot;Unknown symbol '&quot; + symbol + &quot;'&quot;);</span>
+  }
+
+  /**
+   * Convert a string to long.
+   * The input string is first be trimmed and underscore removed,
+   * and then it is parsed with traditional binary prefix.
+   * &lt;p&gt;
+   * For example,
+   * &quot;-1_230k&quot; will be converted to -1230 * 1024 = -1259520;
+   * &quot;891g&quot; will be converted to 891 * 1024^3 = 956703965184;
+   *
+   * @param s input string
+   * @return a long value represented by the input string.
+   */
+  public static long string2long(String s) {
+<span class="nc" id="L92">    s = s.trim().replace(&quot;_&quot;, &quot;&quot;);</span>
+<span class="nc" id="L93">    final int lastpos = s.length() - 1;</span>
+<span class="nc" id="L94">    final char lastchar = s.charAt(lastpos);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">    if (Character.isDigit(lastchar)) {</span>
+<span class="nc" id="L96">      return Long.parseLong(s);</span>
+    } else {
+      long p;
+      try {
+<span class="nc" id="L100">        p = TraditionalBinaryPrefix.valueOf(lastchar).value;</span>
+<span class="nc" id="L101">      } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L102">        throw new IllegalArgumentException(&quot;Invalid size prefix '&quot; + lastchar</span>
+            + &quot;' in '&quot; + s + &quot;'. Allowed prefixes are k, m, g, t, p, e (case insensitive)&quot;);
+<span class="nc" id="L104">      }</span>
+<span class="nc" id="L105">      long num = Long.parseLong(s.substring(0, lastpos).trim());</span>
+<span class="nc bnc" id="L106" title="All 4 branches missed.">      if (num &gt; Long.MAX_VALUE/p || num &lt; Long.MIN_VALUE/p) {</span>
+<span class="nc" id="L107">        throw new IllegalArgumentException(s + &quot; does not fit in a Long&quot;);</span>
+      }
+<span class="nc" id="L109">      return num * p;</span>
+    }
+  }
+
+  /**
+   * Convert a long integer to a string with traditional binary prefix.
+   *
+   * @param n the value to be converted
+   * @param unit The unit, e.g. &quot;B&quot; for bytes.
+   * @param decimalPlaces The number of decimal places.
+   * @return a string with traditional binary prefix.
+   */
+  public static String long2String(long n, String unit, int decimalPlaces) {
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    if (unit == null) {</span>
+<span class="nc" id="L123">      unit = &quot;&quot;;</span>
+    }
+    //take care a special case
+<span class="nc bnc" id="L126" title="All 2 branches missed.">    if (n == Long.MIN_VALUE) {</span>
+<span class="nc" id="L127">      return &quot;-8 &quot; + EXA.symbol + unit;</span>
+    }
+
+<span class="nc" id="L130">    final StringBuilder b = new StringBuilder();</span>
+    //take care negative numbers
+<span class="nc bnc" id="L132" title="All 2 branches missed.">    if (n &lt; 0) {</span>
+<span class="nc" id="L133">      b.append('-');</span>
+<span class="nc" id="L134">      n = -n;</span>
+    }
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    if (n &lt; KILO.value) {</span>
+      //no prefix
+<span class="nc" id="L138">      b.append(n);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">      return (unit.isEmpty()? b: b.append(&quot; &quot;).append(unit)).toString();</span>
+    } else {
+      //find traditional binary prefix
+<span class="nc" id="L142">      int i = 0;</span>
+<span class="nc bnc" id="L143" title="All 4 branches missed.">      while(i &lt; values().length &amp;&amp; n &gt;= values()[i].value) {</span>
+<span class="nc" id="L144">        i++;</span>
+      }
+<span class="nc" id="L146">      TraditionalBinaryPrefix prefix = values()[i - 1];</span>
+
+<span class="nc bnc" id="L148" title="All 2 branches missed.">      if ((n &amp; prefix.bitMask) == 0) {</span>
+        //exact division
+<span class="nc" id="L150">        b.append(n &gt;&gt; prefix.bitShift);</span>
+      } else {
+<span class="nc" id="L152">        final String  format = &quot;%.&quot; + decimalPlaces + &quot;f&quot;;</span>
+<span class="nc" id="L153">        String s = StringUtils.format(format, n/(double)prefix.value);</span>
+        //check a special rounding up case
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (s.startsWith(&quot;1024&quot;)) {</span>
+<span class="nc" id="L156">          prefix = values()[i];</span>
+<span class="nc" id="L157">          s = StringUtils.format(format, n/(double)prefix.value);</span>
+        }
+<span class="nc" id="L159">        b.append(s);</span>
+      }
+<span class="nc" id="L161">      return b.append(' ').append(prefix.symbol).append(unit).toString();</span>
+    }
+  }
+
+  /** The same as long2String(n, &quot;&quot;, 3). */
+  public static String long2String(long n) {
+<span class="nc" id="L167">    return long2String(n, &quot;&quot;, 3);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

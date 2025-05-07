@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftMetaConfCommand.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli.sh.local</a> &gt; <span class="el_source">RaftMetaConfCommand.java</span></div><h1>RaftMetaConfCommand.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli.sh.local;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.RaftConfigurationProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.shell.cli.CliUtils;
+import org.apache.ratis.shell.cli.sh.command.AbstractCommand;
+import org.apache.ratis.shell.cli.sh.command.Context;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Command for generate a new raft-meta.conf file based on original raft-meta.conf and new peers,
+ * which is used to move a raft node to a new node.
+ */
+public class RaftMetaConfCommand extends AbstractCommand {
+  public static final String PEER_OPTION_NAME = &quot;peers&quot;;
+  public static final String PATH_OPTION_NAME = &quot;path&quot;;
+
+  private static final String RAFT_META_CONF = &quot;raft-meta.conf&quot;;
+  private static final String NEW_RAFT_META_CONF = &quot;new-raft-meta.conf&quot;;
+
+  private static final String SEPARATOR = &quot;\\|&quot;;
+  /**
+   * @param context command context
+   */
+  public RaftMetaConfCommand(Context context) {
+<span class="nc" id="L61">    super(context);</span>
+<span class="nc" id="L62">  }</span>
+
+  @Override
+  public String getCommandName() {
+<span class="nc" id="L66">    return &quot;raftMetaConf&quot;;</span>
+  }
+
+  @Override
+  public int run(CommandLine cl) throws IOException {
+<span class="nc" id="L71">    String peersStr = cl.getOptionValue(PEER_OPTION_NAME);</span>
+<span class="nc" id="L72">    String path = cl.getOptionValue(PATH_OPTION_NAME);</span>
+<span class="nc bnc" id="L73" title="All 8 branches missed.">    if (peersStr == null || path == null || peersStr.isEmpty() || path.isEmpty()) {</span>
+<span class="nc" id="L74">      printf(&quot;peers or path can't be empty.&quot;);</span>
+<span class="nc" id="L75">      return -1;</span>
+    }
+<span class="nc" id="L77">    Set&lt;String&gt; addresses = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L78">    Set&lt;String&gt; ids = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L79">    List&lt;RaftPeerProto&gt; raftPeerProtos = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    for (String idWithAddress : peersStr.split(&quot;,&quot;)) {</span>
+<span class="nc" id="L81">      String[] peerIdWithAddressArray = idWithAddress.split(SEPARATOR);</span>
+
+<span class="nc bnc" id="L83" title="All 4 branches missed.">      if (peerIdWithAddressArray.length &lt; 1 || peerIdWithAddressArray.length &gt; 2) {</span>
+<span class="nc" id="L84">        String message =</span>
+            &quot;Failed to parse peer's ID and address for: %s, &quot; +
+                &quot;from option: -peers %s. \n&quot; +
+                &quot;Please make sure to provide list of peers&quot; +
+                &quot; in format &lt;[P0_ID|]P0_HOST:P0_PORT,[P1_ID|]P1_HOST:P1_PORT,[P2_ID|]P2_HOST:P2_PORT&gt;&quot;;
+<span class="nc" id="L89">        printf(message, idWithAddress, peersStr);</span>
+<span class="nc" id="L90">        return -1;</span>
+      }
+<span class="nc" id="L92">      InetSocketAddress inetSocketAddress = CliUtils.parseInetSocketAddress(</span>
+          peerIdWithAddressArray[peerIdWithAddressArray.length - 1]);
+<span class="nc" id="L94">      String addressString = inetSocketAddress.getHostString() + &quot;:&quot; + inetSocketAddress.getPort();</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">      if (addresses.contains(addressString)) {</span>
+<span class="nc" id="L96">        printf(&quot;Found duplicated address: %s. Please make sure the address of peer have no duplicated value.&quot;,</span>
+            addressString);
+<span class="nc" id="L98">        return -1;</span>
+      }
+<span class="nc" id="L100">      addresses.add(addressString);</span>
+
+      String peerId;
+<span class="nc bnc" id="L103" title="All 2 branches missed.">      if (peerIdWithAddressArray.length == 2) {</span>
+        // Peer ID is provided
+<span class="nc" id="L105">        peerId = RaftPeerId.getRaftPeerId(peerIdWithAddressArray[0]).toString();</span>
+
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (ids.contains(peerId)) {</span>
+<span class="nc" id="L108">          printf(&quot;Found duplicated ID: %s. Please make sure the ID of peer have no duplicated value.&quot;, peerId);</span>
+<span class="nc" id="L109">          return -1;</span>
+        }
+<span class="nc" id="L111">        ids.add(peerId);</span>
+      } else {
+        // If peer ID is not provided, use host address as peerId value
+<span class="nc" id="L114">        peerId = CliUtils.getPeerId(inetSocketAddress).toString();</span>
+      }
+
+<span class="nc" id="L117">      raftPeerProtos.add(RaftPeerProto.newBuilder()</span>
+<span class="nc" id="L118">          .setId(ByteString.copyFrom(peerId.getBytes(StandardCharsets.UTF_8)))</span>
+<span class="nc" id="L119">          .setAddress(addressString)</span>
+<span class="nc" id="L120">          .setStartupRole(RaftPeerRole.FOLLOWER).build());</span>
+    }
+<span class="nc" id="L122">    try (InputStream in = Files.newInputStream(Paths.get(path, RAFT_META_CONF));</span>
+<span class="nc" id="L123">         OutputStream out = Files.newOutputStream(Paths.get(path, NEW_RAFT_META_CONF))) {</span>
+<span class="nc" id="L124">      long index = LogEntryProto.newBuilder().mergeFrom(in).build().getIndex();</span>
+<span class="nc" id="L125">      println(&quot;Index in the original file is: &quot; + index);</span>
+<span class="nc" id="L126">      LogEntryProto generateLogEntryProto = LogEntryProto.newBuilder()</span>
+<span class="nc" id="L127">          .setConfigurationEntry(RaftConfigurationProto.newBuilder()</span>
+<span class="nc" id="L128">              .addAllPeers(raftPeerProtos).build())</span>
+<span class="nc" id="L129">          .setIndex(index + 1).build();</span>
+<span class="nc" id="L130">      printf(&quot;Generate new LogEntryProto info is:\n&quot; + generateLogEntryProto);</span>
+<span class="nc" id="L131">      generateLogEntryProto.writeTo(out);</span>
+    }
+<span class="nc" id="L133">    return 0;</span>
+  }
+
+  @Override
+  public String getUsage() {
+<span class="nc" id="L138">    return String.format(&quot;%s&quot;</span>
+            + &quot; -%s &lt;[P0_ID|]P0_HOST:P0_PORT,[P1_ID|]P1_HOST:P1_PORT,[P2_ID|]P2_HOST:P2_PORT&gt;&quot;
+            + &quot; -%s &lt;PARENT_PATH_OF_RAFT_META_CONF&gt;&quot;,
+<span class="nc" id="L141">        getCommandName(), PEER_OPTION_NAME, PATH_OPTION_NAME);</span>
+  }
+
+  @Override
+  public String getDescription() {
+<span class="nc" id="L146">    return description();</span>
+  }
+
+  @Override
+  public Options getOptions() {
+<span class="nc" id="L151">    return new Options()</span>
+<span class="nc" id="L152">        .addOption(</span>
+<span class="nc" id="L153">            Option.builder()</span>
+<span class="nc" id="L154">                .option(PEER_OPTION_NAME)</span>
+<span class="nc" id="L155">                .hasArg()</span>
+<span class="nc" id="L156">                .required()</span>
+<span class="nc" id="L157">                .desc(&quot;Peer addresses seperated by comma&quot;)</span>
+<span class="nc" id="L158">            .build())</span>
+<span class="nc" id="L159">        .addOption(</span>
+<span class="nc" id="L160">            Option.builder()</span>
+<span class="nc" id="L161">                .option(PATH_OPTION_NAME)</span>
+<span class="nc" id="L162">                .hasArg()</span>
+<span class="nc" id="L163">                .required()</span>
+<span class="nc" id="L164">                .desc(&quot;The parent path of raft-meta.conf&quot;)</span>
+<span class="nc" id="L165">            .build());</span>
+  }
+
+  /**
+   * @return command's description
+   */
+  public static String description() {
+<span class="nc" id="L172">    return &quot;Generate a new raft-meta.conf file based on original raft-meta.conf and new peers.&quot;;</span>
+  }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,543 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataStreamManagement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.server</a> &gt; <span class="el_source">DataStreamManagement.java</span></div><h1>DataStreamManagement.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.apache.ratis.netty.server;
+
+import org.apache.ratis.client.RaftClientConfigKeys;
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.client.impl.DataStreamClientImpl.DataStreamOutputImpl;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.datastream.impl.DataStreamReplyByteBuffer;
+import org.apache.ratis.datastream.impl.DataStreamRequestByteBuf;
+import org.apache.ratis.io.StandardWriteOption;
+import org.apache.ratis.io.WriteOption;
+import org.apache.ratis.metrics.Timekeeper;
+import org.apache.ratis.netty.metrics.NettyServerStreamRpcMetrics;
+import org.apache.ratis.netty.metrics.NettyServerStreamRpcMetrics.RequestMetrics;
+import org.apache.ratis.netty.metrics.NettyServerStreamRpcMetrics.RequestType;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.proto.RaftProtos.DataStreamPacketHeaderProto.Type;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.DataStreamReply;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.RoutingTable;
+import org.apache.ratis.protocol.exceptions.AlreadyExistsException;
+import org.apache.ratis.protocol.exceptions.DataStreamException;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServer.Division;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.StateMachine.DataStream;
+import org.apache.ratis.statemachine.StateMachine.DataChannel;
+import org.apache.ratis.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelHandlerContext;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelId;
+import org.apache.ratis.util.ConcurrentUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ReferenceCountedObject;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.TimeoutExecutor;
+import org.apache.ratis.util.UncheckedAutoCloseable;
+import org.apache.ratis.util.function.CheckedBiFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+public class DataStreamManagement {
+<span class="nc" id="L86">  public static final Logger LOG = LoggerFactory.getLogger(DataStreamManagement.class);</span>
+
+  static class LocalStream {
+    private final CompletableFuture&lt;DataStream&gt; streamFuture;
+    private final AtomicReference&lt;CompletableFuture&lt;Long&gt;&gt; writeFuture;
+    private final RequestMetrics metrics;
+
+<span class="nc" id="L93">    LocalStream(CompletableFuture&lt;DataStream&gt; streamFuture, RequestMetrics metrics) {</span>
+<span class="nc" id="L94">      this.streamFuture = streamFuture;</span>
+<span class="nc" id="L95">      this.writeFuture = new AtomicReference&lt;&gt;(streamFuture.thenApply(s -&gt; 0L));</span>
+<span class="nc" id="L96">      this.metrics = metrics;</span>
+<span class="nc" id="L97">    }</span>
+
+    CompletableFuture&lt;Long&gt; write(ByteBuf buf, Iterable&lt;WriteOption&gt; options,
+                                  Executor executor) {
+<span class="nc" id="L101">      final Timekeeper.Context context = metrics.start();</span>
+<span class="nc" id="L102">      return composeAsync(writeFuture, executor,</span>
+<span class="nc" id="L103">          n -&gt; streamFuture.thenCompose(stream -&gt; writeToAsync(buf, options, stream, executor)</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">              .whenComplete((l, e) -&gt; metrics.stop(context, e == null))));</span>
+    }
+
+    void cleanUp() {
+<span class="nc" id="L108">      streamFuture.thenAccept(DataStream::cleanUp);</span>
+<span class="nc" id="L109">    }</span>
+  }
+
+  static class RemoteStream {
+    private final DataStreamOutputImpl out;
+<span class="nc" id="L114">    private final AtomicReference&lt;CompletableFuture&lt;DataStreamReply&gt;&gt; sendFuture</span>
+<span class="nc" id="L115">        = new AtomicReference&lt;&gt;(CompletableFuture.completedFuture(null));</span>
+    private final RequestMetrics metrics;
+
+<span class="nc" id="L118">    RemoteStream(DataStreamOutputImpl out, RequestMetrics metrics) {</span>
+<span class="nc" id="L119">      this.metrics = metrics;</span>
+<span class="nc" id="L120">      this.out = out;</span>
+<span class="nc" id="L121">    }</span>
+
+    static Iterable&lt;WriteOption&gt; addFlush(List&lt;WriteOption&gt; original) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">      if (original.contains(StandardWriteOption.FLUSH)) {</span>
+<span class="nc" id="L125">        return original;</span>
+      }
+<span class="nc" id="L127">      return Stream.concat(Stream.of(StandardWriteOption.FLUSH), original.stream())</span>
+<span class="nc" id="L128">          .collect(Collectors.toList());</span>
+    }
+
+    CompletableFuture&lt;DataStreamReply&gt; write(DataStreamRequestByteBuf request, Executor executor) {
+<span class="nc" id="L132">      final Timekeeper.Context context = metrics.start();</span>
+<span class="nc" id="L133">      return composeAsync(sendFuture, executor,</span>
+<span class="nc" id="L134">          n -&gt; out.writeAsync(request.slice().retain(), addFlush(request.getWriteOptionList()))</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">              .whenComplete((l, e) -&gt; metrics.stop(context, e == null)));</span>
+    }
+  }
+
+  static class StreamInfo {
+    private final RaftClientRequest request;
+    private final boolean primary;
+    private final LocalStream local;
+    private final Set&lt;RemoteStream&gt; remotes;
+    private final Division division;
+<span class="nc" id="L145">    private final AtomicReference&lt;CompletableFuture&lt;Void&gt;&gt; previous</span>
+<span class="nc" id="L146">        = new AtomicReference&lt;&gt;(CompletableFuture.completedFuture(null));</span>
+
+    StreamInfo(RaftClientRequest request, boolean primary, CompletableFuture&lt;DataStream&gt; stream, Division division,
+        CheckedBiFunction&lt;RaftClientRequest, Set&lt;RaftPeer&gt;, Set&lt;DataStreamOutputImpl&gt;, IOException&gt; getStreams,
+        Function&lt;RequestType, RequestMetrics&gt; metricsConstructor)
+<span class="nc" id="L151">        throws IOException {</span>
+<span class="nc" id="L152">      this.request = request;</span>
+<span class="nc" id="L153">      this.primary = primary;</span>
+<span class="nc" id="L154">      this.local = new LocalStream(stream, metricsConstructor.apply(RequestType.LOCAL_WRITE));</span>
+<span class="nc" id="L155">      this.division = division;</span>
+<span class="nc" id="L156">      final Set&lt;RaftPeer&gt; successors = getSuccessors(division.getId());</span>
+<span class="nc" id="L157">      final Set&lt;DataStreamOutputImpl&gt; outs = getStreams.apply(request, successors);</span>
+<span class="nc" id="L158">      this.remotes = outs.stream()</span>
+<span class="nc" id="L159">          .map(o -&gt; new RemoteStream(o, metricsConstructor.apply(RequestType.REMOTE_WRITE)))</span>
+<span class="nc" id="L160">          .collect(Collectors.toSet());</span>
+<span class="nc" id="L161">    }</span>
+
+    AtomicReference&lt;CompletableFuture&lt;Void&gt;&gt; getPrevious() {
+<span class="nc" id="L164">      return previous;</span>
+    }
+
+    RaftClientRequest getRequest() {
+<span class="nc" id="L168">      return request;</span>
+    }
+
+    Division getDivision() {
+<span class="nc" id="L172">      return division;</span>
+    }
+
+    Collection&lt;CommitInfoProto&gt; getCommitInfos() {
+<span class="nc" id="L176">      return getDivision().getCommitInfos();</span>
+    }
+
+    boolean isPrimary() {
+<span class="nc" id="L180">      return primary;</span>
+    }
+
+    LocalStream getLocal() {
+<span class="nc" id="L184">      return local;</span>
+    }
+
+    &lt;T&gt; List&lt;T&gt; applyToRemotes(Function&lt;RemoteStream, T&gt; function) {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">      return remotes.isEmpty()?Collections.emptyList(): remotes.stream().map(function).collect(Collectors.toList());</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L193">      return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + request;</span>
+    }
+
+    private Set&lt;RaftPeer&gt; getSuccessors(RaftPeerId peerId) {
+<span class="nc" id="L197">      final RaftConfiguration conf = getDivision().getRaftConf();</span>
+<span class="nc" id="L198">      final RoutingTable routingTable = request.getRoutingTable();</span>
+
+<span class="nc bnc" id="L200" title="All 2 branches missed.">      if (routingTable != null) {</span>
+<span class="nc" id="L201">        return routingTable.getSuccessors(peerId).stream().map(conf::getPeer).collect(Collectors.toSet());</span>
+      }
+
+<span class="nc bnc" id="L204" title="All 2 branches missed.">      if (isPrimary()) {</span>
+        // Default start topology
+        // get the other peers from the current configuration
+<span class="nc" id="L207">        return conf.getCurrentPeers().stream()</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">            .filter(p -&gt; !p.getId().equals(division.getId()))</span>
+<span class="nc" id="L209">            .collect(Collectors.toSet());</span>
+      }
+
+<span class="nc" id="L212">      return Collections.emptySet();</span>
+    }
+
+    void cleanUp(ClientInvocationId invocationId) {
+<span class="nc" id="L216">      getDivision().getDataStreamMap().remove(invocationId);</span>
+<span class="nc" id="L217">      getLocal().cleanUp();</span>
+<span class="nc" id="L218">      applyToRemotes(remote -&gt; remote.out.closeAsync());</span>
+<span class="nc" id="L219">    }</span>
+  }
+
+  private final RaftServer server;
+  private final String name;
+
+<span class="nc" id="L225">  private final StreamMap&lt;StreamInfo&gt; streams = new StreamMap&lt;&gt;();</span>
+  private final ChannelMap channels;
+  private final ExecutorService requestExecutor;
+  private final ExecutorService writeExecutor;
+  private final TimeDuration requestTimeout;
+
+  private final NettyServerStreamRpcMetrics nettyServerStreamRpcMetrics;
+
+<span class="nc" id="L233">  DataStreamManagement(RaftServer server, NettyServerStreamRpcMetrics metrics) {</span>
+<span class="nc" id="L234">    this.server = server;</span>
+<span class="nc" id="L235">    this.name = server.getId() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+
+<span class="nc" id="L237">    this.channels = new ChannelMap();</span>
+<span class="nc" id="L238">    final RaftProperties properties = server.getProperties();</span>
+<span class="nc" id="L239">    final boolean useCachedThreadPool = RaftServerConfigKeys.DataStream.asyncRequestThreadPoolCached(properties);</span>
+<span class="nc" id="L240">    this.requestExecutor = ConcurrentUtils.newThreadPoolWithMax(useCachedThreadPool,</span>
+<span class="nc" id="L241">          RaftServerConfigKeys.DataStream.asyncRequestThreadPoolSize(properties),</span>
+          name + &quot;-request-&quot;);
+<span class="nc" id="L243">    this.writeExecutor = ConcurrentUtils.newThreadPoolWithMax(useCachedThreadPool,</span>
+<span class="nc" id="L244">          RaftServerConfigKeys.DataStream.asyncWriteThreadPoolSize(properties),</span>
+          name + &quot;-write-&quot;);
+<span class="nc" id="L246">    this.requestTimeout = RaftClientConfigKeys.DataStream.requestTimeout(server.getProperties());</span>
+
+<span class="nc" id="L248">    this.nettyServerStreamRpcMetrics = metrics;</span>
+<span class="nc" id="L249">  }</span>
+
+  void shutdown() {
+<span class="nc" id="L252">    ConcurrentUtils.shutdownAndWait(TimeDuration.ONE_SECOND, requestExecutor,</span>
+<span class="nc" id="L253">        timeout -&gt; LOG.warn(&quot;{}: requestExecutor shutdown timeout in {}&quot;, this, timeout));</span>
+<span class="nc" id="L254">    ConcurrentUtils.shutdownAndWait(TimeDuration.ONE_SECOND, writeExecutor,</span>
+<span class="nc" id="L255">        timeout -&gt; LOG.warn(&quot;{}: writeExecutor shutdown timeout in {}&quot;, this, timeout));</span>
+<span class="nc" id="L256">  }</span>
+
+  private CompletableFuture&lt;DataStream&gt; stream(RaftClientRequest request, StateMachine stateMachine) {
+<span class="nc" id="L259">    final RequestMetrics metrics = getMetrics().newRequestMetrics(RequestType.STATE_MACHINE_STREAM);</span>
+<span class="nc" id="L260">    final Timekeeper.Context context = metrics.start();</span>
+<span class="nc" id="L261">    return stateMachine.data().stream(request)</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        .whenComplete((r, e) -&gt; metrics.stop(context, e == null));</span>
+  }
+
+  private CompletableFuture&lt;DataStream&gt; computeDataStreamIfAbsent(RaftClientRequest request) throws IOException {
+<span class="nc" id="L266">    final Division division = server.getDivision(request.getRaftGroupId());</span>
+<span class="nc" id="L267">    final ClientInvocationId invocationId = ClientInvocationId.valueOf(request);</span>
+<span class="nc" id="L268">    final CompletableFuture&lt;DataStream&gt; created = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L269">    final CompletableFuture&lt;DataStream&gt; returned = division.getDataStreamMap()</span>
+<span class="nc" id="L270">        .computeIfAbsent(invocationId, key -&gt; created);</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">    if (returned != created) {</span>
+<span class="nc" id="L272">      throw new AlreadyExistsException(&quot;A DataStream already exists for &quot; + invocationId);</span>
+    }
+<span class="nc" id="L274">    stream(request, division.getStateMachine()).whenComplete(JavaUtils.asBiConsumer(created));</span>
+<span class="nc" id="L275">    return created;</span>
+  }
+
+  private StreamInfo newStreamInfo(ByteBuf buf,
+      CheckedBiFunction&lt;RaftClientRequest, Set&lt;RaftPeer&gt;, Set&lt;DataStreamOutputImpl&gt;, IOException&gt; getStreams) {
+    try {
+<span class="nc" id="L281">      final RaftClientRequest request = ClientProtoUtils.toRaftClientRequest(</span>
+<span class="nc" id="L282">          RaftClientRequestProto.parseFrom(buf.nioBuffer()));</span>
+<span class="nc" id="L283">      final boolean isPrimary = server.getId().equals(request.getServerId());</span>
+<span class="nc" id="L284">      final Division division = server.getDivision(request.getRaftGroupId());</span>
+<span class="nc" id="L285">      return new StreamInfo(request, isPrimary, computeDataStreamIfAbsent(request), division, getStreams,</span>
+<span class="nc" id="L286">          getMetrics()::newRequestMetrics);</span>
+<span class="nc" id="L287">    } catch (Throwable e) {</span>
+<span class="nc" id="L288">      throw new CompletionException(e);</span>
+    }
+  }
+
+  static &lt;T&gt; CompletableFuture&lt;T&gt; composeAsync(AtomicReference&lt;CompletableFuture&lt;T&gt;&gt; future, Executor executor,
+      Function&lt;T, CompletableFuture&lt;T&gt;&gt; function) {
+<span class="nc" id="L294">    return future.updateAndGet(previous -&gt; previous.thenComposeAsync(function, executor));</span>
+  }
+
+  static CompletableFuture&lt;Long&gt; writeToAsync(ByteBuf buf,
+                                              Iterable&lt;WriteOption&gt; options,
+                                              DataStream stream,
+      Executor defaultExecutor) {
+<span class="nc" id="L301">    final Executor e = Optional.ofNullable(stream.getExecutor()).orElse(defaultExecutor);</span>
+<span class="nc" id="L302">    return CompletableFuture.supplyAsync(() -&gt; writeTo(buf, options, stream), e);</span>
+  }
+
+  static long writeTo(ByteBuf buf, Iterable&lt;WriteOption&gt; options,
+                      DataStream stream) {
+<span class="nc" id="L307">    final DataChannel channel = stream.getDataChannel();</span>
+<span class="nc" id="L308">    long byteWritten = 0;</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">    for (ByteBuffer buffer : buf.nioBuffers()) {</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">      if (buffer.remaining() == 0) {</span>
+<span class="nc" id="L311">        continue;</span>
+      }
+<span class="nc" id="L313">      final ReferenceCountedObject&lt;ByteBuffer&gt; wrapped = ReferenceCountedObject.wrap(</span>
+<span class="nc" id="L314">          buffer, buf::retain, ignored -&gt; buf.release());</span>
+<span class="nc" id="L315">      try(UncheckedAutoCloseable ignore = wrapped.retainAndReleaseOnClose()) {</span>
+<span class="nc" id="L316">        byteWritten += channel.write(wrapped);</span>
+<span class="nc" id="L317">      } catch (Throwable t) {</span>
+<span class="nc" id="L318">        throw new CompletionException(t);</span>
+<span class="nc" id="L319">      }</span>
+    }
+
+<span class="nc bnc" id="L322" title="All 2 branches missed.">    if (WriteOption.containsOption(options, StandardWriteOption.SYNC)) {</span>
+      try {
+<span class="nc" id="L324">        channel.force(false);</span>
+<span class="nc" id="L325">      } catch (IOException e) {</span>
+<span class="nc" id="L326">        throw new CompletionException(e);</span>
+<span class="nc" id="L327">      }</span>
+    }
+
+<span class="nc bnc" id="L330" title="All 2 branches missed.">    if (WriteOption.containsOption(options, StandardWriteOption.CLOSE)) {</span>
+<span class="nc" id="L331">      close(stream);</span>
+    }
+<span class="nc" id="L333">    return byteWritten;</span>
+  }
+
+  static void close(DataStream stream) {
+    try {
+<span class="nc" id="L338">      stream.getDataChannel().close();</span>
+<span class="nc" id="L339">    } catch (IOException e) {</span>
+<span class="nc" id="L340">      throw new CompletionException(&quot;Failed to close &quot; + stream, e);</span>
+<span class="nc" id="L341">    }</span>
+<span class="nc" id="L342">  }</span>
+
+  static DataStreamReplyByteBuffer newDataStreamReplyByteBuffer(DataStreamRequestByteBuf request,
+      RaftClientReply reply) {
+<span class="nc" id="L346">    final ByteBuffer buffer = ClientProtoUtils.toRaftClientReplyProto(reply).toByteString().asReadOnlyByteBuffer();</span>
+<span class="nc" id="L347">    return DataStreamReplyByteBuffer.newBuilder()</span>
+<span class="nc" id="L348">        .setDataStreamPacket(request)</span>
+<span class="nc" id="L349">        .setBuffer(buffer)</span>
+<span class="nc" id="L350">        .setSuccess(reply.isSuccess())</span>
+<span class="nc" id="L351">        .build();</span>
+  }
+
+  private void sendReply(List&lt;CompletableFuture&lt;DataStreamReply&gt;&gt; remoteWrites,
+      DataStreamRequestByteBuf request, long bytesWritten, Collection&lt;CommitInfoProto&gt; commitInfos,
+      ChannelHandlerContext ctx) {
+<span class="nc" id="L357">    final boolean success = checkSuccessRemoteWrite(remoteWrites, bytesWritten, request);</span>
+<span class="nc" id="L358">    final DataStreamReplyByteBuffer.Builder builder = DataStreamReplyByteBuffer.newBuilder()</span>
+<span class="nc" id="L359">        .setDataStreamPacket(request)</span>
+<span class="nc" id="L360">        .setSuccess(success)</span>
+<span class="nc" id="L361">        .setCommitInfos(commitInfos);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">    if (success) {</span>
+<span class="nc" id="L363">      builder.setBytesWritten(bytesWritten);</span>
+    }
+<span class="nc" id="L365">    ctx.writeAndFlush(builder.build());</span>
+<span class="nc" id="L366">  }</span>
+
+  static void replyDataStreamException(RaftServer server, Throwable cause, RaftClientRequest raftClientRequest,
+      DataStreamRequestByteBuf request, ChannelHandlerContext ctx) {
+<span class="nc" id="L370">    final RaftClientReply reply = RaftClientReply.newBuilder()</span>
+<span class="nc" id="L371">        .setRequest(raftClientRequest)</span>
+<span class="nc" id="L372">        .setException(new DataStreamException(server.getId(), cause))</span>
+<span class="nc" id="L373">        .build();</span>
+<span class="nc" id="L374">    sendDataStreamException(cause, request, reply, ctx);</span>
+<span class="nc" id="L375">  }</span>
+
+  void replyDataStreamException(Throwable cause, DataStreamRequestByteBuf request, ChannelHandlerContext ctx) {
+<span class="nc" id="L378">    final RaftClientReply reply = RaftClientReply.newBuilder()</span>
+<span class="nc" id="L379">        .setClientId(ClientId.emptyClientId())</span>
+<span class="nc" id="L380">        .setServerId(server.getId())</span>
+<span class="nc" id="L381">        .setGroupId(RaftGroupId.emptyGroupId())</span>
+<span class="nc" id="L382">        .setException(new DataStreamException(server.getId(), cause))</span>
+<span class="nc" id="L383">        .build();</span>
+<span class="nc" id="L384">    sendDataStreamException(cause, request, reply, ctx);</span>
+<span class="nc" id="L385">  }</span>
+
+  static void sendDataStreamException(Throwable throwable, DataStreamRequestByteBuf request, RaftClientReply reply,
+      ChannelHandlerContext ctx) {
+<span class="nc" id="L389">    LOG.warn(&quot;Failed to process {}&quot;,  request, throwable);</span>
+    try {
+<span class="nc" id="L391">      ctx.writeAndFlush(newDataStreamReplyByteBuffer(request, reply));</span>
+<span class="nc" id="L392">    } catch (Throwable t) {</span>
+<span class="nc" id="L393">      LOG.warn(&quot;Failed to sendDataStreamException {} for {}&quot;, throwable, request, t);</span>
+    } finally {
+<span class="nc" id="L395">      request.release();</span>
+    }
+<span class="nc" id="L397">  }</span>
+
+  void cleanUp(Set&lt;ClientInvocationId&gt; ids) {
+<span class="nc bnc" id="L400" title="All 2 branches missed.">    for (ClientInvocationId clientInvocationId : ids) {</span>
+<span class="nc" id="L401">      removeDataStream(clientInvocationId);</span>
+<span class="nc" id="L402">    }</span>
+<span class="nc" id="L403">  }</span>
+
+  void cleanUpOnChannelInactive(ChannelId channelId, TimeDuration channelInactiveGracePeriod) {
+    // Delayed memory garbage cleanup
+<span class="nc" id="L407">    Optional.ofNullable(channels.remove(channelId)).ifPresent(ids -&gt; {</span>
+<span class="nc" id="L408">      LOG.info(&quot;Channel {} is inactive, cleanup clientInvocationIds={}&quot;, channelId, ids);</span>
+<span class="nc" id="L409">      TimeoutExecutor.getInstance().onTimeout(channelInactiveGracePeriod, () -&gt; cleanUp(ids),</span>
+<span class="nc" id="L410">          LOG, () -&gt; &quot;Timeout check failed, clientInvocationIds=&quot; + ids);</span>
+<span class="nc" id="L411">    });</span>
+<span class="nc" id="L412">  }</span>
+
+  void read(DataStreamRequestByteBuf request, ChannelHandlerContext ctx,
+      CheckedBiFunction&lt;RaftClientRequest, Set&lt;RaftPeer&gt;, Set&lt;DataStreamOutputImpl&gt;, IOException&gt; getStreams) {
+<span class="nc" id="L416">    LOG.debug(&quot;{}: read {}&quot;, this, request);</span>
+    try {
+<span class="nc" id="L418">      readImpl(request, ctx, getStreams);</span>
+<span class="nc" id="L419">    } catch (Throwable t) {</span>
+<span class="nc" id="L420">      replyDataStreamException(t, request, ctx);</span>
+<span class="nc" id="L421">      removeDataStream(ClientInvocationId.valueOf(request.getClientId(), request.getStreamId()));</span>
+<span class="nc" id="L422">    }</span>
+<span class="nc" id="L423">  }</span>
+
+  private StreamInfo removeDataStream(ClientInvocationId invocationId) {
+<span class="nc" id="L426">    final StreamInfo removed = streams.remove(invocationId);</span>
+<span class="nc bnc" id="L427" title="All 2 branches missed.">    if (removed != null) {</span>
+<span class="nc" id="L428">      removed.cleanUp(invocationId);</span>
+    }
+<span class="nc" id="L430">    return removed;</span>
+  }
+
+  private void readImpl(DataStreamRequestByteBuf request, ChannelHandlerContext ctx,
+      CheckedBiFunction&lt;RaftClientRequest, Set&lt;RaftPeer&gt;, Set&lt;DataStreamOutputImpl&gt;, IOException&gt; getStreams) {
+<span class="nc" id="L435">    final boolean close = request.getWriteOptionList().contains(StandardWriteOption.CLOSE);</span>
+<span class="nc" id="L436">    ClientInvocationId key =  ClientInvocationId.valueOf(request.getClientId(), request.getStreamId());</span>
+
+    // add to ChannelMap
+<span class="nc" id="L439">    final ChannelId channelId = ctx.channel().id();</span>
+<span class="nc" id="L440">    channels.add(channelId, key);</span>
+
+    final StreamInfo info;
+<span class="nc bnc" id="L443" title="All 2 branches missed.">    if (request.getType() == Type.STREAM_HEADER) {</span>
+<span class="nc" id="L444">      final MemoizedSupplier&lt;StreamInfo&gt; supplier = JavaUtils.memoize(</span>
+<span class="nc" id="L445">          () -&gt; newStreamInfo(request.slice(), getStreams));</span>
+<span class="nc" id="L446">      info = streams.computeIfAbsent(key, id -&gt; supplier.get());</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">      if (!supplier.isInitialized()) {</span>
+<span class="nc" id="L448">        throw new IllegalStateException(&quot;Failed to create a new stream for &quot; + request</span>
+            + &quot; since a stream already exists Key: &quot; + key + &quot; StreamInfo:&quot; + info);
+      }
+<span class="nc" id="L451">      getMetrics().onRequestCreate(RequestType.HEADER);</span>
+<span class="nc bnc" id="L452" title="All 2 branches missed.">    } else if (close) {</span>
+<span class="nc" id="L453">      info = Optional.ofNullable(streams.remove(key)).orElseThrow(</span>
+<span class="nc" id="L454">          () -&gt; new IllegalStateException(&quot;Failed to remove StreamInfo for &quot; + request));</span>
+    } else {
+<span class="nc" id="L456">      info = Optional.ofNullable(streams.get(key)).orElseThrow(</span>
+<span class="nc" id="L457">          () -&gt; new IllegalStateException(&quot;Failed to get StreamInfo for &quot; + request));</span>
+    }
+
+    final CompletableFuture&lt;Long&gt; localWrite;
+    final List&lt;CompletableFuture&lt;DataStreamReply&gt;&gt; remoteWrites;
+<span class="nc bnc" id="L462" title="All 2 branches missed.">    if (request.getType() == Type.STREAM_HEADER) {</span>
+<span class="nc" id="L463">      localWrite = CompletableFuture.completedFuture(0L);</span>
+<span class="nc" id="L464">      remoteWrites = Collections.emptyList();</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">    } else if (request.getType() == Type.STREAM_DATA) {</span>
+<span class="nc" id="L466">      localWrite = info.getLocal().write(request.slice(), request.getWriteOptionList(), writeExecutor);</span>
+<span class="nc" id="L467">      remoteWrites = info.applyToRemotes(out -&gt; out.write(request, requestExecutor));</span>
+    } else {
+<span class="nc" id="L469">      throw new IllegalStateException(this + &quot;: Unexpected type &quot; + request.getType() + &quot;, request=&quot; + request);</span>
+    }
+
+<span class="nc" id="L472">    composeAsync(info.getPrevious(), requestExecutor, n -&gt; JavaUtils.allOf(remoteWrites)</span>
+<span class="nc" id="L473">        .thenCombineAsync(localWrite, (v, bytesWritten) -&gt; {</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">          if (request.getType() == Type.STREAM_HEADER</span>
+<span class="nc bnc" id="L475" title="All 4 branches missed.">              || request.getType() == Type.STREAM_DATA</span>
+              || close) {
+<span class="nc" id="L477">            sendReply(remoteWrites, request, bytesWritten, info.getCommitInfos(), ctx);</span>
+          } else {
+<span class="nc" id="L479">            throw new IllegalStateException(this + &quot;: Unexpected type &quot; + request.getType() + &quot;, request=&quot; + request);</span>
+          }
+<span class="nc" id="L481">          return null;</span>
+<span class="nc" id="L482">        }, requestExecutor)).whenComplete((v, exception) -&gt; {</span>
+      try {
+<span class="nc bnc" id="L484" title="All 2 branches missed.">        if (exception != null) {</span>
+<span class="nc" id="L485">          replyDataStreamException(server, exception, info.getRequest(), request, ctx);</span>
+<span class="nc" id="L486">          final StreamInfo removed = removeDataStream(key);</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">          if (removed != null) {</span>
+<span class="nc" id="L488">            Preconditions.assertSame(info, removed, &quot;removed&quot;);</span>
+          } else {
+<span class="nc" id="L490">            info.cleanUp(key);</span>
+          }
+<span class="nc bnc" id="L492" title="All 2 branches missed.">        } else if (close) {</span>
+<span class="nc" id="L493">          info.applyToRemotes(remote -&gt; remote.out.closeAsync());</span>
+        }
+      } finally {
+<span class="nc" id="L496">        request.release();</span>
+<span class="nc" id="L497">        channels.remove(channelId, key);</span>
+      }
+<span class="nc" id="L499">    });</span>
+<span class="nc" id="L500">  }</span>
+
+  static void assertReplyCorrespondingToRequest(
+      final DataStreamRequestByteBuf request, final DataStreamReply reply) {
+<span class="nc" id="L504">    Preconditions.assertTrue(request.getClientId().equals(reply.getClientId()));</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">    Preconditions.assertTrue(request.getType() == reply.getType());</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">    Preconditions.assertTrue(request.getStreamId() == reply.getStreamId());</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">    Preconditions.assertTrue(request.getStreamOffset() == reply.getStreamOffset());</span>
+<span class="nc" id="L508">  }</span>
+
+  private boolean checkSuccessRemoteWrite(List&lt;CompletableFuture&lt;DataStreamReply&gt;&gt; replyFutures, long bytesWritten,
+      final DataStreamRequestByteBuf request) {
+<span class="nc bnc" id="L512" title="All 2 branches missed.">    for (CompletableFuture&lt;DataStreamReply&gt; replyFuture : replyFutures) {</span>
+      final DataStreamReply reply;
+      try {
+<span class="nc" id="L515">        reply = replyFuture.get(requestTimeout.getDuration(), requestTimeout.getUnit());</span>
+<span class="nc" id="L516">      } catch (Exception e) {</span>
+<span class="nc" id="L517">        throw new CompletionException(&quot;Failed to get reply for bytesWritten=&quot; + bytesWritten + &quot;, &quot; + request, e);</span>
+<span class="nc" id="L518">      }</span>
+<span class="nc" id="L519">      assertReplyCorrespondingToRequest(request, reply);</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">      if (!reply.isSuccess()) {</span>
+<span class="nc" id="L521">        LOG.warn(&quot;reply is not success, request: {}&quot;, request);</span>
+<span class="nc" id="L522">        return false;</span>
+      }
+<span class="nc bnc" id="L524" title="All 2 branches missed.">      if (reply.getBytesWritten() != bytesWritten) {</span>
+<span class="nc" id="L525">        LOG.warn(</span>
+            &quot;reply written bytes not match, local size: {} remote size: {} request: {}&quot;,
+<span class="nc" id="L527">            bytesWritten, reply.getBytesWritten(), request);</span>
+<span class="nc" id="L528">        return false;</span>
+      }
+<span class="nc" id="L530">    }</span>
+<span class="nc" id="L531">    return true;</span>
+  }
+
+  NettyServerStreamRpcMetrics getMetrics() {
+<span class="nc" id="L535">    return nettyServerStreamRpcMetrics;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L540">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

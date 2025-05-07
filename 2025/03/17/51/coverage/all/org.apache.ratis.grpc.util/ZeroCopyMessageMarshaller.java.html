@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZeroCopyMessageMarshaller.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.util</a> &gt; <span class="el_source">ZeroCopyMessageMarshaller.java</span></div><h1>ZeroCopyMessageMarshaller.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.util;
+
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.thirdparty.com.google.protobuf.CodedInputStream;
+import org.apache.ratis.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.ratis.thirdparty.com.google.protobuf.MessageLite;
+import org.apache.ratis.thirdparty.com.google.protobuf.Parser;
+import org.apache.ratis.thirdparty.com.google.protobuf.UnsafeByteOperations;
+import org.apache.ratis.thirdparty.io.grpc.Detachable;
+import org.apache.ratis.thirdparty.io.grpc.HasByteBuffer;
+import org.apache.ratis.thirdparty.io.grpc.KnownLength;
+import org.apache.ratis.thirdparty.io.grpc.MethodDescriptor.PrototypeMarshaller;
+import org.apache.ratis.thirdparty.io.grpc.Status;
+import org.apache.ratis.thirdparty.io.grpc.protobuf.lite.ProtoLiteUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
+
+/**
+ * Custom gRPC marshaller to use zero memory copy feature of gRPC when deserializing messages. This
+ * achieves zero-copy by deserializing proto messages pointing to the buffers in the input stream to
+ * avoid memory copy so stream should live as long as the message can be referenced. Hence, it
+ * exposes the input stream to applications (through popStream) and applications are responsible to
+ * close it when it's no longer needed. Otherwise, it'd cause memory leak.
+ */
+public class ZeroCopyMessageMarshaller&lt;T extends MessageLite&gt; implements PrototypeMarshaller&lt;T&gt; {
+<span class="nc" id="L56">  static final Logger LOG = LoggerFactory.getLogger(ZeroCopyMessageMarshaller.class);</span>
+
+  private final String name;
+<span class="nc" id="L59">  private final Map&lt;T, InputStream&gt; unclosedStreams = Collections.synchronizedMap(new IdentityHashMap&lt;&gt;());</span>
+  private final Parser&lt;T&gt; parser;
+  private final PrototypeMarshaller&lt;T&gt; marshaller;
+
+  private final Consumer&lt;T&gt; zeroCopyCount;
+  private final Consumer&lt;T&gt; nonZeroCopyCount;
+  private final Consumer&lt;T&gt; releasedCount;
+
+  public ZeroCopyMessageMarshaller(T defaultInstance) {
+<span class="nc" id="L68">    this(defaultInstance, m -&gt; {}, m -&gt; {}, m -&gt; {});</span>
+<span class="nc" id="L69">  }</span>
+
+  public ZeroCopyMessageMarshaller(T defaultInstance, Consumer&lt;T&gt; zeroCopyCount, Consumer&lt;T&gt; nonZeroCopyCount,
+<span class="nc" id="L72">      Consumer&lt;T&gt; releasedCount) {</span>
+<span class="nc" id="L73">    this.name = JavaUtils.getClassSimpleName(defaultInstance.getClass()) + &quot;-Marshaller&quot;;</span>
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L75">    final Parser&lt;T&gt; p = (Parser&lt;T&gt;) defaultInstance.getParserForType();</span>
+<span class="nc" id="L76">    this.parser = p;</span>
+<span class="nc" id="L77">    this.marshaller = (PrototypeMarshaller&lt;T&gt;) ProtoLiteUtils.marshaller(defaultInstance);</span>
+
+<span class="nc" id="L79">    this.zeroCopyCount = zeroCopyCount;</span>
+<span class="nc" id="L80">    this.nonZeroCopyCount = nonZeroCopyCount;</span>
+<span class="nc" id="L81">    this.releasedCount = releasedCount;</span>
+<span class="nc" id="L82">  }</span>
+
+  @Override
+  public Class&lt;T&gt; getMessageClass() {
+<span class="nc" id="L86">    return marshaller.getMessageClass();</span>
+  }
+
+  @Override
+  public T getMessagePrototype() {
+<span class="nc" id="L91">    return marshaller.getMessagePrototype();</span>
+  }
+
+  @Override
+  public InputStream stream(T value) {
+<span class="nc" id="L96">    return marshaller.stream(value);</span>
+  }
+
+  @Override
+  public T parse(InputStream stream) {
+    final T message;
+    try {
+      // fast path (no memory copy)
+<span class="nc" id="L104">      message = parseZeroCopy(stream);</span>
+<span class="nc" id="L105">    } catch (IOException e) {</span>
+<span class="nc" id="L106">      throw Status.INTERNAL</span>
+<span class="nc" id="L107">          .withDescription(&quot;Failed to parseZeroCopy&quot;)</span>
+<span class="nc" id="L108">          .withCause(e)</span>
+<span class="nc" id="L109">          .asRuntimeException();</span>
+<span class="nc" id="L110">    }</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">    if (message != null) {</span>
+<span class="nc" id="L112">      zeroCopyCount.accept(message);</span>
+<span class="nc" id="L113">      return message;</span>
+    }
+
+    // slow path
+<span class="nc" id="L117">    final T copied = marshaller.parse(stream);</span>
+<span class="nc" id="L118">    nonZeroCopyCount.accept(copied);</span>
+<span class="nc" id="L119">    return copied;</span>
+  }
+
+  /** Release the underlying buffers in the given message. */
+  public void release(T message) {
+<span class="nc" id="L124">    final InputStream stream = popStream(message);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">    if (stream == null) {</span>
+<span class="nc" id="L126">      return;</span>
+    }
+    try {
+<span class="nc" id="L129">      stream.close();</span>
+<span class="nc" id="L130">      releasedCount.accept(message);</span>
+<span class="nc" id="L131">    } catch (IOException e) {</span>
+<span class="nc" id="L132">      LOG.error(name + &quot;: Failed to close stream.&quot;, e);</span>
+<span class="nc" id="L133">    }</span>
+<span class="nc" id="L134">  }</span>
+
+  private List&lt;ByteString&gt; getByteStrings(InputStream detached, int exactSize) throws IOException {
+<span class="nc" id="L137">    Preconditions.assertTrue(detached instanceof HasByteBuffer);</span>
+
+    // This mark call is to keep buffer while traversing buffers using skip.
+<span class="nc" id="L140">    detached.mark(exactSize);</span>
+<span class="nc" id="L141">    final List&lt;ByteString&gt; byteStrings = new LinkedList&lt;&gt;();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">    while (detached.available() != 0) {</span>
+<span class="nc" id="L143">      final ByteBuffer buffer = ((HasByteBuffer)detached).getByteBuffer();</span>
+<span class="nc" id="L144">      Objects.requireNonNull(buffer, &quot;buffer == null&quot;);</span>
+<span class="nc" id="L145">      byteStrings.add(UnsafeByteOperations.unsafeWrap(buffer));</span>
+<span class="nc" id="L146">      final int remaining = buffer.remaining();</span>
+<span class="nc" id="L147">      final long skipped = detached.skip(buffer.remaining());</span>
+<span class="nc" id="L148">      Preconditions.assertSame(remaining, skipped, &quot;skipped&quot;);</span>
+<span class="nc" id="L149">    }</span>
+<span class="nc" id="L150">    detached.reset();</span>
+<span class="nc" id="L151">    return byteStrings;</span>
+  }
+
+  /**
+   * Use a zero copy method to parse a message from the given stream.
+   *
+   * @return the parsed message if the given stream support zero copy; otherwise, return null.
+   */
+  private T parseZeroCopy(InputStream stream) throws IOException {
+<span class="nc bnc" id="L160" title="All 2 branches missed.">    if (!(stream instanceof KnownLength)) {</span>
+<span class="nc" id="L161">      LOG.debug(&quot;stream is not KnownLength: {}&quot;, stream.getClass());</span>
+<span class="nc" id="L162">      return null;</span>
+    }
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    if (!(stream instanceof Detachable)) {</span>
+<span class="nc" id="L165">      LOG.debug(&quot;stream is not Detachable: {}&quot;, stream.getClass());</span>
+<span class="nc" id="L166">      return null;</span>
+    }
+<span class="nc bnc" id="L168" title="All 2 branches missed.">    if (!(stream instanceof HasByteBuffer)) {</span>
+<span class="nc" id="L169">      LOG.debug(&quot;stream is not HasByteBuffer: {}&quot;, stream.getClass());</span>
+<span class="nc" id="L170">      return null;</span>
+    }
+<span class="nc bnc" id="L172" title="All 2 branches missed.">    if (!((HasByteBuffer) stream).byteBufferSupported()) {</span>
+<span class="nc" id="L173">      LOG.debug(&quot;stream is HasByteBuffer but not byteBufferSupported: {}&quot;, stream.getClass());</span>
+<span class="nc" id="L174">      return null;</span>
+    }
+
+<span class="nc" id="L177">    final int exactSize = stream.available();</span>
+<span class="nc" id="L178">    InputStream detached = ((Detachable) stream).detach();</span>
+    try {
+<span class="nc" id="L180">      final List&lt;ByteString&gt; byteStrings = getByteStrings(detached, exactSize);</span>
+<span class="nc" id="L181">      final T message = parseFrom(byteStrings, exactSize);</span>
+
+<span class="nc" id="L183">      final InputStream previous = unclosedStreams.put(message, detached);</span>
+<span class="nc" id="L184">      Preconditions.assertNull(previous, &quot;previous&quot;);</span>
+
+<span class="nc" id="L186">      detached = null;</span>
+<span class="nc" id="L187">      return message;</span>
+    } finally {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">      if (detached != null) {</span>
+<span class="nc" id="L190">        detached.close();</span>
+      }
+    }
+  }
+
+  private T parseFrom(List&lt;ByteString&gt; byteStrings, int exactSize) {
+<span class="nc" id="L196">    final CodedInputStream codedInputStream = ByteString.copyFrom(byteStrings).newCodedInput();</span>
+<span class="nc" id="L197">    codedInputStream.enableAliasing(true);</span>
+<span class="nc" id="L198">    codedInputStream.setSizeLimit(exactSize);</span>
+
+    try {
+<span class="nc" id="L201">      return parseFrom(codedInputStream);</span>
+<span class="nc" id="L202">    } catch (InvalidProtocolBufferException e) {</span>
+<span class="nc" id="L203">      throw Status.INTERNAL</span>
+<span class="nc" id="L204">          .withDescription(&quot;Invalid protobuf byte sequence&quot;)</span>
+<span class="nc" id="L205">          .withCause(e)</span>
+<span class="nc" id="L206">          .asRuntimeException();</span>
+    }
+  }
+
+  private T parseFrom(CodedInputStream stream) throws InvalidProtocolBufferException {
+<span class="nc" id="L211">    final T message = parser.parseFrom(stream);</span>
+    try {
+<span class="nc" id="L213">      stream.checkLastTagWas(0);</span>
+<span class="nc" id="L214">      return message;</span>
+<span class="nc" id="L215">    } catch (InvalidProtocolBufferException e) {</span>
+<span class="nc" id="L216">      e.setUnfinishedMessage(message);</span>
+<span class="nc" id="L217">      throw e;</span>
+    }
+  }
+
+  /**
+   * Application can call this function to get the stream for the message, and,
+   * possibly later, must call {@link InputStream#close()} to release buffers.
+   * Alternatively, use {@link #release(T)} to do both in one step.
+   */
+  public InputStream popStream(T message) {
+<span class="nc" id="L227">    return unclosedStreams.remove(message);</span>
+  }
+
+  public int getUnclosedCount() {
+<span class="nc" id="L231">    return unclosedStreams.size();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

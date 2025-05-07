@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimeoutTimer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">TimeoutTimer.java</span></div><h1>TimeoutTimer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedRunnable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+public final class TimeoutTimer implements TimeoutExecutor {
+<span class="nc" id="L35">  public static final Logger LOG = LoggerFactory.getLogger(TimeoutTimer.class);</span>
+
+<span class="nc" id="L37">  private static final Supplier&lt;TimeoutTimer&gt; INSTANCE = JavaUtils.memoize(() -&gt; new TimeoutTimer(MAXIMUM_POOL_SIZE));</span>
+
+  public static TimeoutTimer getInstance() {
+<span class="nc" id="L40">    return INSTANCE.get();</span>
+  }
+
+  static class Task extends TimerTask {
+    private final int id;
+    private final Runnable runnable;
+
+<span class="nc" id="L47">    Task(int id, Runnable runnable) {</span>
+<span class="nc" id="L48">      this.id = id;</span>
+<span class="nc" id="L49">      this.runnable = LogUtils.newRunnable(LOG, runnable, this::toString);</span>
+<span class="nc" id="L50">    }</span>
+
+    @Override
+    public void run() {
+<span class="nc" id="L54">      LOG.debug(&quot;run {}&quot;, this);</span>
+<span class="nc" id="L55">      runnable.run();</span>
+<span class="nc" id="L56">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L60">      return &quot;task #&quot; + id;</span>
+    }
+  }
+
+  /** The number of scheduled tasks. */
+<span class="nc" id="L65">  private final AtomicInteger numTasks = new AtomicInteger();</span>
+  /** A unique ID for each task. */
+<span class="nc" id="L67">  private final AtomicInteger taskId = new AtomicInteger();</span>
+
+  private final List&lt;MemoizedSupplier&lt;Timer&gt;&gt; timers;
+
+<span class="nc" id="L71">  private TimeoutTimer(int numTimers) {</span>
+<span class="nc" id="L72">    final List&lt;MemoizedSupplier&lt;Timer&gt;&gt; list = new ArrayList&lt;&gt;(numTimers);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    for(int i = 0; i &lt; numTimers; i++) {</span>
+<span class="nc" id="L74">      final String name = &quot;timer&quot; + i;</span>
+<span class="nc" id="L75">      list.add(JavaUtils.memoize(() -&gt; new Timer(name, true)));</span>
+    }
+<span class="nc" id="L77">    this.timers = Collections.unmodifiableList(list);</span>
+<span class="nc" id="L78">  }</span>
+
+  @Override
+  public int getTaskCount() {
+<span class="nc" id="L82">    return numTasks.get();</span>
+  }
+
+  private Timer getTimer(int tid) {
+<span class="nc" id="L86">    return timers.get(Math.toIntExact(Integer.toUnsignedLong(tid) % timers.size())).get();</span>
+  }
+
+  private void schedule(TimeDuration timeout, Runnable toSchedule) {
+<span class="nc" id="L90">    final int tid = taskId.incrementAndGet();</span>
+<span class="nc" id="L91">    final int n = numTasks.incrementAndGet();</span>
+<span class="nc" id="L92">    LOG.debug(&quot;schedule a task #{} with timeout {}, numTasks={}&quot;, tid, timeout, n);</span>
+<span class="nc" id="L93">    getTimer(n).schedule(new Task(tid, toSchedule), timeout.toLong(TimeUnit.MILLISECONDS));</span>
+<span class="nc" id="L94">  }</span>
+
+  @Override
+  public &lt;THROWABLE extends Throwable&gt; void onTimeout(
+      TimeDuration timeout, CheckedRunnable&lt;THROWABLE&gt; task, Consumer&lt;THROWABLE&gt; errorHandler) {
+<span class="nc" id="L99">    schedule(timeout, () -&gt; {</span>
+      try {
+<span class="nc" id="L101">        task.run();</span>
+<span class="nc" id="L102">      } catch(Throwable t) {</span>
+<span class="nc" id="L103">        errorHandler.accept(JavaUtils.cast(t));</span>
+      } finally {
+<span class="nc" id="L105">        numTasks.decrementAndGet();</span>
+      }
+<span class="nc" id="L107">    });</span>
+<span class="nc" id="L108">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

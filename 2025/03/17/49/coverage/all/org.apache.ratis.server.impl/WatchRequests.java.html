@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WatchRequests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">WatchRequests.java</span></div><h1>WatchRequests.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.proto.RaftProtos.WatchRequestTypeProto;
+import org.apache.ratis.protocol.exceptions.NotReplicatedException;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.exceptions.ResourceUnavailableException;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.metrics.RaftServerMetricsImpl;
+import org.apache.ratis.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+
+class WatchRequests {
+<span class="nc" id="L43">  public static final Logger LOG = LoggerFactory.getLogger(WatchRequests.class);</span>
+
+  static class PendingWatch {
+    private final WatchRequestTypeProto watch;
+    private final Timestamp creationTime;
+<span class="nc" id="L48">    private final Supplier&lt;CompletableFuture&lt;Long&gt;&gt; future = JavaUtils.memoize(CompletableFuture::new);</span>
+
+<span class="nc" id="L50">    PendingWatch(WatchRequestTypeProto watch, Timestamp creationTime) {</span>
+<span class="nc" id="L51">      this.watch = watch;</span>
+<span class="nc" id="L52">      this.creationTime = creationTime;</span>
+<span class="nc" id="L53">    }</span>
+
+    CompletableFuture&lt;Long&gt; getFuture() {
+<span class="nc" id="L56">      return future.get();</span>
+    }
+
+    long getIndex() {
+<span class="nc" id="L60">      return watch.getIndex();</span>
+    }
+
+    Timestamp getCreationTime() {
+<span class="nc" id="L64">      return creationTime;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L69">      return RaftClientRequest.Type.toString(watch) + &quot;@&quot; + creationTime</span>
+<span class="nc" id="L70">          + &quot;?&quot; + StringUtils.completableFuture2String(future.get(), true);</span>
+    }
+  }
+
+  private class WatchQueue {
+    private final ReplicationLevel replication;
+<span class="nc" id="L76">    private final SortedMap&lt;PendingWatch, PendingWatch&gt; q = new TreeMap&lt;&gt;(</span>
+<span class="nc" id="L77">        Comparator.comparingLong(PendingWatch::getIndex).thenComparing(PendingWatch::getCreationTime));</span>
+    private final ResourceSemaphore resource;
+    private final RaftServerMetricsImpl raftServerMetrics;
+    private volatile long index; //Invariant: q.isEmpty() or index &lt; any element q
+
+<span class="nc" id="L82">    WatchQueue(ReplicationLevel replication, int elementLimit, RaftServerMetricsImpl raftServerMetrics) {</span>
+<span class="nc" id="L83">      this.replication = replication;</span>
+<span class="nc" id="L84">      this.resource = new ResourceSemaphore(elementLimit);</span>
+<span class="nc" id="L85">      this.raftServerMetrics = raftServerMetrics;</span>
+
+<span class="nc" id="L87">      raftServerMetrics.addNumPendingWatchRequestsGauge(resource::used, replication);</span>
+<span class="nc" id="L88">    }</span>
+
+    long getIndex() {
+<span class="nc" id="L91">      return index;</span>
+    }
+
+    CompletableFuture&lt;Long&gt; add(RaftClientRequest request) {
+<span class="nc" id="L95">      final long currentTime = Timestamp.currentTimeNanos();</span>
+<span class="nc" id="L96">      final long roundUp = watchTimeoutDenominationNanos.roundUpNanos(currentTime);</span>
+<span class="nc" id="L97">      final PendingWatch pending = new PendingWatch(request.getType().getWatch(), Timestamp.valueOf(roundUp));</span>
+
+      final PendingWatch computed;
+<span class="nc" id="L100">      synchronized (this) {</span>
+<span class="nc" id="L101">        final long queueIndex = getIndex();</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (pending.getIndex() &lt;= queueIndex) { // compare again synchronized</span>
+          // watch condition already satisfied
+<span class="nc" id="L104">          return CompletableFuture.completedFuture(queueIndex);</span>
+        }
+<span class="nc bnc" id="L106" title="All 4 branches missed.">        computed = q.compute(pending, (key, old) -&gt; old != null? old: resource.tryAcquire()? pending: null);</span>
+<span class="nc" id="L107">      }</span>
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">      if (computed == null) {</span>
+        // failed to acquire
+<span class="nc" id="L111">        raftServerMetrics.onWatchRequestQueueLimitHit(replication);</span>
+<span class="nc" id="L112">        return JavaUtils.completeExceptionally(new ResourceUnavailableException(</span>
+<span class="nc" id="L113">            &quot;Failed to acquire a pending watch request in &quot; + name + &quot; for &quot; + request));</span>
+      }
+<span class="nc bnc" id="L115" title="All 2 branches missed.">      if (computed != pending) {</span>
+        // already exists in q
+<span class="nc" id="L117">        return computed.getFuture();</span>
+      }
+
+      // newly added to q
+<span class="nc" id="L121">      final TimeDuration timeout = watchTimeoutNanos.apply(duration -&gt; duration + roundUp - currentTime);</span>
+<span class="nc" id="L122">      scheduler.onTimeout(timeout, () -&gt; handleTimeout(request, pending),</span>
+<span class="nc" id="L123">          LOG, () -&gt; name + &quot;: Failed to timeout &quot; + request);</span>
+<span class="nc" id="L124">      return pending.getFuture();</span>
+    }
+
+    void handleTimeout(RaftClientRequest request, PendingWatch pending) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      if (removeExisting(pending)) {</span>
+<span class="nc" id="L129">        pending.getFuture().completeExceptionally(</span>
+<span class="nc" id="L130">            new NotReplicatedException(request.getCallId(), replication, pending.getIndex()));</span>
+<span class="nc" id="L131">        LOG.debug(&quot;{}: timeout {}, {}&quot;, name, pending, request);</span>
+<span class="nc" id="L132">        raftServerMetrics.onWatchRequestTimeout(replication);</span>
+      }
+<span class="nc" id="L134">    }</span>
+
+    synchronized boolean removeExisting(PendingWatch pending) {
+<span class="nc" id="L137">      final PendingWatch removed = q.remove(pending);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      if (removed == null) {</span>
+<span class="nc" id="L139">        return false;</span>
+      }
+<span class="nc bnc" id="L141" title="All 2 branches missed.">      Preconditions.assertTrue(removed == pending);</span>
+<span class="nc" id="L142">      resource.release();</span>
+<span class="nc" id="L143">      return true;</span>
+    }
+
+    synchronized void updateIndex(final long newIndex) {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">      if (newIndex &lt;= getIndex()) { // compare again synchronized</span>
+<span class="nc" id="L148">        return;</span>
+      }
+<span class="nc" id="L150">      LOG.debug(&quot;{}: update {} index from {} to {}&quot;, name, replication, index, newIndex);</span>
+<span class="nc" id="L151">      index = newIndex;</span>
+
+<span class="nc bnc" id="L153" title="All 2 branches missed.">      for(; !q.isEmpty();) {</span>
+<span class="nc" id="L154">        final PendingWatch first = q.firstKey();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (first.getIndex() &gt; newIndex) {</span>
+<span class="nc" id="L156">          return;</span>
+        }
+<span class="nc" id="L158">        final boolean removed = removeExisting(first);</span>
+<span class="nc" id="L159">        Preconditions.assertTrue(removed);</span>
+<span class="nc" id="L160">        LOG.debug(&quot;{}: complete {}&quot;, name, first);</span>
+<span class="nc" id="L161">        first.getFuture().complete(newIndex);</span>
+<span class="nc" id="L162">      }</span>
+<span class="nc" id="L163">    }</span>
+
+    synchronized void failAll(Exception e) {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">      for(PendingWatch pending : q.values()) {</span>
+<span class="nc" id="L167">        pending.getFuture().completeExceptionally(e);</span>
+<span class="nc" id="L168">      }</span>
+<span class="nc" id="L169">      q.clear();</span>
+<span class="nc" id="L170">      resource.close();</span>
+<span class="nc" id="L171">    }</span>
+
+    void close() {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">      if (raftServerMetrics != null) {</span>
+<span class="nc" id="L175">        raftServerMetrics.removeNumPendingWatchRequestsGauge(replication);</span>
+      }
+<span class="nc" id="L177">    }</span>
+  }
+
+  private final String name;
+<span class="nc" id="L181">  private final Map&lt;ReplicationLevel, WatchQueue&gt; queues = new EnumMap&lt;&gt;(ReplicationLevel.class);</span>
+
+  private final TimeDuration watchTimeoutNanos;
+  private final TimeDuration watchTimeoutDenominationNanos;
+<span class="nc" id="L185">  private final TimeoutExecutor scheduler = TimeoutExecutor.getInstance();</span>
+
+<span class="nc" id="L187">  WatchRequests(Object name, RaftProperties properties, RaftServerMetricsImpl raftServerMetrics) {</span>
+<span class="nc" id="L188">    this.name = name + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+
+<span class="nc" id="L190">    final TimeDuration watchTimeout = RaftServerConfigKeys.Watch.timeout(properties);</span>
+<span class="nc" id="L191">    this.watchTimeoutNanos = watchTimeout.to(TimeUnit.NANOSECONDS);</span>
+<span class="nc" id="L192">    final TimeDuration watchTimeoutDenomination = RaftServerConfigKeys.Watch.timeoutDenomination(properties);</span>
+<span class="nc" id="L193">    this.watchTimeoutDenominationNanos = watchTimeoutDenomination.to(TimeUnit.NANOSECONDS);</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">    Preconditions.assertTrue(watchTimeoutNanos.getDuration() % watchTimeoutDenominationNanos.getDuration() == 0L,</span>
+<span class="nc" id="L195">        () -&gt; &quot;watchTimeout (=&quot; + watchTimeout + &quot;) is not a multiple of watchTimeoutDenomination (=&quot;</span>
+            + watchTimeoutDenomination + &quot;).&quot;);
+
+<span class="nc" id="L198">    final int elementLimit = RaftServerConfigKeys.Watch.elementLimit(properties);</span>
+<span class="nc" id="L199">    Arrays.stream(ReplicationLevel.values()).forEach(r -&gt; queues.put(r,</span>
+        new WatchQueue(r, elementLimit, raftServerMetrics)));
+<span class="nc" id="L201">  }</span>
+
+  CompletableFuture&lt;Long&gt; add(RaftClientRequest request) {
+<span class="nc" id="L204">    final WatchRequestTypeProto watch = request.getType().getWatch();</span>
+<span class="nc" id="L205">    final WatchQueue queue = queues.get(watch.getReplication());</span>
+<span class="nc" id="L206">    final long queueIndex = queue.getIndex();</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">    if (watch.getIndex() &lt;= queueIndex) { // compare without synchronization</span>
+      // watch condition already satisfied
+<span class="nc" id="L209">      return CompletableFuture.completedFuture(queueIndex);</span>
+    }
+<span class="nc" id="L211">    return queue.add(request);</span>
+  }
+
+  void update(ReplicationLevel replication, final long newIndex) {
+<span class="nc" id="L215">    final WatchQueue queue = queues.get(replication);</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">    if (newIndex &gt; queue.getIndex()) { // compare without synchronization</span>
+<span class="nc" id="L217">      queue.updateIndex(newIndex);</span>
+    }
+<span class="nc" id="L219">  }</span>
+
+  void failWatches(Exception e) {
+<span class="nc" id="L222">    queues.values().forEach(q -&gt; q.failAll(e));</span>
+<span class="nc" id="L223">  }</span>
+
+  void close() {
+<span class="nc" id="L226">    queues.values().forEach(WatchQueue::close);</span>
+<span class="nc" id="L227">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

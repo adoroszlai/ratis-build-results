@@ -1,0 +1,444 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcServicesImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.server</a> &gt; <span class="el_source">GrpcServicesImpl.java</span></div><h1>GrpcServicesImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.server;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.grpc.GrpcConfigKeys;
+import org.apache.ratis.grpc.GrpcTlsConfig;
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.grpc.metrics.MessageMetrics;
+import org.apache.ratis.grpc.metrics.ZeroCopyMetrics;
+import org.apache.ratis.grpc.metrics.intercept.server.MetricServerInterceptor;
+import org.apache.ratis.protocol.AdminAsynchronousProtocol;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.rpc.SupportedRpcType;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.RaftServerRpcWithProxy;
+import org.apache.ratis.server.protocol.RaftServerAsynchronousProtocol;
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.ratis.thirdparty.io.grpc.ServerInterceptor;
+import org.apache.ratis.thirdparty.io.grpc.ServerInterceptors;
+import org.apache.ratis.thirdparty.io.grpc.ServerServiceDefinition;
+import org.apache.ratis.thirdparty.io.grpc.netty.GrpcSslContexts;
+import org.apache.ratis.thirdparty.io.grpc.netty.NettyServerBuilder;
+import org.apache.ratis.thirdparty.io.grpc.Server;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelOption;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.ClientAuth;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContextBuilder;
+
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.function.Supplier;
+
+import static org.apache.ratis.thirdparty.io.netty.handler.ssl.SslProvider.OPENSSL;
+
+/** A grpc implementation of {@link org.apache.ratis.server.RaftServerRpc}. */
+public final class GrpcServicesImpl
+    extends RaftServerRpcWithProxy&lt;GrpcServerProtocolClient, PeerProxyMap&lt;GrpcServerProtocolClient&gt;&gt;
+    implements GrpcServices {
+<span class="nc" id="L68">  static final Logger LOG = LoggerFactory.getLogger(GrpcServicesImpl.class);</span>
+<span class="nc" id="L69">  public static final String GRPC_SEND_SERVER_REQUEST =</span>
+<span class="nc" id="L70">      JavaUtils.getClassSimpleName(GrpcServicesImpl.class) + &quot;.sendRequest&quot;;</span>
+
+<span class="nc" id="L72">  class AsyncService implements RaftServerAsynchronousProtocol {</span>
+
+    @Override
+    public CompletableFuture&lt;AppendEntriesReplyProto&gt; appendEntriesAsync(AppendEntriesRequestProto request) {
+<span class="nc" id="L76">      throw new UnsupportedOperationException(&quot;This method is not supported&quot;);</span>
+    }
+
+    @Override
+    public CompletableFuture&lt;ReadIndexReplyProto&gt; readIndexAsync(ReadIndexRequestProto request) throws IOException {
+<span class="nc" id="L81">      CodeInjectionForTesting.execute(GRPC_SEND_SERVER_REQUEST, getId(), null, request);</span>
+
+<span class="nc" id="L83">      final CompletableFuture&lt;ReadIndexReplyProto&gt; f = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L84">      final StreamObserver&lt;ReadIndexReplyProto&gt; s = new StreamObserver&lt;ReadIndexReplyProto&gt;() {</span>
+        @Override
+        public void onNext(ReadIndexReplyProto reply) {
+<span class="nc" id="L87">          f.complete(reply);</span>
+<span class="nc" id="L88">        }</span>
+
+        @Override
+        public void onError(Throwable throwable) {
+<span class="nc" id="L92">          f.completeExceptionally(throwable);</span>
+<span class="nc" id="L93">        }</span>
+
+        @Override
+        public void onCompleted() {
+<span class="nc" id="L97">        }</span>
+      };
+
+<span class="nc" id="L100">      final RaftPeerId target = RaftPeerId.valueOf(request.getServerRequest().getReplyId());</span>
+<span class="nc" id="L101">      getProxies().getProxy(target).readIndex(request, s);</span>
+<span class="nc" id="L102">      return f;</span>
+    }
+  }
+
+  public static final class Builder {
+    private RaftServer server;
+    private Customizer customizer;
+
+    private String adminHost;
+    private int adminPort;
+    private GrpcTlsConfig adminTlsConfig;
+    private String clientHost;
+    private int clientPort;
+    private GrpcTlsConfig clientTlsConfig;
+    private String serverHost;
+    private int serverPort;
+    private GrpcTlsConfig serverTlsConfig;
+
+    private SizeInBytes messageSizeMax;
+    private SizeInBytes flowControlWindow;
+    private TimeDuration requestTimeoutDuration;
+    private boolean separateHeartbeatChannel;
+    private boolean zeroCopyEnabled;
+
+    private Builder() {}
+
+    public Builder setServer(RaftServer raftServer) {
+<span class="nc" id="L129">      this.server = raftServer;</span>
+
+<span class="nc" id="L131">      final RaftProperties properties = server.getProperties();</span>
+<span class="nc" id="L132">      this.adminHost = GrpcConfigKeys.Admin.host(properties);</span>
+<span class="nc" id="L133">      this.adminPort = GrpcConfigKeys.Admin.port(properties);</span>
+<span class="nc" id="L134">      this.clientHost = GrpcConfigKeys.Client.host(properties);</span>
+<span class="nc" id="L135">      this.clientPort = GrpcConfigKeys.Client.port(properties);</span>
+<span class="nc" id="L136">      this.serverHost = GrpcConfigKeys.Server.host(properties);</span>
+<span class="nc" id="L137">      this.serverPort = GrpcConfigKeys.Server.port(properties);</span>
+<span class="nc" id="L138">      this.messageSizeMax = GrpcConfigKeys.messageSizeMax(properties, LOG::info);</span>
+<span class="nc" id="L139">      this.flowControlWindow = GrpcConfigKeys.flowControlWindow(properties, LOG::info);</span>
+<span class="nc" id="L140">      this.requestTimeoutDuration = RaftServerConfigKeys.Rpc.requestTimeout(properties);</span>
+<span class="nc" id="L141">      this.separateHeartbeatChannel = GrpcConfigKeys.Server.heartbeatChannel(properties);</span>
+<span class="nc" id="L142">      this.zeroCopyEnabled = GrpcConfigKeys.Server.zeroCopyEnabled(properties);</span>
+
+<span class="nc" id="L144">      final SizeInBytes appenderBufferSize = RaftServerConfigKeys.Log.Appender.bufferByteLimit(properties);</span>
+<span class="nc" id="L145">      final SizeInBytes gap = SizeInBytes.ONE_MB;</span>
+<span class="nc" id="L146">      final long diff = messageSizeMax.getSize() - appenderBufferSize.getSize();</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">      if (diff &lt; gap.getSize()) {</span>
+<span class="nc" id="L148">        throw new IllegalArgumentException(&quot;Illegal configuration: &quot;</span>
+            + GrpcConfigKeys.MESSAGE_SIZE_MAX_KEY + &quot;(= &quot; + messageSizeMax
+            + &quot;) must be &quot; + gap + &quot; larger than &quot;
+            + RaftServerConfigKeys.Log.Appender.BUFFER_BYTE_LIMIT_KEY + &quot;(= &quot; + appenderBufferSize + &quot;).&quot;);
+      }
+
+<span class="nc" id="L154">      return this;</span>
+    }
+
+    public Builder setCustomizer(Customizer customizer) {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">      this.customizer = customizer != null? customizer : Customizer.getDefaultInstance();</span>
+<span class="nc" id="L159">      return this;</span>
+    }
+
+    private GrpcServerProtocolClient newGrpcServerProtocolClient(RaftPeer target) {
+<span class="nc" id="L163">      return new GrpcServerProtocolClient(target, flowControlWindow.getSizeInt(),</span>
+          requestTimeoutDuration, serverTlsConfig, separateHeartbeatChannel);
+    }
+
+    private ExecutorService newExecutor() {
+<span class="nc" id="L168">      final RaftProperties properties = server.getProperties();</span>
+<span class="nc" id="L169">      return ConcurrentUtils.newThreadPoolWithMax(</span>
+<span class="nc" id="L170">          GrpcConfigKeys.Server.asyncRequestThreadPoolCached(properties),</span>
+<span class="nc" id="L171">          GrpcConfigKeys.Server.asyncRequestThreadPoolSize(properties),</span>
+<span class="nc" id="L172">          server.getId() + &quot;-request-&quot;);</span>
+    }
+
+    private GrpcClientProtocolService newGrpcClientProtocolService(
+        ExecutorService executor, ZeroCopyMetrics zeroCopyMetrics) {
+<span class="nc" id="L177">      return new GrpcClientProtocolService(server::getId, server, executor, zeroCopyEnabled, zeroCopyMetrics);</span>
+    }
+
+    private GrpcServerProtocolService newGrpcServerProtocolService(ZeroCopyMetrics zeroCopyMetrics) {
+<span class="nc" id="L181">      return new GrpcServerProtocolService(server::getId, server, zeroCopyEnabled, zeroCopyMetrics);</span>
+    }
+
+    private MetricServerInterceptor newMetricServerInterceptor() {
+<span class="nc" id="L185">      return new MetricServerInterceptor(server::getId,</span>
+<span class="nc" id="L186">          JavaUtils.getClassSimpleName(getClass()) + &quot;_&quot; + serverPort);</span>
+    }
+
+    Server buildServer(NettyServerBuilder builder, EnumSet&lt;GrpcServices.Type&gt; types) {
+<span class="nc" id="L190">      return customizer.customize(builder, types).build();</span>
+    }
+
+    private NettyServerBuilder newNettyServerBuilderForServer() {
+<span class="nc" id="L194">      return newNettyServerBuilder(serverHost, serverPort, serverTlsConfig);</span>
+    }
+
+    private NettyServerBuilder newNettyServerBuilderForAdmin() {
+<span class="nc" id="L198">      return newNettyServerBuilder(adminHost, adminPort, adminTlsConfig);</span>
+    }
+
+    private NettyServerBuilder newNettyServerBuilderForClient() {
+<span class="nc" id="L202">      return newNettyServerBuilder(clientHost, clientPort, clientTlsConfig);</span>
+    }
+
+    private NettyServerBuilder newNettyServerBuilder(String hostname, int port, GrpcTlsConfig tlsConfig) {
+<span class="nc bnc" id="L206" title="All 4 branches missed.">      final InetSocketAddress address = hostname == null || hostname.isEmpty() ?</span>
+          new InetSocketAddress(port) : new InetSocketAddress(hostname, port);
+<span class="nc" id="L208">      final NettyServerBuilder nettyServerBuilder = NettyServerBuilder.forAddress(address)</span>
+<span class="nc" id="L209">          .withChildOption(ChannelOption.SO_REUSEADDR, true)</span>
+<span class="nc" id="L210">          .maxInboundMessageSize(messageSizeMax.getSizeInt())</span>
+<span class="nc" id="L211">          .flowControlWindow(flowControlWindow.getSizeInt());</span>
+
+<span class="nc bnc" id="L213" title="All 2 branches missed.">      if (tlsConfig != null) {</span>
+<span class="nc" id="L214">        LOG.info(&quot;Setting TLS for {}&quot;, address);</span>
+<span class="nc" id="L215">        SslContextBuilder sslContextBuilder = GrpcUtil.initSslContextBuilderForServer(tlsConfig.getKeyManager());</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (tlsConfig.getMtlsEnabled()) {</span>
+<span class="nc" id="L217">          sslContextBuilder.clientAuth(ClientAuth.REQUIRE);</span>
+<span class="nc" id="L218">          GrpcUtil.setTrustManager(sslContextBuilder, tlsConfig.getTrustManager());</span>
+        }
+<span class="nc" id="L220">        sslContextBuilder = GrpcSslContexts.configure(sslContextBuilder, OPENSSL);</span>
+        try {
+<span class="nc" id="L222">          nettyServerBuilder.sslContext(sslContextBuilder.build());</span>
+<span class="nc" id="L223">        } catch (Exception ex) {</span>
+<span class="nc" id="L224">          throw new IllegalArgumentException(&quot;Failed to build SslContext, tlsConfig=&quot; + tlsConfig, ex);</span>
+<span class="nc" id="L225">        }</span>
+      }
+<span class="nc" id="L227">      return nettyServerBuilder;</span>
+    }
+
+    private boolean separateAdminServer() {
+<span class="nc bnc" id="L231" title="All 4 branches missed.">      return adminPort &gt; 0 &amp;&amp; adminPort != serverPort;</span>
+    }
+
+    private boolean separateClientServer() {
+<span class="nc bnc" id="L235" title="All 4 branches missed.">      return clientPort &gt; 0 &amp;&amp; clientPort != serverPort;</span>
+    }
+
+    Server newServer(GrpcClientProtocolService client, ZeroCopyMetrics zeroCopyMetrics, ServerInterceptor interceptor) {
+<span class="nc" id="L239">      final EnumSet&lt;GrpcServices.Type&gt; types = EnumSet.of(GrpcServices.Type.SERVER);</span>
+<span class="nc" id="L240">      final NettyServerBuilder serverBuilder = newNettyServerBuilderForServer();</span>
+<span class="nc" id="L241">      final ServerServiceDefinition service = newGrpcServerProtocolService(zeroCopyMetrics).bindServiceWithZeroCopy();</span>
+<span class="nc" id="L242">      serverBuilder.addService(ServerInterceptors.intercept(service, interceptor));</span>
+
+<span class="nc bnc" id="L244" title="All 2 branches missed.">      if (!separateAdminServer()) {</span>
+<span class="nc" id="L245">        types.add(GrpcServices.Type.ADMIN);</span>
+<span class="nc" id="L246">        addAdminService(serverBuilder, server, interceptor);</span>
+      }
+<span class="nc bnc" id="L248" title="All 2 branches missed.">      if (!separateClientServer()) {</span>
+<span class="nc" id="L249">        types.add(GrpcServices.Type.CLIENT);</span>
+<span class="nc" id="L250">        addClientService(serverBuilder, client, interceptor);</span>
+      }
+<span class="nc" id="L252">      return buildServer(serverBuilder, types);</span>
+    }
+
+    public GrpcServicesImpl build() {
+<span class="nc" id="L256">      return new GrpcServicesImpl(this);</span>
+    }
+
+    public Builder setAdminTlsConfig(GrpcTlsConfig config) {
+<span class="nc" id="L260">      this.adminTlsConfig = config;</span>
+<span class="nc" id="L261">      return this;</span>
+    }
+
+    public Builder setClientTlsConfig(GrpcTlsConfig config) {
+<span class="nc" id="L265">      this.clientTlsConfig = config;</span>
+<span class="nc" id="L266">      return this;</span>
+    }
+
+    public Builder setServerTlsConfig(GrpcTlsConfig config) {
+<span class="nc" id="L270">      this.serverTlsConfig = config;</span>
+<span class="nc" id="L271">      return this;</span>
+    }
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L276">    return new Builder();</span>
+  }
+
+<span class="nc" id="L279">  private final Map&lt;String, Server&gt; servers = new HashMap&lt;&gt;();</span>
+  private final Supplier&lt;InetSocketAddress&gt; addressSupplier;
+  private final Supplier&lt;InetSocketAddress&gt; clientServerAddressSupplier;
+  private final Supplier&lt;InetSocketAddress&gt; adminServerAddressSupplier;
+
+<span class="nc" id="L284">  private final AsyncService asyncService = new AsyncService();</span>
+
+  private final ExecutorService executor;
+  private final GrpcClientProtocolService clientProtocolService;
+
+  private final MetricServerInterceptor serverInterceptor;
+<span class="nc" id="L290">  private final ZeroCopyMetrics zeroCopyMetrics = new ZeroCopyMetrics();</span>
+
+  private GrpcServicesImpl(Builder b) {
+<span class="nc" id="L293">    super(b.server::getId, id -&gt; new PeerProxyMap&lt;&gt;(id.toString(), b::newGrpcServerProtocolClient));</span>
+
+<span class="nc" id="L295">    this.executor = b.newExecutor();</span>
+<span class="nc" id="L296">    this.clientProtocolService = b.newGrpcClientProtocolService(executor, zeroCopyMetrics);</span>
+<span class="nc" id="L297">    this.serverInterceptor = b.newMetricServerInterceptor();</span>
+<span class="nc" id="L298">    final Server server = b.newServer(clientProtocolService, zeroCopyMetrics, serverInterceptor);</span>
+
+<span class="nc" id="L300">    servers.put(GrpcServerProtocolService.class.getSimpleName(), server);</span>
+<span class="nc" id="L301">    addressSupplier = newAddressSupplier(b.serverPort, server);</span>
+
+<span class="nc bnc" id="L303" title="All 2 branches missed.">    if (b.separateAdminServer()) {</span>
+<span class="nc" id="L304">      final NettyServerBuilder builder = b.newNettyServerBuilderForAdmin();</span>
+<span class="nc" id="L305">      addAdminService(builder, b.server, serverInterceptor);</span>
+<span class="nc" id="L306">      final Server adminServer = b.buildServer(builder, EnumSet.of(GrpcServices.Type.ADMIN));</span>
+<span class="nc" id="L307">      servers.put(GrpcAdminProtocolService.class.getName(), adminServer);</span>
+<span class="nc" id="L308">      adminServerAddressSupplier = newAddressSupplier(b.adminPort, adminServer);</span>
+<span class="nc" id="L309">    } else {</span>
+<span class="nc" id="L310">      adminServerAddressSupplier = addressSupplier;</span>
+    }
+
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    if (b.separateClientServer()) {</span>
+<span class="nc" id="L314">      final NettyServerBuilder builder = b.newNettyServerBuilderForClient();</span>
+<span class="nc" id="L315">      addClientService(builder, clientProtocolService, serverInterceptor);</span>
+<span class="nc" id="L316">      final Server clientServer = b.buildServer(builder, EnumSet.of(GrpcServices.Type.CLIENT));</span>
+<span class="nc" id="L317">      servers.put(GrpcClientProtocolService.class.getName(), clientServer);</span>
+<span class="nc" id="L318">      clientServerAddressSupplier = newAddressSupplier(b.clientPort, clientServer);</span>
+<span class="nc" id="L319">    } else {</span>
+<span class="nc" id="L320">      clientServerAddressSupplier = addressSupplier;</span>
+    }
+<span class="nc" id="L322">  }</span>
+
+  static MemoizedSupplier&lt;InetSocketAddress&gt; newAddressSupplier(int port, Server server) {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">    return JavaUtils.memoize(() -&gt; new InetSocketAddress(port != 0 ? port : server.getPort()));</span>
+  }
+
+  static void addClientService(NettyServerBuilder builder, GrpcClientProtocolService client,
+      ServerInterceptor interceptor) {
+<span class="nc" id="L330">    final ServerServiceDefinition service = client.bindServiceWithZeroCopy();</span>
+<span class="nc" id="L331">    builder.addService(ServerInterceptors.intercept(service, interceptor));</span>
+<span class="nc" id="L332">  }</span>
+
+  static void addAdminService(NettyServerBuilder builder, AdminAsynchronousProtocol admin,
+      ServerInterceptor interceptor) {
+<span class="nc" id="L336">    final GrpcAdminProtocolService service = new GrpcAdminProtocolService(admin);</span>
+<span class="nc" id="L337">    builder.addService(ServerInterceptors.intercept(service, interceptor));</span>
+<span class="nc" id="L338">  }</span>
+
+  @Override
+  public SupportedRpcType getRpcType() {
+<span class="nc" id="L342">    return SupportedRpcType.GRPC;</span>
+  }
+
+  @Override
+  public void startImpl() {
+<span class="nc bnc" id="L347" title="All 2 branches missed.">    for (Server server : servers.values()) {</span>
+      try {
+<span class="nc" id="L349">        server.start();</span>
+<span class="nc" id="L350">      } catch (IOException e) {</span>
+<span class="nc" id="L351">        ExitUtils.terminate(1, &quot;Failed to start Grpc server&quot;, e, LOG);</span>
+<span class="nc" id="L352">      }</span>
+<span class="nc" id="L353">      LOG.info(&quot;{}: {} started, listening on {}&quot;,</span>
+<span class="nc" id="L354">          getId(), JavaUtils.getClassSimpleName(getClass()), server.getPort());</span>
+<span class="nc" id="L355">    }</span>
+<span class="nc" id="L356">  }</span>
+
+  @Override
+  public void closeImpl() throws IOException {
+<span class="nc bnc" id="L360" title="All 2 branches missed.">    for (Map.Entry&lt;String, Server&gt; server : servers.entrySet()) {</span>
+<span class="nc" id="L361">      final String name = getId() + &quot;: shutdown server &quot; + server.getKey();</span>
+<span class="nc" id="L362">      LOG.info(&quot;{} now&quot;, name);</span>
+<span class="nc" id="L363">      final Server s = server.getValue().shutdownNow();</span>
+<span class="nc" id="L364">      super.closeImpl();</span>
+      try {
+<span class="nc" id="L366">        s.awaitTermination();</span>
+<span class="nc" id="L367">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L368">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L369">        throw IOUtils.toInterruptedIOException(name + &quot; failed&quot;, e);</span>
+<span class="nc" id="L370">      }</span>
+<span class="nc" id="L371">      LOG.info(&quot;{} successfully&quot;, name);</span>
+<span class="nc" id="L372">    }</span>
+
+<span class="nc" id="L374">    serverInterceptor.close();</span>
+<span class="nc" id="L375">    ConcurrentUtils.shutdownAndWait(executor);</span>
+<span class="nc" id="L376">    zeroCopyMetrics.unregister();</span>
+<span class="nc" id="L377">  }</span>
+
+  @Override
+  public void notifyNotLeader(RaftGroupId groupId) {
+<span class="nc" id="L381">    clientProtocolService.closeAllOrderedRequestStreamObservers(groupId);</span>
+<span class="nc" id="L382">  }</span>
+
+  @Override
+  public InetSocketAddress getInetSocketAddress() {
+<span class="nc" id="L386">    return addressSupplier.get();</span>
+  }
+
+  @Override
+  public InetSocketAddress getClientServerAddress() {
+<span class="nc" id="L391">    return clientServerAddressSupplier.get();</span>
+  }
+
+  @Override
+  public InetSocketAddress getAdminServerAddress() {
+<span class="nc" id="L396">    return adminServerAddressSupplier.get();</span>
+  }
+
+  @Override
+  public RaftServerAsynchronousProtocol async() {
+<span class="nc" id="L401">    return asyncService;</span>
+  }
+
+  @Override
+  public AppendEntriesReplyProto appendEntries(AppendEntriesRequestProto request) {
+<span class="nc" id="L406">    throw new UnsupportedOperationException(</span>
+<span class="nc" id="L407">        &quot;Blocking &quot; + JavaUtils.getCurrentStackTraceElement().getMethodName() + &quot; call is not supported&quot;);</span>
+  }
+
+  @Override
+  public InstallSnapshotReplyProto installSnapshot(InstallSnapshotRequestProto request) {
+<span class="nc" id="L412">    throw new UnsupportedOperationException(</span>
+<span class="nc" id="L413">        &quot;Blocking &quot; + JavaUtils.getCurrentStackTraceElement().getMethodName() + &quot; call is not supported&quot;);</span>
+  }
+
+  @Override
+  public RequestVoteReplyProto requestVote(RequestVoteRequestProto request)
+      throws IOException {
+<span class="nc" id="L419">    CodeInjectionForTesting.execute(GRPC_SEND_SERVER_REQUEST, getId(),</span>
+        null, request);
+
+<span class="nc" id="L422">    final RaftPeerId target = RaftPeerId.valueOf(request.getServerRequest().getReplyId());</span>
+<span class="nc" id="L423">    return getProxies().getProxy(target).requestVote(request);</span>
+  }
+
+  @Override
+  public StartLeaderElectionReplyProto startLeaderElection(StartLeaderElectionRequestProto request) throws IOException {
+<span class="nc" id="L428">    CodeInjectionForTesting.execute(GRPC_SEND_SERVER_REQUEST, getId(), null, request);</span>
+
+<span class="nc" id="L430">    final RaftPeerId target = RaftPeerId.valueOf(request.getServerRequest().getReplyId());</span>
+<span class="nc" id="L431">    return getProxies().getProxy(target).startLeaderElection(request);</span>
+  }
+
+  @VisibleForTesting
+  MessageMetrics getMessageMetrics() {
+<span class="nc" id="L436">    return serverInterceptor.getMetrics();</span>
+  }
+
+  @VisibleForTesting
+  public ZeroCopyMetrics getZeroCopyMetrics() {
+<span class="nc" id="L441">    return zeroCopyMetrics;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

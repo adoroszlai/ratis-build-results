@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftClientReply.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.protocol</a> &gt; <span class="el_source">RaftClientReply.java</span></div><h1>RaftClientReply.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.protocol;
+
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.DataStreamException;
+import org.apache.ratis.protocol.exceptions.LeaderNotReadyException;
+import org.apache.ratis.protocol.exceptions.LeaderSteppingDownException;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.exceptions.NotReplicatedException;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.protocol.exceptions.ReadException;
+import org.apache.ratis.protocol.exceptions.ReadIndexException;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.protocol.exceptions.TransferLeadershipException;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.ReflectionUtils;
+
+import java.util.Collection;
+import java.util.Collections;
+
+/**
+ * Reply from server to client
+ */
+public class RaftClientReply extends RaftClientMessage {
+  /**
+   * To build {@link RaftClientReply}
+   */
+<span class="nc" id="L47">  public static class Builder {</span>
+    private ClientId clientId;
+    private RaftPeerId serverId;
+    private RaftGroupId groupId;
+    private long callId;
+
+    private boolean success;
+    private Message message;
+    private RaftException exception;
+
+    private long logIndex;
+    private Collection&lt;CommitInfoProto&gt; commitInfos;
+
+    public RaftClientReply build() {
+<span class="nc" id="L61">      return new RaftClientReply(clientId, serverId, groupId, callId,</span>
+          success, message, exception, logIndex, commitInfos);
+    }
+
+    public Builder setClientId(ClientId clientId) {
+<span class="nc" id="L66">      this.clientId = clientId;</span>
+<span class="nc" id="L67">      return this;</span>
+    }
+
+    public Builder setServerId(RaftPeerId serverId) {
+<span class="nc" id="L71">      this.serverId = serverId;</span>
+<span class="nc" id="L72">      return this;</span>
+    }
+
+    public Builder setGroupId(RaftGroupId groupId) {
+<span class="nc" id="L76">      this.groupId = groupId;</span>
+<span class="nc" id="L77">      return this;</span>
+    }
+
+    public Builder setCallId(long callId) {
+<span class="nc" id="L81">      this.callId = callId;</span>
+<span class="nc" id="L82">      return this;</span>
+    }
+
+    public Builder setSuccess(boolean success) {
+<span class="nc" id="L86">      this.success = success;</span>
+<span class="nc" id="L87">      return this;</span>
+    }
+
+    public Builder setSuccess() {
+<span class="nc" id="L91">      return setSuccess(true);</span>
+    }
+
+    public Builder setException(RaftException exception) {
+<span class="nc" id="L95">      this.exception = exception;</span>
+<span class="nc" id="L96">      return this;</span>
+    }
+
+    public Builder setMessage(Message message) {
+<span class="nc" id="L100">      this.message = message;</span>
+<span class="nc" id="L101">      return this;</span>
+    }
+
+    public Builder setLogIndex(long logIndex) {
+<span class="nc" id="L105">      this.logIndex = logIndex;</span>
+<span class="nc" id="L106">      return this;</span>
+    }
+
+    public Builder setCommitInfos(Collection&lt;CommitInfoProto&gt; commitInfos) {
+<span class="nc" id="L110">      this.commitInfos = commitInfos;</span>
+<span class="nc" id="L111">      return this;</span>
+    }
+
+    public Builder setServerId(RaftGroupMemberId serverId) {
+<span class="nc" id="L115">      return setServerId(serverId.getPeerId())</span>
+<span class="nc" id="L116">          .setGroupId(serverId.getGroupId());</span>
+    }
+
+    public Builder setClientInvocationId(ClientInvocationId invocationId) {
+<span class="nc" id="L120">      return setClientId(invocationId.getClientId())</span>
+<span class="nc" id="L121">          .setCallId(invocationId.getLongId());</span>
+    }
+
+    public Builder setRequest(RaftClientRequest request) {
+<span class="nc" id="L125">      return setClientId(request.getClientId())</span>
+<span class="nc" id="L126">          .setServerId(request.getServerId())</span>
+<span class="nc" id="L127">          .setGroupId(request.getRaftGroupId())</span>
+<span class="nc" id="L128">          .setCallId(request.getCallId());</span>
+    }
+  }
+
+  public static Builder newBuilder() {
+<span class="nc" id="L133">    return new Builder();</span>
+  }
+
+  private final boolean success;
+
+  /**
+   * We mainly track two types of exceptions here:
+   * 1. NotLeaderException if the server is not leader
+   * 2. StateMachineException if the server's state machine returns an exception
+   */
+  private final RaftException exception;
+  private final Message message;
+
+  /**
+   * This field is the log index of the transaction
+   * if (1) the request is {@link org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase#WRITE} and (2) the
+   * reply is success.
+   * Otherwise, this field is not used.
+   */
+  private final long logIndex;
+  /** The commit information when the reply is created. */
+  private final Collection&lt;CommitInfoProto&gt; commitInfos;
+
+  @SuppressWarnings(&quot;parameternumber&quot;)
+  RaftClientReply(ClientId clientId, RaftPeerId serverId, RaftGroupId groupId,
+      long callId, boolean success, Message message, RaftException exception,
+      long logIndex, Collection&lt;CommitInfoProto&gt; commitInfos) {
+<span class="nc" id="L160">    super(clientId, serverId, groupId, callId);</span>
+<span class="nc" id="L161">    this.success = success;</span>
+<span class="nc" id="L162">    this.message = message;</span>
+<span class="nc" id="L163">    this.exception = exception;</span>
+<span class="nc" id="L164">    this.logIndex = logIndex;</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    this.commitInfos = commitInfos != null? commitInfos: Collections.emptyList();</span>
+
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    if (exception != null) {</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">      Preconditions.assertTrue(!success,</span>
+<span class="nc" id="L169">          () -&gt; &quot;Inconsistent parameters: success &amp;&amp; exception != null: &quot; + this);</span>
+<span class="nc" id="L170">      Preconditions.assertTrue(ReflectionUtils.isInstance(exception,</span>
+          AlreadyClosedException.class,
+          NotLeaderException.class, NotReplicatedException.class,
+          LeaderNotReadyException.class, StateMachineException.class, DataStreamException.class,
+          LeaderSteppingDownException.class, TransferLeadershipException.class, ReadException.class,
+          ReadIndexException.class),
+<span class="nc" id="L176">          () -&gt; &quot;Unexpected exception class: &quot; + this);</span>
+    }
+<span class="nc" id="L178">  }</span>
+
+  /**
+   * Get the commit information for the entire group.
+   * The commit information may be unavailable for exception reply.
+   *
+   * @return the commit information if it is available; otherwise, return null.
+   */
+  public Collection&lt;CommitInfoProto&gt; getCommitInfos() {
+<span class="nc" id="L187">    return commitInfos;</span>
+  }
+
+  @Override
+  public final boolean isRequest() {
+<span class="nc" id="L192">    return false;</span>
+  }
+
+  public long getLogIndex() {
+<span class="nc" id="L196">    return logIndex;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L201">    return super.toString() + &quot;, &quot;</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        + (isSuccess()? &quot;SUCCESS&quot;:  &quot;FAILED &quot; + exception)</span>
+<span class="nc" id="L203">        + &quot;, logIndex=&quot; + getLogIndex() + &quot;, commits&quot; + ProtoUtils.toString(commitInfos);</span>
+  }
+
+  public boolean isSuccess() {
+<span class="nc" id="L207">    return success;</span>
+  }
+
+  public Message getMessage() {
+<span class="nc" id="L211">    return message;</span>
+  }
+
+  /** If this reply has {@link AlreadyClosedException}, return it; otherwise return null. */
+  public AlreadyClosedException getAlreadyClosedException() {
+<span class="nc" id="L216">    return JavaUtils.cast(exception, AlreadyClosedException.class);</span>
+  }
+
+  /** If this reply has {@link NotLeaderException}, return it; otherwise return null. */
+  public NotLeaderException getNotLeaderException() {
+<span class="nc" id="L221">    return JavaUtils.cast(exception, NotLeaderException.class);</span>
+  }
+
+  /** If this reply has {@link NotReplicatedException}, return it; otherwise return null. */
+  public NotReplicatedException getNotReplicatedException() {
+<span class="nc" id="L226">    return JavaUtils.cast(exception, NotReplicatedException.class);</span>
+  }
+
+  /** If this reply has {@link StateMachineException}, return it; otherwise return null. */
+  public StateMachineException getStateMachineException() {
+<span class="nc" id="L231">    return JavaUtils.cast(exception, StateMachineException.class);</span>
+  }
+
+  /** If this reply has {@link DataStreamException}, return it; otherwise return null. */
+  public DataStreamException getDataStreamException() {
+<span class="nc" id="L236">    return JavaUtils.cast(exception, DataStreamException.class);</span>
+  }
+
+  public LeaderNotReadyException getLeaderNotReadyException() {
+<span class="nc" id="L240">    return JavaUtils.cast(exception, LeaderNotReadyException.class);</span>
+  }
+
+  public LeaderSteppingDownException getLeaderSteppingDownException() {
+<span class="nc" id="L244">    return JavaUtils.cast(exception, LeaderSteppingDownException.class);</span>
+  }
+
+  public TransferLeadershipException getTransferLeadershipException() {
+<span class="nc" id="L248">    return JavaUtils.cast(exception, TransferLeadershipException.class);</span>
+  }
+
+  public ReadException getReadException() {
+<span class="nc" id="L252">    return JavaUtils.cast(exception, ReadException.class);</span>
+  }
+
+  public ReadIndexException getReadIndexException() {
+<span class="nc" id="L256">    return JavaUtils.cast(exception, ReadIndexException.class);</span>
+  }
+
+  /** @return the exception, if there is any; otherwise, return null. */
+  public RaftException getException() {
+<span class="nc" id="L261">    return exception;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

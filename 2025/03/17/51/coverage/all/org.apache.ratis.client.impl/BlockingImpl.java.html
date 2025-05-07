@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BlockingImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">BlockingImpl.java</span></div><h1>BlockingImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import org.apache.ratis.client.api.BlockingApi;
+import org.apache.ratis.client.retry.ClientRetryEvent;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.AlreadyExistsException;
+import org.apache.ratis.protocol.exceptions.SetConfigurationException;
+import org.apache.ratis.protocol.exceptions.GroupMismatchException;
+import org.apache.ratis.protocol.exceptions.LeaderSteppingDownException;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.protocol.exceptions.TransferLeadershipException;
+import org.apache.ratis.retry.RetryPolicy;
+import org.apache.ratis.rpc.CallId;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/** Blocking api implementations. */
+class BlockingImpl implements BlockingApi {
+<span class="nc" id="L49">  static final Logger LOG = LoggerFactory.getLogger(BlockingImpl.class);</span>
+
+  private final RaftClientImpl client;
+
+<span class="nc" id="L53">  BlockingImpl(RaftClientImpl client) {</span>
+<span class="nc" id="L54">    this.client = Objects.requireNonNull(client, &quot;client == null&quot;);</span>
+<span class="nc" id="L55">  }</span>
+
+  @Override
+  public RaftClientReply send(Message message) throws IOException {
+<span class="nc" id="L59">    return send(RaftClientRequest.writeRequestType(), message, null);</span>
+  }
+
+  @Override
+  public RaftClientReply sendReadOnly(Message message, RaftPeerId server) throws IOException {
+<span class="nc" id="L64">    return send(RaftClientRequest.readRequestType(), message, server);</span>
+  }
+
+  @Override
+  public RaftClientReply sendReadOnlyNonLinearizable(Message message) throws IOException {
+<span class="nc" id="L69">    return send(RaftClientRequest.readRequestType(true), message, null);</span>
+  }
+
+  @Override
+  public RaftClientReply sendReadAfterWrite(Message message) throws IOException {
+<span class="nc" id="L74">    return send(RaftClientRequest.readAfterWriteConsistentRequestType(), message, null);</span>
+  }
+
+  @Override
+  public RaftClientReply sendStaleRead(Message message, long minIndex, RaftPeerId server)
+      throws IOException {
+<span class="nc" id="L80">    return send(RaftClientRequest.staleReadRequestType(minIndex), message, server);</span>
+  }
+
+  @Override
+  public RaftClientReply watch(long index, ReplicationLevel replication) throws IOException {
+<span class="nc" id="L85">    return send(RaftClientRequest.watchRequestType(index, replication), null, null);</span>
+  }
+
+  private RaftClientReply send(RaftClientRequest.Type type, Message message, RaftPeerId server)
+      throws IOException {
+<span class="nc bnc" id="L90" title="All 2 branches missed.">    if (!type.is(TypeCase.WATCH)) {</span>
+<span class="nc" id="L91">      Objects.requireNonNull(message, &quot;message == null&quot;);</span>
+    }
+
+<span class="nc" id="L94">    final long callId = CallId.getAndIncrement();</span>
+<span class="nc" id="L95">    return sendRequestWithRetry(() -&gt; client.newRaftClientRequest(server, callId, message, type, null));</span>
+  }
+
+  RaftClientReply sendRequestWithRetry(Supplier&lt;RaftClientRequest&gt; supplier) throws IOException {
+<span class="nc" id="L99">    RaftClientImpl.PendingClientRequest pending = new RaftClientImpl.PendingClientRequest() {</span>
+      @Override
+      public RaftClientRequest newRequestImpl() {
+<span class="nc" id="L102">        return supplier.get();</span>
+      }
+    };
+    while (true) {
+<span class="nc" id="L106">      final RaftClientRequest request = pending.newRequest();</span>
+<span class="nc" id="L107">      IOException ioe = null;</span>
+      try {
+<span class="nc" id="L109">        final RaftClientReply reply = sendRequest(request);</span>
+
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (reply != null) {</span>
+<span class="nc" id="L112">          return client.handleReply(request, reply);</span>
+        }
+<span class="nc" id="L114">      } catch (GroupMismatchException | StateMachineException | TransferLeadershipException |</span>
+               LeaderSteppingDownException | AlreadyClosedException | AlreadyExistsException |
+               SetConfigurationException e) {
+<span class="nc" id="L117">        throw e;</span>
+<span class="nc" id="L118">      } catch (IOException e) {</span>
+<span class="nc" id="L119">        ioe = e;</span>
+<span class="nc" id="L120">      }</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">      if (client.isClosed()) {</span>
+<span class="nc" id="L123">        throw new AlreadyClosedException(this + &quot; is closed.&quot;);</span>
+      }
+
+<span class="nc" id="L126">      final ClientRetryEvent event = pending.newClientRetryEvent(request, ioe);</span>
+<span class="nc" id="L127">      final RetryPolicy retryPolicy = client.getRetryPolicy();</span>
+<span class="nc" id="L128">      final RetryPolicy.Action action = retryPolicy.handleAttemptFailure(event);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      if (!action.shouldRetry()) {</span>
+<span class="nc" id="L130">        throw client.noMoreRetries(event);</span>
+      }
+
+<span class="nc" id="L133">      final TimeDuration sleepTime = client.getEffectiveSleepTime(ioe, action.getSleepTime());</span>
+      try {
+<span class="nc" id="L135">        sleepTime.sleep();</span>
+<span class="nc" id="L136">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L137">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L138">        throw new InterruptedIOException(&quot;retry policy=&quot; + retryPolicy);</span>
+<span class="nc" id="L139">      }</span>
+<span class="nc" id="L140">    }</span>
+  }
+
+  private RaftClientReply sendRequest(RaftClientRequest request) throws IOException {
+<span class="nc" id="L144">    LOG.debug(&quot;{}: send {}&quot;, client.getId(), request);</span>
+    RaftClientReply reply;
+    try {
+<span class="nc" id="L147">      reply = client.getClientRpc().sendRequest(request);</span>
+<span class="nc" id="L148">    } catch (GroupMismatchException gme) {</span>
+<span class="nc" id="L149">      throw gme;</span>
+<span class="nc" id="L150">    } catch (IOException ioe) {</span>
+<span class="nc" id="L151">      client.handleIOException(request, ioe);</span>
+<span class="nc" id="L152">      throw ioe;</span>
+<span class="nc" id="L153">    }</span>
+<span class="nc" id="L154">    LOG.debug(&quot;{}: receive {}&quot;, client.getId(), reply);</span>
+<span class="nc" id="L155">    reply = client.handleLeaderException(request, reply);</span>
+<span class="nc" id="L156">    reply = RaftClientImpl.handleRaftException(reply, Function.identity());</span>
+<span class="nc" id="L157">    return reply;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

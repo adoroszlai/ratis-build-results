@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftStorageImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">RaftStorageImpl.java</span></div><h1>RaftStorageImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.server.RaftServerConfigKeys.Log.CorruptionPolicy;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.storage.RaftStorageDirectoryImpl.StorageState;
+import org.apache.ratis.util.AtomicFileOutputStream;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.SizeInBytes;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Optional;
+
+/** The storage of a {@link org.apache.ratis.server.RaftServer}. */
+public class RaftStorageImpl implements RaftStorage {
+  private final RaftStorageDirectoryImpl storageDir;
+  private final StartupOption startupOption;
+  private final CorruptionPolicy logCorruptionPolicy;
+<span class="nc" id="L43">  private volatile StorageState state = StorageState.UNINITIALIZED;</span>
+<span class="nc" id="L44">  private final MetaFile metaFile = new MetaFile();</span>
+
+<span class="nc" id="L46">  RaftStorageImpl(File dir, SizeInBytes freeSpaceMin, StartupOption option, CorruptionPolicy logCorruptionPolicy) {</span>
+<span class="nc" id="L47">    LOG.debug(&quot;newRaftStorage: {}, freeSpaceMin={}, option={}, logCorruptionPolicy={}&quot;,</span>
+        dir, freeSpaceMin, option, logCorruptionPolicy);
+<span class="nc" id="L49">    this.storageDir = new RaftStorageDirectoryImpl(dir, freeSpaceMin);</span>
+<span class="nc" id="L50">    this.logCorruptionPolicy = Optional.ofNullable(logCorruptionPolicy).orElseGet(CorruptionPolicy::getDefault);</span>
+<span class="nc" id="L51">    this.startupOption = option;</span>
+<span class="nc" id="L52">  }</span>
+
+  @Override
+  public void initialize() throws IOException {
+    try {
+<span class="nc bnc" id="L57" title="All 2 branches missed.">      if (startupOption == StartupOption.FORMAT) {</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">        if (storageDir.analyzeStorage(false) == StorageState.NON_EXISTENT) {</span>
+<span class="nc" id="L59">          throw new IOException(&quot;Cannot format &quot; + storageDir);</span>
+        }
+<span class="nc" id="L61">        storageDir.lock();</span>
+<span class="nc" id="L62">        format();</span>
+<span class="nc" id="L63">        state = storageDir.analyzeStorage(false);</span>
+      } else {
+        // metaFile is initialized here
+<span class="nc" id="L66">        state = analyzeAndRecoverStorage(true);</span>
+      }
+<span class="nc" id="L68">    } catch (Throwable t) {</span>
+<span class="nc" id="L69">      unlockOnFailure(storageDir);</span>
+<span class="nc" id="L70">      throw t;</span>
+<span class="nc" id="L71">    }</span>
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    if (state != StorageState.NORMAL) {</span>
+<span class="nc" id="L74">      unlockOnFailure(storageDir);</span>
+<span class="nc" id="L75">      throw new IOException(&quot;Failed to load &quot; + storageDir + &quot;: &quot; + state);</span>
+    }
+<span class="nc" id="L77">  }</span>
+
+  static void unlockOnFailure(RaftStorageDirectoryImpl dir) {
+    try {
+<span class="nc" id="L81">      dir.unlock();</span>
+<span class="nc" id="L82">    } catch (Throwable t) {</span>
+<span class="nc" id="L83">      LOG.warn(&quot;Failed to unlock &quot; + dir, t);</span>
+<span class="nc" id="L84">    }</span>
+<span class="nc" id="L85">  }</span>
+
+  StorageState getState() {
+<span class="nc" id="L88">    return state;</span>
+  }
+
+  public CorruptionPolicy getLogCorruptionPolicy() {
+<span class="nc" id="L92">    return logCorruptionPolicy;</span>
+  }
+
+  private void format() throws IOException {
+<span class="nc" id="L96">    storageDir.clearDirectory();</span>
+<span class="nc" id="L97">    metaFile.set(storageDir.getMetaFile()).persist(RaftStorageMetadata.getDefault());</span>
+<span class="nc" id="L98">    LOG.info(&quot;Storage directory {} has been successfully formatted.&quot;, storageDir.getRoot());</span>
+<span class="nc" id="L99">  }</span>
+
+  private void cleanMetaTmpFile() throws IOException {
+<span class="nc" id="L102">    FileUtils.deleteIfExists(storageDir.getMetaTmpFile());</span>
+<span class="nc" id="L103">  }</span>
+
+  private StorageState analyzeAndRecoverStorage(boolean toLock) throws IOException {
+<span class="nc" id="L106">    StorageState storageState = storageDir.analyzeStorage(toLock);</span>
+    // Existence of raft-meta.tmp means the change of votedFor/term has not
+    // been committed. Thus we should delete the tmp file.
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    if (storageState != StorageState.NON_EXISTENT) {</span>
+<span class="nc" id="L110">      cleanMetaTmpFile();</span>
+    }
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (storageState == StorageState.NORMAL) {</span>
+<span class="nc" id="L113">      final File f = storageDir.getMetaFile();</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">      if (!f.exists()) {</span>
+<span class="nc" id="L115">        throw new FileNotFoundException(&quot;Metadata file &quot; + f + &quot; does not exists.&quot;);</span>
+      }
+<span class="nc" id="L117">      final RaftStorageMetadata metadata = metaFile.set(f).getMetadata();</span>
+<span class="nc" id="L118">      LOG.info(&quot;Read {} from {}&quot;, metadata, f);</span>
+<span class="nc" id="L119">      return StorageState.NORMAL;</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    } else if (storageState == StorageState.NOT_FORMATTED &amp;&amp;</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        storageDir.isCurrentEmpty()) {</span>
+<span class="nc" id="L122">      format();</span>
+<span class="nc" id="L123">      return StorageState.NORMAL;</span>
+    } else {
+<span class="nc" id="L125">      return storageState;</span>
+    }
+  }
+
+  @Override
+  public RaftStorageDirectoryImpl getStorageDir() {
+<span class="nc" id="L131">    return storageDir;</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="nc" id="L136">    storageDir.unlock();</span>
+<span class="nc" id="L137">  }</span>
+
+  @Override
+  public RaftStorageMetadataFile getMetadataFile() {
+<span class="nc" id="L141">    return metaFile.get();</span>
+  }
+
+  public void writeRaftConfiguration(LogEntryProto conf) {
+<span class="nc" id="L145">    File confFile = storageDir.getMetaConfFile();</span>
+<span class="nc" id="L146">    try (OutputStream fio = new AtomicFileOutputStream(confFile)) {</span>
+<span class="nc" id="L147">      conf.writeTo(fio);</span>
+<span class="nc" id="L148">    } catch (Exception e) {</span>
+<span class="nc" id="L149">      LOG.error(&quot;Failed writing configuration to file:&quot; + confFile, e);</span>
+<span class="nc" id="L150">    }</span>
+<span class="nc" id="L151">  }</span>
+
+  public RaftConfiguration readRaftConfiguration() {
+<span class="nc" id="L154">    File confFile = storageDir.getMetaConfFile();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    if (!confFile.exists()) {</span>
+<span class="nc" id="L156">      return null;</span>
+    } else {
+<span class="nc" id="L158">      try (InputStream fio = FileUtils.newInputStream(confFile)) {</span>
+<span class="nc" id="L159">        LogEntryProto confProto = LogEntryProto.newBuilder().mergeFrom(fio).build();</span>
+<span class="nc" id="L160">        return LogProtoUtils.toRaftConfiguration(confProto);</span>
+<span class="nc" id="L161">      } catch (Exception e) {</span>
+<span class="nc" id="L162">        LOG.error(&quot;Failed reading configuration from file:&quot; + confFile, e);</span>
+<span class="nc" id="L163">        return null;</span>
+      }
+    }
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L170">    return JavaUtils.getClassSimpleName(getClass()) + &quot;:&quot; + getStorageDir();</span>
+  }
+
+<span class="nc" id="L173">  static class MetaFile {</span>
+<span class="nc" id="L174">    private final AtomicReference&lt;RaftStorageMetadataFileImpl&gt; ref = new AtomicReference&lt;&gt;();</span>
+
+    RaftStorageMetadataFile get() {
+<span class="nc" id="L177">      return ref.get();</span>
+    }
+
+    RaftStorageMetadataFile set(File file) {
+<span class="nc" id="L181">      final RaftStorageMetadataFileImpl impl = new RaftStorageMetadataFileImpl(file);</span>
+<span class="nc" id="L182">      ref.set(impl);</span>
+<span class="nc" id="L183">      return impl;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

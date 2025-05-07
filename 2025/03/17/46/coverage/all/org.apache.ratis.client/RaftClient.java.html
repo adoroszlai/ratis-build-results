@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client</a> &gt; <span class="el_source">RaftClient.java</span></div><h1>RaftClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client;
+
+import org.apache.ratis.RaftConfigKeys;
+import org.apache.ratis.client.api.AdminApi;
+import org.apache.ratis.client.api.AsyncApi;
+import org.apache.ratis.client.api.BlockingApi;
+import org.apache.ratis.client.api.DataStreamApi;
+import org.apache.ratis.client.api.GroupManagementApi;
+import org.apache.ratis.client.api.LeaderElectionManagementApi;
+import org.apache.ratis.client.api.MessageStreamApi;
+import org.apache.ratis.client.api.SnapshotManagementApi;
+import org.apache.ratis.client.impl.ClientImplUtils;
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.*;
+import org.apache.ratis.retry.RetryPolicies;
+import org.apache.ratis.retry.RetryPolicy;
+import org.apache.ratis.rpc.RpcType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.util.Collection;
+import java.util.Objects;
+
+/** A client who sends requests to a raft service. */
+public interface RaftClient extends Closeable {
+<span class="nc" id="L45">  Logger LOG = LoggerFactory.getLogger(RaftClient.class);</span>
+
+  /** @return the id of this client. */
+  ClientId getId();
+
+  /** @return the group id of this client. */
+  RaftGroupId getGroupId();
+
+  /** @return the cluster leaderId recorded by this client. */
+  RaftPeerId getLeaderId();
+
+  /** @return the {@link RaftClientRpc}. */
+  RaftClientRpc getClientRpc();
+
+  /** @return the {@link AdminApi}. */
+  AdminApi admin();
+
+  /** Get the {@link GroupManagementApi} for the given server. */
+  GroupManagementApi getGroupManagementApi(RaftPeerId server);
+
+  /** Get the {@link SnapshotManagementApi} for the given server. */
+  SnapshotManagementApi getSnapshotManagementApi();
+
+  /** Get the {@link SnapshotManagementApi} for the given server. */
+  SnapshotManagementApi getSnapshotManagementApi(RaftPeerId server);
+
+  /** Get the {@link LeaderElectionManagementApi} for the given server. */
+  LeaderElectionManagementApi getLeaderElectionManagementApi(RaftPeerId server);
+
+  /** @return the {@link BlockingApi}. */
+  BlockingApi io();
+
+  /** Get the {@link AsyncApi}. */
+  AsyncApi async();
+
+  /** @return the {@link MessageStreamApi}. */
+  MessageStreamApi getMessageStreamApi();
+
+  /** @return the {@link DataStreamApi}. */
+  DataStreamApi getDataStreamApi();
+
+  /** @return a {@link Builder}. */
+  static Builder newBuilder() {
+<span class="nc" id="L88">    return new Builder();</span>
+  }
+
+  /** To build {@link RaftClient} objects. */
+  final class Builder {
+    private ClientId clientId;
+    private RaftClientRpc clientRpc;
+    private RaftGroup group;
+    private RaftPeerId leaderId;
+    private RaftPeer primaryDataStreamServer;
+    private RaftProperties properties;
+    private Parameters parameters;
+<span class="nc" id="L100">    private RetryPolicy retryPolicy = RetryPolicies.retryForeverNoSleep();</span>
+
+<span class="nc" id="L102">    private Builder() {}</span>
+
+    /** @return a {@link RaftClient} object. */
+    public RaftClient build() {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (clientId == null) {</span>
+<span class="nc" id="L107">        clientId = ClientId.randomId();</span>
+      }
+<span class="nc bnc" id="L109" title="All 2 branches missed.">      if (properties != null) {</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (clientRpc == null) {</span>
+<span class="nc" id="L111">          final RpcType rpcType = RaftConfigKeys.Rpc.type(properties, LOG::debug);</span>
+<span class="nc" id="L112">          final ClientFactory factory = ClientFactory.cast(rpcType.newFactory(parameters));</span>
+<span class="nc" id="L113">          clientRpc = factory.newRaftClientRpc(clientId, properties);</span>
+        }
+      }
+<span class="nc" id="L116">      Objects.requireNonNull(group, &quot;The 'group' field is not initialized.&quot;);</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">      if (primaryDataStreamServer == null) {</span>
+<span class="nc" id="L118">        final Collection&lt;RaftPeer&gt; peers = group.getPeers();</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (!peers.isEmpty()) {</span>
+<span class="nc" id="L120">          primaryDataStreamServer = peers.iterator().next();</span>
+        }
+      }
+<span class="nc" id="L123">      return ClientImplUtils.newRaftClient(clientId, group, leaderId, primaryDataStreamServer,</span>
+<span class="nc" id="L124">          Objects.requireNonNull(clientRpc, &quot;The 'clientRpc' field is not initialized.&quot;), retryPolicy,</span>
+          properties, parameters);
+    }
+
+    /** Set {@link RaftClient} ID. */
+    public Builder setClientId(ClientId clientId) {
+<span class="nc" id="L130">      this.clientId = clientId;</span>
+<span class="nc" id="L131">      return this;</span>
+    }
+
+    /** Set servers. */
+    public Builder setRaftGroup(RaftGroup grp) {
+<span class="nc" id="L136">      this.group = grp;</span>
+<span class="nc" id="L137">      return this;</span>
+    }
+
+    /** Set leader ID. */
+    public Builder setLeaderId(RaftPeerId leaderId) {
+<span class="nc" id="L142">      this.leaderId = leaderId;</span>
+<span class="nc" id="L143">      return this;</span>
+    }
+
+    /** Set primary server of DataStream. */
+    public Builder setPrimaryDataStreamServer(RaftPeer primaryDataStreamServer) {
+<span class="nc" id="L148">      this.primaryDataStreamServer = primaryDataStreamServer;</span>
+<span class="nc" id="L149">      return this;</span>
+    }
+
+    /** Set {@link RaftClientRpc}. */
+    public Builder setClientRpc(RaftClientRpc clientRpc) {
+<span class="nc" id="L154">      this.clientRpc = clientRpc;</span>
+<span class="nc" id="L155">      return this;</span>
+    }
+
+    /** Set {@link RaftProperties}. */
+    public Builder setProperties(RaftProperties properties) {
+<span class="nc" id="L160">      this.properties = properties;</span>
+<span class="nc" id="L161">      return this;</span>
+    }
+
+    /** Set {@link Parameters}. */
+    public Builder setParameters(Parameters parameters) {
+<span class="nc" id="L166">      this.parameters = parameters;</span>
+<span class="nc" id="L167">      return this;</span>
+    }
+
+    /** Set {@link RetryPolicy}. */
+    public Builder setRetryPolicy(RetryPolicy retryPolicy) {
+<span class="nc" id="L172">      this.retryPolicy = retryPolicy;</span>
+<span class="nc" id="L173">      return this;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

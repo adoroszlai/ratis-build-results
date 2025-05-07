@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReferenceCountedObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ReferenceCountedObject.java</span></div><h1>ReferenceCountedObject.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.UncheckedAutoCloseableSupplier;
+
+import java.util.Collection;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+/**
+ * A reference-counted object can be retained for later use
+ * and then be released for returning the resource.
+ * &lt;p&gt;
+ * - When the object is retained, the reference count is incremented by 1.
+ * &lt;p&gt;
+ * - When the object is released, the reference count is decremented by 1.
+ * &lt;p&gt;
+ * - If the object is retained, it must be released afterward.
+ *   Otherwise, the object will not be returned, and it will cause a resource leak.
+ * &lt;p&gt;
+ * - If the object is retained multiple times,
+ *   it must be released the same number of times.
+ * &lt;p&gt;
+ * - If the object has been retained and then completely released (i.e. the reference count becomes 0),
+ *   it must not be retained/released/accessed anymore since it may have been allocated for other use.
+ *
+ * @param &lt;T&gt; The object type.
+ */
+public interface ReferenceCountedObject&lt;T&gt; {
+
+  /** @return the object. */
+  T get();
+
+  /**
+   * Retain the object for later use.
+   * The reference count will be increased by 1.
+   * &lt;p&gt;
+   * The {@link #release()} method must be invoked afterward.
+   * Otherwise, the object is not returned, and it will cause a resource leak.
+   *
+   * @return the object.
+   */
+  T retain();
+
+  /**
+   * The same as {@link #retain()} except that this method returns a {@link UncheckedAutoCloseableSupplier}.
+   *
+   * @return a {@link UncheckedAutoCloseableSupplier}
+   *         where {@link java.util.function.Supplier#get()} will return the retained object,
+   *         i.e. the object returned by {@link #retain()},
+   *         and calling {@link UncheckedAutoCloseable#close()} one or more times
+   *         is the same as calling {@link #release()} once (idempotent).
+   */
+  default UncheckedAutoCloseableSupplier&lt;T&gt; retainAndReleaseOnClose() {
+<span class="nc" id="L73">    final T retained = retain();</span>
+<span class="nc" id="L74">    final AtomicBoolean closed = new AtomicBoolean();</span>
+<span class="nc" id="L75">    return new UncheckedAutoCloseableSupplier&lt;T&gt;() {</span>
+      @Override
+      public T get() {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (closed.get()) {</span>
+<span class="nc" id="L79">          throw new IllegalStateException(&quot;Already closed&quot;);</span>
+        }
+<span class="nc" id="L81">        return retained;</span>
+      }
+
+      @Override
+      public void close() {
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (closed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L87">          release();</span>
+        }
+<span class="nc" id="L89">      }</span>
+    };
+  }
+
+  /**
+   * Release the object.
+   * The reference count will be decreased by 1.
+   *
+   * @return true if the object is completely released (i.e. reference count becomes 0); otherwise, return false.
+   */
+  boolean release();
+
+  /** The same as wrap(value, EMPTY, EMPTY), where EMPTY is an empty method. */
+  static &lt;V&gt; ReferenceCountedObject&lt;V&gt; wrap(V value) {
+<span class="nc" id="L103">    return wrap(value, () -&gt; {}, ignored -&gt; {});</span>
+  }
+
+  static &lt;T, V&gt; ReferenceCountedObject&lt;V&gt; delegateFrom(Collection&lt;ReferenceCountedObject&lt;T&gt;&gt; fromRefs, V value) {
+<span class="nc" id="L107">    return new ReferenceCountedObject&lt;V&gt;() {</span>
+      @Override
+      public V get() {
+<span class="nc" id="L110">        return value;</span>
+      }
+
+      @Override
+      public V retain() {
+<span class="nc" id="L115">        fromRefs.forEach(ReferenceCountedObject::retain);</span>
+<span class="nc" id="L116">        return value;</span>
+      }
+
+      @Override
+      public boolean release() {
+<span class="nc" id="L121">        boolean allReleased = true;</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        for (ReferenceCountedObject&lt;T&gt; ref : fromRefs) {</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">          if (!ref.release()) {</span>
+<span class="nc" id="L124">            allReleased = false;</span>
+          }
+<span class="nc" id="L126">        }</span>
+<span class="nc" id="L127">        return allReleased;</span>
+      }
+    };
+  }
+
+  /**
+   * @return a {@link ReferenceCountedObject} of the given value by delegating to this object.
+   */
+  default &lt;V&gt; ReferenceCountedObject&lt;V&gt; delegate(V value) {
+<span class="nc" id="L136">    final ReferenceCountedObject&lt;T&gt; delegated = this;</span>
+<span class="nc" id="L137">    return new ReferenceCountedObject&lt;V&gt;() {</span>
+      @Override
+      public V get() {
+<span class="nc" id="L140">        return value;</span>
+      }
+
+      @Override
+      public V retain() {
+<span class="nc" id="L145">        delegated.retain();</span>
+<span class="nc" id="L146">        return value;</span>
+      }
+
+      @Override
+      public boolean release() {
+<span class="nc" id="L151">        return delegated.release();</span>
+      }
+    };
+  }
+
+  /**
+   * @return a {@link ReferenceCountedObject} by apply the given function to this object.
+   */
+  default &lt;V&gt; ReferenceCountedObject&lt;V&gt; apply(Function&lt;T, V&gt; function) {
+<span class="nc" id="L160">    return delegate(function.apply(get()));</span>
+  }
+
+  /**
+   * Wrap the given value as a {@link ReferenceCountedObject}.
+   *
+   * @param value the value being wrapped.
+   * @param retainMethod a method to run when {@link #retain()} is invoked.
+   * @param releaseMethod a method to run when {@link #release()} is invoked,
+   *                      where the method takes a boolean which is the same as the one returned by {@link #release()}.
+   * @param &lt;V&gt; The value type.
+   * @return the wrapped reference-counted object.
+   */
+  static &lt;V&gt; ReferenceCountedObject&lt;V&gt; wrap(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod) {
+<span class="nc" id="L174">    Objects.requireNonNull(value, &quot;value == null&quot;);</span>
+<span class="nc" id="L175">    Objects.requireNonNull(retainMethod, &quot;retainMethod == null&quot;);</span>
+<span class="nc" id="L176">    Objects.requireNonNull(releaseMethod, &quot;releaseMethod == null&quot;);</span>
+
+<span class="nc" id="L178">    return ReferenceCountedLeakDetector.getFactory().create(value, retainMethod, releaseMethod);</span>
+  }
+
+  /** The same as wrap(value, retainMethod, ignored -&gt; releaseMethod.run()). */
+  static &lt;V&gt; ReferenceCountedObject&lt;V&gt; wrap(V value, Runnable retainMethod, Runnable releaseMethod) {
+<span class="nc" id="L183">    return wrap(value, retainMethod, ignored -&gt; releaseMethod.run());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

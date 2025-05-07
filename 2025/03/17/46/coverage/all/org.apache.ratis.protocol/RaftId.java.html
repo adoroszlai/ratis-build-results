@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftId.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.protocol</a> &gt; <span class="el_source">RaftId.java</span></div><h1>RaftId.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.protocol;
+
+import org.apache.ratis.thirdparty.com.google.common.cache.Cache;
+import org.apache.ratis.thirdparty.com.google.common.cache.CacheBuilder;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.thirdparty.com.google.protobuf.UnsafeByteOperations;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+
+import java.nio.ByteBuffer;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
+
+/** Unique identifier implemented using {@link UUID}. */
+public abstract class RaftId {
+<span class="nc" id="L35">  static final UUID ZERO_UUID = new UUID(0L, 0L);</span>
+<span class="nc" id="L36">  static final ByteString ZERO_UUID_BYTESTRING = toByteString(ZERO_UUID);</span>
+  private static final int BYTE_LENGTH = 16;
+
+  static UUID toUuid(ByteString bytes) {
+<span class="nc" id="L40">    Objects.requireNonNull(bytes, &quot;bytes == null&quot;);</span>
+<span class="nc" id="L41">    Preconditions.assertSame(BYTE_LENGTH, bytes.size(), &quot;bytes.size()&quot;);</span>
+<span class="nc" id="L42">    final ByteBuffer buf = bytes.asReadOnlyByteBuffer();</span>
+<span class="nc" id="L43">    return new UUID(buf.getLong(), buf.getLong());</span>
+  }
+
+  static ByteString toByteString(UUID uuid) {
+<span class="nc" id="L47">    Objects.requireNonNull(uuid, &quot;uuid == null&quot;);</span>
+<span class="nc" id="L48">    final byte[] array = new byte[BYTE_LENGTH];</span>
+<span class="nc" id="L49">    ByteBuffer.wrap(array)</span>
+<span class="nc" id="L50">        .putLong(uuid.getMostSignificantBits())</span>
+<span class="nc" id="L51">        .putLong(uuid.getLeastSignificantBits());</span>
+<span class="nc" id="L52">    return UnsafeByteOperations.unsafeWrap(array);</span>
+  }
+
+<span class="nc" id="L55">  abstract static class Factory&lt;ID extends RaftId&gt; {</span>
+<span class="nc" id="L56">    private final Cache&lt;UUID, ID&gt; cache = CacheBuilder.newBuilder()</span>
+<span class="nc" id="L57">        .weakValues()</span>
+<span class="nc" id="L58">        .build();</span>
+
+    abstract ID newInstance(UUID uuid);
+
+    final ID valueOf(UUID uuid) {
+      try {
+<span class="nc" id="L64">        return cache.get(uuid, () -&gt; newInstance(uuid));</span>
+<span class="nc" id="L65">      } catch (ExecutionException e) {</span>
+<span class="nc" id="L66">        throw new IllegalStateException(&quot;Failed to valueOf(&quot; + uuid + &quot;)&quot;, e);</span>
+      }
+    }
+
+    final ID valueOf(ByteString bytes) {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">      return bytes != null? valueOf(toUuid(bytes)): emptyId();</span>
+    }
+
+    ID emptyId() {
+<span class="nc" id="L75">      return valueOf(ZERO_UUID);</span>
+    }
+
+    ID randomId() {
+<span class="nc" id="L79">      return valueOf(UUID.randomUUID());</span>
+    }
+  }
+
+  private final UUID uuid;
+  private final Supplier&lt;ByteString&gt; uuidBytes;
+  private final Supplier&lt;String&gt; uuidString;
+
+<span class="nc" id="L87">  RaftId(UUID uuid) {</span>
+<span class="nc" id="L88">    this.uuid = Preconditions.assertNotNull(uuid, &quot;uuid&quot;);</span>
+<span class="nc" id="L89">    this.uuidBytes = JavaUtils.memoize(() -&gt; toByteString(uuid));</span>
+<span class="nc" id="L90">    this.uuidString = JavaUtils.memoize(() -&gt; createUuidString(uuid));</span>
+<span class="nc bnc" id="L91" title="All 4 branches missed.">    Preconditions.assertTrue(ZERO_UUID == uuid || !uuid.equals(ZERO_UUID),</span>
+<span class="nc" id="L92">        () -&gt; &quot;Failed to create &quot; + JavaUtils.getClassSimpleName(getClass()) + &quot;: UUID &quot; + ZERO_UUID + &quot; is reserved.&quot;);</span>
+<span class="nc" id="L93">  }</span>
+
+  /** @return the last 12 hex digits. */
+  String createUuidString(UUID id) {
+<span class="nc" id="L97">    final String s = id.toString().toUpperCase();</span>
+<span class="nc" id="L98">    final int i = s.lastIndexOf('-');</span>
+<span class="nc" id="L99">    return s.substring(i + 1);</span>
+  }
+
+  public ByteString toByteString() {
+<span class="nc" id="L103">    return uuidBytes.get();</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L108">    return uuidString.get();</span>
+  }
+
+  @Override
+  public boolean equals(Object other) {
+<span class="nc bnc" id="L113" title="All 4 branches missed.">    return other == this ||</span>
+        (other instanceof RaftId
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            &amp;&amp; this.getClass() == other.getClass()</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            &amp;&amp; uuid.equals(((RaftId) other).uuid));</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L121">    return uuid.hashCode();</span>
+  }
+
+  public UUID getUuid() {
+<span class="nc" id="L125">    return uuid;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

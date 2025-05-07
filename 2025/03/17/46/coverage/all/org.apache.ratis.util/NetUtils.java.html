@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NetUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">NetUtils.java</span></div><h1>NetUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.thirdparty.com.google.common.net.InetAddresses;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public interface NetUtils {
+<span class="nc" id="L35">  Logger LOG = LoggerFactory.getLogger(NetUtils.class);</span>
+
+<span class="nc" id="L37">  abstract class StaticResolution {</span>
+    /** Host -&gt; resolved name */
+<span class="nc" id="L39">    private static final Map&lt;String, String&gt; HOST_TO_RESOLVED = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /** Adds a static resolution for host. */
+    public static void put(String host, String resolvedName) {
+<span class="nc" id="L43">      HOST_TO_RESOLVED.put(host, resolvedName);</span>
+<span class="nc" id="L44">    }</span>
+
+    /** @return the resolved name, or null if the host is not found. */
+    public static String get(String host) {
+<span class="nc" id="L48">      return HOST_TO_RESOLVED.get(host);</span>
+    }
+  }
+
+  /** The same as createSocketAddr(target, -1). */
+  static InetSocketAddress createSocketAddr(String target) {
+<span class="nc" id="L54">    return createSocketAddr(target, -1);</span>
+  }
+
+  /**
+   * Create an InetSocketAddress from the given target and default port.
+   * @param target a string of either &quot;host&quot;, &quot;host:port&quot; or &quot;scheme://host:port/path&quot;
+   * @param defaultPort the default port if &lt;code&gt;target&lt;/code&gt; does not
+   *                    include a port number
+   */
+  static InetSocketAddress createSocketAddr(String target, int defaultPort) {
+<span class="nc" id="L64">    target = Objects.requireNonNull(target, &quot;target == null&quot;).trim();</span>
+<span class="nc" id="L65">    boolean hasScheme = target.contains(&quot;://&quot;);</span>
+<span class="nc bnc" id="L66" title="All 4 branches missed.">    if (!hasScheme &amp;&amp; target.charAt(0) == '/') {</span>
+<span class="nc" id="L67">      target = target.substring(1);</span>
+    }
+    final URI uri;
+    try {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">      uri = new URI(hasScheme? target: &quot;dummy://&quot;+target);</span>
+<span class="nc" id="L72">    } catch (URISyntaxException e) {</span>
+<span class="nc" id="L73">      throw new IllegalArgumentException(&quot;Failed to create URI from target &quot; + target, e);</span>
+<span class="nc" id="L74">    }</span>
+
+<span class="nc" id="L76">    final String host = uri.getHost();</span>
+<span class="nc" id="L77">    int port = uri.getPort();</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">    if (port == -1) {</span>
+<span class="nc" id="L79">      port = defaultPort;</span>
+    }
+<span class="nc" id="L81">    final String path = uri.getPath();</span>
+
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    if (host == null) {</span>
+<span class="nc" id="L84">      throw new IllegalArgumentException(&quot;Host is null in &quot; + target);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    } else if (port &lt; 0) {</span>
+<span class="nc" id="L86">      throw new IllegalArgumentException(&quot;Port = &quot; + port + &quot; &lt; 0 in &quot; + target);</span>
+<span class="nc bnc" id="L87" title="All 6 branches missed.">    } else if (!hasScheme &amp;&amp; path != null &amp;&amp; !path.isEmpty()) {</span>
+<span class="nc" id="L88">      throw new IllegalArgumentException(&quot;Unexpected path in &quot; + target);</span>
+    }
+<span class="nc" id="L90">    return createSocketAddrForHost(host, port);</span>
+  }
+
+  /**
+   * Create a socket address with the given host and port.  The hostname
+   * might be replaced with another host that was set via
+   * {@link StaticResolution#put(String, String)}.
+   * @param host the hostname or IP use to instantiate the object
+   * @param port the port number
+   * @return InetSocketAddress
+   */
+  static InetSocketAddress createSocketAddrForHost(String host, int port) {
+<span class="nc" id="L102">    String staticHost = StaticResolution.get(host);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    String resolveHost = (staticHost != null) ? staticHost : host;</span>
+
+    InetSocketAddress addr;
+    try {
+<span class="nc" id="L107">      InetAddress iaddr = InetAddress.getByName(resolveHost);</span>
+      // if there is a static entry for the host, make the returned
+      // address look like the original given host
+<span class="nc bnc" id="L110" title="All 2 branches missed.">      if (staticHost != null) {</span>
+<span class="nc" id="L111">        iaddr = InetAddress.getByAddress(host, iaddr.getAddress());</span>
+      }
+<span class="nc" id="L113">      addr = new InetSocketAddress(iaddr, port);</span>
+<span class="nc" id="L114">    } catch (UnknownHostException e) {</span>
+<span class="nc" id="L115">      addr = InetSocketAddress.createUnresolved(host, port);</span>
+<span class="nc" id="L116">    }</span>
+<span class="nc" id="L117">    return addr;</span>
+  }
+
+  /**
+   * Creates {@code count} unique local addresses.  They may conflict with
+   * addresses created later, but not with one another.  Addresses are
+   * guaranteed to be bound to the loopback interface.
+   * @param count number of unique local addresses to create
+   * @return {@code count} number of unique local addresses
+   */
+  @Deprecated
+  static List&lt;InetSocketAddress&gt; createLocalServerAddress(int count) {
+<span class="nc" id="L129">    List&lt;InetSocketAddress&gt; list = new ArrayList&lt;&gt;(count);</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">    for (int i = 0; i &lt; count; i++) {</span>
+<span class="nc" id="L131">      list.add(new InetSocketAddress(LOCALHOST, getFreePort()));</span>
+    }
+<span class="nc" id="L133">    return list;</span>
+  }
+
+  /**
+   * Creates a unique local address.  Addresses are guaranteed to be bound to
+   * the loopback interface.
+   * @return unique local address
+   */
+  @Deprecated
+  static InetSocketAddress createLocalServerAddress() {
+<span class="nc" id="L143">    return new InetSocketAddress(LOCALHOST, getFreePort());</span>
+  }
+
+  static String address2String(InetSocketAddress address) {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    if (address == null) {</span>
+<span class="nc" id="L148">      return null;</span>
+    }
+<span class="nc" id="L150">    String hostName = address.getHostName();</span>
+<span class="nc" id="L151">    final StringBuilder b = new StringBuilder(hostName);</span>
+    // Surround with '[', ']' only if it is a IPv6 ip - not for a IPv6 host
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    if (address.getAddress() instanceof Inet6Address &amp;&amp;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        InetAddresses.isInetAddress(hostName) &amp;&amp;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        InetAddresses.forString(hostName).getAddress().length == 16) {</span>
+<span class="nc" id="L156">      b.insert(0, '[').append(']');</span>
+    }
+<span class="nc" id="L158">    return b.append(':').append(address.getPort()).toString();</span>
+  }
+
+  String LOCALHOST = &quot;localhost&quot;;
+
+  static String localhostWithFreePort() {
+<span class="nc" id="L164">    return LOCALHOST + &quot;:&quot; + getFreePort();</span>
+  }
+
+  static int getFreePort() {
+<span class="nc" id="L168">    return PortAllocator.getFreePort();</span>
+  }
+
+  /**
+   * Helper class to get free port avoiding randomness.
+   */
+  final class PortAllocator {
+
+    private static final int MIN_PORT = 15000;
+    private static final int MAX_PORT = 32000;
+<span class="nc" id="L178">    private static final AtomicInteger NEXT_PORT = new AtomicInteger(MIN_PORT);</span>
+
+    private PortAllocator() {
+      // no instances
+    }
+
+    public static synchronized int getFreePort() {
+      while (true) {
+<span class="nc" id="L186">        int port = NEXT_PORT.getAndIncrement();</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        if (port &gt; MAX_PORT) {</span>
+<span class="nc" id="L188">          NEXT_PORT.set(MIN_PORT);</span>
+<span class="nc" id="L189">          port = NEXT_PORT.getAndIncrement();</span>
+        }
+<span class="nc" id="L191">        try (ServerSocket ignored = new ServerSocket(port)) {</span>
+<span class="nc" id="L192">          return port;</span>
+<span class="nc" id="L193">        } catch (IOException e) {</span>
+          // will try next port
+        }
+<span class="nc" id="L196">      }</span>
+    }
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

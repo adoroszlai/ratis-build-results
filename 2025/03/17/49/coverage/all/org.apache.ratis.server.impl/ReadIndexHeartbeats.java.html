@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReadIndexHeartbeats.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">ReadIndexHeartbeats.java</span></div><h1>ReadIndexHeartbeats.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.leader.LogAppender;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.raftlog.RaftLogIndex;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Optional;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
+
+<span class="nc" id="L40">class ReadIndexHeartbeats {</span>
+<span class="nc" id="L41">  private static final Logger LOG = LoggerFactory.getLogger(ReadIndexHeartbeats.class);</span>
+
+  /** The acknowledgement from a {@link LogAppender} of a heartbeat for a particular call id. */
+  static class HeartbeatAck {
+    private final LogAppender appender;
+    private final long minCallId;
+<span class="nc" id="L47">    private volatile boolean acknowledged = false;</span>
+
+<span class="nc" id="L49">    HeartbeatAck(LogAppender appender) {</span>
+<span class="nc" id="L50">      this.appender = appender;</span>
+<span class="nc" id="L51">      this.minCallId = appender.getCallId();</span>
+<span class="nc" id="L52">    }</span>
+
+    /** Is the heartbeat (for a particular call id) acknowledged? */
+    boolean isAcknowledged() {
+<span class="nc" id="L56">      return acknowledged;</span>
+    }
+
+    /**
+     * @return true if the acknowledged state is changed from false to true;
+     *         otherwise, the acknowledged state remains unchanged, return false.
+     */
+    boolean receive(AppendEntriesReplyProto reply) {
+<span class="nc bnc" id="L64" title="All 2 branches missed.">      if (acknowledged) {</span>
+<span class="nc" id="L65">        return false;</span>
+      }
+<span class="nc" id="L67">      synchronized (this) {</span>
+<span class="nc bnc" id="L68" title="All 4 branches missed.">        if (!acknowledged &amp;&amp; isValid(reply)) {</span>
+<span class="nc" id="L69">          acknowledged = true;</span>
+<span class="nc" id="L70">          return true;</span>
+        }
+<span class="nc" id="L72">        return false;</span>
+      }
+    }
+
+    private boolean isValid(AppendEntriesReplyProto reply) {
+<span class="nc bnc" id="L77" title="All 4 branches missed.">      if (reply == null || !reply.getServerReply().getSuccess()) {</span>
+<span class="nc" id="L78">        return false;</span>
+      }
+      // valid only if the reply has a later call id than the min.
+<span class="nc bnc" id="L81" title="All 2 branches missed.">      return appender.getCallIdComparator().compare(reply.getServerReply().getCallId(), minCallId) &gt;= 0;</span>
+    }
+  }
+
+  static class AppendEntriesListener {
+    private final long commitIndex;
+<span class="nc" id="L87">    private final CompletableFuture&lt;Long&gt; future = new CompletableFuture&lt;&gt;();</span>
+<span class="nc" id="L88">    private final ConcurrentHashMap&lt;RaftPeerId, HeartbeatAck&gt; replies = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="nc" id="L90">    AppendEntriesListener(long commitIndex, Iterable&lt;LogAppender&gt; logAppenders) {</span>
+<span class="nc" id="L91">      this.commitIndex = commitIndex;</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      for (LogAppender a : logAppenders) {</span>
+<span class="nc" id="L93">        a.triggerHeartbeat();</span>
+<span class="nc" id="L94">        replies.put(a.getFollowerId(), new HeartbeatAck(a));</span>
+<span class="nc" id="L95">      }</span>
+<span class="nc" id="L96">    }</span>
+
+    CompletableFuture&lt;Long&gt; getFuture() {
+<span class="nc" id="L99">      return future;</span>
+    }
+
+    boolean receive(LogAppender logAppender, AppendEntriesReplyProto proto,
+                    Predicate&lt;Predicate&lt;RaftPeerId&gt;&gt; hasMajority) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      if (JavaUtils.isCompletedNormally(future)) {</span>
+<span class="nc" id="L105">        return true;</span>
+      }
+
+<span class="nc" id="L108">      final HeartbeatAck reply = replies.computeIfAbsent(</span>
+<span class="nc" id="L109">          logAppender.getFollowerId(), key -&gt; new HeartbeatAck(logAppender));</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">      if (reply.receive(proto)) {</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (hasMajority.test(this::isAcknowledged)) {</span>
+<span class="nc" id="L112">          future.complete(commitIndex);</span>
+<span class="nc" id="L113">          return true;</span>
+        }
+      }
+
+<span class="nc" id="L117">      return JavaUtils.isCompletedNormally(future);</span>
+    }
+
+    boolean isAcknowledged(RaftPeerId id) {
+<span class="nc" id="L121">      return Optional.ofNullable(replies.get(id)).filter(HeartbeatAck::isAcknowledged).isPresent();</span>
+    }
+  }
+
+<span class="nc" id="L125">  class AppendEntriesListeners {</span>
+<span class="nc" id="L126">    private final NavigableMap&lt;Long, AppendEntriesListener&gt; sorted = new TreeMap&lt;&gt;();</span>
+<span class="nc" id="L127">    private Exception exception = null;</span>
+
+    synchronized AppendEntriesListener add(long commitIndex, Function&lt;Long, AppendEntriesListener&gt; constructor) {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">      if (exception != null) {</span>
+<span class="nc" id="L131">        Preconditions.assertTrue(sorted.isEmpty());</span>
+<span class="nc" id="L132">        final AppendEntriesListener listener = constructor.apply(commitIndex);</span>
+<span class="nc" id="L133">        listener.getFuture().completeExceptionally(exception);</span>
+<span class="nc" id="L134">        return listener;</span>
+      }
+<span class="nc" id="L136">      return sorted.computeIfAbsent(commitIndex, constructor);</span>
+    }
+
+    synchronized void onAppendEntriesReply(LogAppender appender, AppendEntriesReplyProto reply,
+                                           Predicate&lt;Predicate&lt;RaftPeerId&gt;&gt; hasMajority) {
+<span class="nc" id="L141">      final long followerCommit = reply.getFollowerCommit();</span>
+
+<span class="nc" id="L143">      Iterator&lt;Map.Entry&lt;Long, AppendEntriesListener&gt;&gt; iterator = sorted.entrySet().iterator();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      while (iterator.hasNext()) {</span>
+<span class="nc" id="L145">        Map.Entry&lt;Long, AppendEntriesListener&gt; entry = iterator.next();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (entry.getKey() &gt; followerCommit) {</span>
+<span class="nc" id="L147">          return;</span>
+        }
+
+<span class="nc" id="L150">        final AppendEntriesListener listener = entry.getValue();</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (listener == null) {</span>
+<span class="nc" id="L152">          continue;</span>
+        }
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (listener.receive(appender, reply, hasMajority)) {</span>
+<span class="nc" id="L156">          ackedCommitIndex.updateToMax(listener.commitIndex, s -&gt; LOG.debug(&quot;{}: {}&quot;, this, s));</span>
+<span class="nc" id="L157">          iterator.remove();</span>
+        }
+<span class="nc" id="L159">      }</span>
+<span class="nc" id="L160">    }</span>
+
+    synchronized void failAll(Exception e) {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">      if (exception != null) {</span>
+<span class="nc" id="L164">        return;</span>
+      }
+<span class="nc" id="L166">      exception = e;</span>
+<span class="nc" id="L167">      sorted.forEach((index, listener) -&gt; listener.getFuture().completeExceptionally(e));</span>
+<span class="nc" id="L168">      sorted.clear();</span>
+<span class="nc" id="L169">    }</span>
+  }
+
+<span class="nc" id="L172">  private final AppendEntriesListeners appendEntriesListeners = new AppendEntriesListeners();</span>
+<span class="nc" id="L173">  private final RaftLogIndex ackedCommitIndex = new RaftLogIndex(&quot;ackedCommitIndex&quot;, RaftLog.INVALID_LOG_INDEX);</span>
+
+  AppendEntriesListener addAppendEntriesListener(long commitIndex, Function&lt;Long, AppendEntriesListener&gt; constructor) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    if (commitIndex &lt;= ackedCommitIndex.get()) {</span>
+<span class="nc" id="L177">      return null;</span>
+    }
+<span class="nc" id="L179">    LOG.debug(&quot;listen commitIndex {}&quot;, commitIndex);</span>
+<span class="nc" id="L180">    return appendEntriesListeners.add(commitIndex, constructor);</span>
+  }
+
+  void onAppendEntriesReply(LogAppender appender, AppendEntriesReplyProto reply,
+                            Predicate&lt;Predicate&lt;RaftPeerId&gt;&gt; hasMajority) {
+<span class="nc" id="L185">    appendEntriesListeners.onAppendEntriesReply(appender, reply, hasMajority);</span>
+<span class="nc" id="L186">  }</span>
+
+  void failListeners(Exception e) {
+<span class="nc" id="L189">    appendEntriesListeners.failAll(e);</span>
+<span class="nc" id="L190">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerProtoUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">ServerProtoUtils.java</span></div><h1>ServerProtoUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto.AppendResult;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.util.Preconditions;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+/** Server proto utilities for internal use. */
+final class ServerProtoUtils {
+  private ServerProtoUtils() {}
+
+  private static RaftRpcReplyProto.Builder toRaftRpcReplyProtoBuilder(
+      RaftPeerId requestorId, RaftGroupMemberId replyId, boolean success) {
+<span class="nc" id="L41">    return ClientProtoUtils.toRaftRpcReplyProtoBuilder(</span>
+<span class="nc" id="L42">        requestorId.toByteString(), replyId.getPeerId().toByteString(), replyId.getGroupId(), null, success);</span>
+  }
+
+  static RequestVoteReplyProto toRequestVoteReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId, boolean success, long term, boolean shouldShutdown) {
+<span class="nc" id="L47">    return RequestVoteReplyProto.newBuilder()</span>
+<span class="nc" id="L48">        .setServerReply(toRaftRpcReplyProtoBuilder(requestorId, replyId, success))</span>
+<span class="nc" id="L49">        .setTerm(term)</span>
+<span class="nc" id="L50">        .setShouldShutdown(shouldShutdown)</span>
+<span class="nc" id="L51">        .build();</span>
+  }
+
+  static RequestVoteRequestProto toRequestVoteRequestProto(
+      RaftGroupMemberId requestorId, RaftPeerId replyId, long term, TermIndex lastEntry, boolean preVote) {
+<span class="nc" id="L56">    final RequestVoteRequestProto.Builder b = RequestVoteRequestProto.newBuilder()</span>
+<span class="nc" id="L57">        .setServerRequest(ClientProtoUtils.toRaftRpcRequestProtoBuilder(requestorId, replyId))</span>
+<span class="nc" id="L58">        .setCandidateTerm(term)</span>
+<span class="nc" id="L59">        .setPreVote(preVote);</span>
+<span class="nc" id="L60">    Optional.ofNullable(lastEntry).map(TermIndex::toProto).ifPresent(b::setCandidateLastEntry);</span>
+<span class="nc" id="L61">    return b.build();</span>
+  }
+
+  static StartLeaderElectionReplyProto toStartLeaderElectionReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId, boolean success) {
+<span class="nc" id="L66">    return StartLeaderElectionReplyProto.newBuilder()</span>
+<span class="nc" id="L67">        .setServerReply(toRaftRpcReplyProtoBuilder(requestorId, replyId, success))</span>
+<span class="nc" id="L68">        .build();</span>
+  }
+
+  static StartLeaderElectionRequestProto toStartLeaderElectionRequestProto(
+      RaftGroupMemberId requestorId, RaftPeerId replyId, TermIndex lastEntry) {
+<span class="nc" id="L73">    final StartLeaderElectionRequestProto.Builder b = StartLeaderElectionRequestProto.newBuilder()</span>
+<span class="nc" id="L74">        .setServerRequest(ClientProtoUtils.toRaftRpcRequestProtoBuilder(requestorId, replyId));</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">    if (lastEntry != null) {</span>
+<span class="nc" id="L76">      b.setLeaderLastEntry(lastEntry.toProto());</span>
+    }
+<span class="nc" id="L78">    return b.build();</span>
+  }
+
+  static InstallSnapshotReplyProto toInstallSnapshotReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId,
+      long currentTerm, int requestIndex, InstallSnapshotResult result) {
+<span class="nc" id="L84">    final RaftRpcReplyProto.Builder rb = toRaftRpcReplyProtoBuilder(requestorId,</span>
+<span class="nc" id="L85">        replyId, isSuccess(result));</span>
+    final InstallSnapshotReplyProto.Builder builder = InstallSnapshotReplyProto
+<span class="nc" id="L87">        .newBuilder().setServerReply(rb).setTerm(currentTerm).setResult(result)</span>
+<span class="nc" id="L88">        .setRequestIndex(requestIndex);</span>
+<span class="nc" id="L89">    return builder.build();</span>
+  }
+
+  static InstallSnapshotReplyProto toInstallSnapshotReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId,
+      long currentTerm, InstallSnapshotResult result, long installedSnapshotIndex) {
+<span class="nc" id="L95">    final boolean success = isSuccess(result);</span>
+<span class="nc bnc" id="L96" title="All 4 branches missed.">    Preconditions.assertTrue(success || installedSnapshotIndex == RaftLog.INVALID_LOG_INDEX,</span>
+<span class="nc" id="L97">        () -&gt; &quot;result=&quot; + result + &quot; but installedSnapshotIndex=&quot; + installedSnapshotIndex);</span>
+<span class="nc" id="L98">    final RaftRpcReplyProto.Builder rb = toRaftRpcReplyProtoBuilder(requestorId, replyId, success);</span>
+<span class="nc" id="L99">    return InstallSnapshotReplyProto.newBuilder()</span>
+<span class="nc" id="L100">        .setServerReply(rb)</span>
+<span class="nc" id="L101">        .setTerm(currentTerm)</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        .setResult(result)</span>
+<span class="nc" id="L103">        .setSnapshotIndex(installedSnapshotIndex &gt; 0? installedSnapshotIndex: 0)</span>
+<span class="nc" id="L104">        .build();</span>
+  }
+
+  static InstallSnapshotReplyProto toInstallSnapshotReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId,
+      long currentTerm, InstallSnapshotResult result) {
+<span class="nc" id="L110">    return toInstallSnapshotReplyProto(requestorId, replyId, currentTerm, result, RaftLog.INVALID_LOG_INDEX);</span>
+  }
+
+  static ReadIndexRequestProto toReadIndexRequestProto(
+      RaftClientRequest clientRequest, RaftGroupMemberId requestorId, RaftPeerId replyId) {
+<span class="nc" id="L115">    return ReadIndexRequestProto.newBuilder()</span>
+<span class="nc" id="L116">        .setServerRequest(ClientProtoUtils.toRaftRpcRequestProtoBuilder(requestorId, replyId))</span>
+<span class="nc" id="L117">        .setClientRequest(ClientProtoUtils.toRaftClientRequestProto(clientRequest, false))</span>
+<span class="nc" id="L118">        .build();</span>
+  }
+
+  static ReadIndexReplyProto toReadIndexReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId, boolean success, long index) {
+<span class="nc" id="L123">    return ReadIndexReplyProto.newBuilder()</span>
+<span class="nc" id="L124">        .setServerReply(toRaftRpcReplyProtoBuilder(requestorId, replyId, success))</span>
+<span class="nc" id="L125">        .setReadIndex(index)</span>
+<span class="nc" id="L126">        .build();</span>
+  }
+
+  static ReadIndexReplyProto toReadIndexReplyProto(RaftPeerId requestorId, RaftGroupMemberId replyId) {
+<span class="nc" id="L130">    return toReadIndexReplyProto(requestorId, replyId, false, RaftLog.INVALID_LOG_INDEX);</span>
+  }
+
+  @SuppressWarnings(&quot;parameternumber&quot;)
+  static AppendEntriesReplyProto toAppendEntriesReplyProto(
+      RaftPeerId requestorId, RaftGroupMemberId replyId, long term,
+      long followerCommit, long nextIndex, AppendResult result, long callId,
+      long matchIndex, boolean isHeartbeat) {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">    RaftRpcReplyProto.Builder rpcReply = toRaftRpcReplyProtoBuilder(</span>
+        requestorId, replyId, result == AppendResult.SUCCESS)
+<span class="nc" id="L140">        .setCallId(callId);</span>
+<span class="nc" id="L141">    return AppendEntriesReplyProto.newBuilder()</span>
+<span class="nc" id="L142">        .setServerReply(rpcReply)</span>
+<span class="nc" id="L143">        .setTerm(term)</span>
+<span class="nc" id="L144">        .setNextIndex(nextIndex)</span>
+<span class="nc" id="L145">        .setMatchIndex(matchIndex)</span>
+<span class="nc" id="L146">        .setFollowerCommit(followerCommit)</span>
+<span class="nc" id="L147">        .setResult(result)</span>
+<span class="nc" id="L148">        .setIsHearbeat(isHeartbeat)</span>
+<span class="nc" id="L149">        .build();</span>
+  }
+
+  @SuppressWarnings(&quot;checkstyle:parameternumber&quot;)
+  static AppendEntriesRequestProto toAppendEntriesRequestProto(
+      RaftGroupMemberId requestorId, RaftPeerId replyId, long leaderTerm,
+      List&lt;LogEntryProto&gt; entries, long leaderCommit, boolean initializing,
+      TermIndex previous, Collection&lt;CommitInfoProto&gt; commitInfos, long callId) {
+<span class="nc" id="L157">    final RaftRpcRequestProto.Builder rpcRequest = ClientProtoUtils.toRaftRpcRequestProtoBuilder(requestorId, replyId)</span>
+<span class="nc" id="L158">        .setCallId(callId);</span>
+    final AppendEntriesRequestProto.Builder b = AppendEntriesRequestProto
+<span class="nc" id="L160">        .newBuilder()</span>
+<span class="nc" id="L161">        .setServerRequest(rpcRequest)</span>
+<span class="nc" id="L162">        .setLeaderTerm(leaderTerm)</span>
+<span class="nc" id="L163">        .setLeaderCommit(leaderCommit)</span>
+<span class="nc" id="L164">        .setInitializing(initializing);</span>
+<span class="nc bnc" id="L165" title="All 4 branches missed.">    if (entries != null &amp;&amp; !entries.isEmpty()) {</span>
+<span class="nc" id="L166">      b.addAllEntries(entries);</span>
+    }
+
+<span class="nc" id="L169">    Optional.ofNullable(previous).map(TermIndex::toProto).ifPresent(b::setPreviousLog);</span>
+<span class="nc" id="L170">    Optional.ofNullable(commitInfos).ifPresent(b::addAllCommitInfos);</span>
+<span class="nc" id="L171">    return b.build();</span>
+  }
+
+  static ServerRpcProto toServerRpcProto(RaftPeer peer, long delay) {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (peer == null) {</span>
+      // if no peer information return empty
+<span class="nc" id="L177">      return ServerRpcProto.getDefaultInstance();</span>
+    }
+<span class="nc" id="L179">    return ServerRpcProto.newBuilder()</span>
+<span class="nc" id="L180">        .setId(peer.getRaftPeerProto())</span>
+<span class="nc" id="L181">        .setLastRpcElapsedTimeMs(delay)</span>
+<span class="nc" id="L182">        .build();</span>
+  }
+
+  static boolean isSuccess(InstallSnapshotResult result) {
+<span class="nc bnc" id="L186" title="All 2 branches missed.">    switch (result) {</span>
+      case SUCCESS:
+      case SNAPSHOT_INSTALLED:
+      case ALREADY_INSTALLED:
+<span class="nc" id="L190">        return true;</span>
+      default:
+<span class="nc" id="L192">        return false;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

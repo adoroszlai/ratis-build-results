@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MultipleLinearRandomRetry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.retry</a> &gt; <span class="el_source">MultipleLinearRandomRetry.java</span></div><h1>MultipleLinearRandomRetry.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.retry;
+
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/**
+ * Given pairs of number of retries and sleep time (n0, t0), (n1, t1), ...,
+ * the first n0 retries sleep t0 milliseconds on average,
+ * the following n1 retries sleep t1 milliseconds on average, and so on.
+ *
+ * For all the sleep, the actual sleep time is randomly uniform distributed
+ * in the close interval [0.5t, 1.5t], where t is the sleep time specified.
+ *
+ * The objects of this class are immutable.
+ */
+public final class MultipleLinearRandomRetry implements RetryPolicy {
+<span class="nc" id="L44">  static final Logger LOG = LoggerFactory.getLogger(MultipleLinearRandomRetry.class);</span>
+
+  /** Pairs of numRetries and sleepSeconds */
+  private static class Pair {
+    private final int numRetries;
+    private final TimeDuration sleepTime;
+
+<span class="nc" id="L51">    Pair(int numRetries, TimeDuration sleepTime) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">      if (numRetries &lt; 0) {</span>
+<span class="nc" id="L53">        throw new IllegalArgumentException(&quot;numRetries = &quot; + numRetries+&quot; &lt; 0&quot;);</span>
+      }
+<span class="nc bnc" id="L55" title="All 2 branches missed.">      if (sleepTime.isNegative()) {</span>
+<span class="nc" id="L56">        throw new IllegalArgumentException(&quot;sleepTime = &quot; + sleepTime + &quot; &lt; 0&quot;);</span>
+      }
+
+<span class="nc" id="L59">      this.numRetries = numRetries;</span>
+<span class="nc" id="L60">      this.sleepTime = sleepTime;</span>
+<span class="nc" id="L61">    }</span>
+
+    TimeDuration getRandomSleepTime() {
+      // 0.5 &lt;= ratio &lt; 1.5
+<span class="nc" id="L65">      final double ratio = ThreadLocalRandom.current().nextDouble() + 0.5;</span>
+<span class="nc" id="L66">      return sleepTime.multiply(ratio);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L71">      return numRetries + &quot;x&quot; + sleepTime;</span>
+    }
+  }
+
+  private final List&lt;Pair&gt; pairs;
+  private final Supplier&lt;String&gt; myString;
+
+<span class="nc" id="L78">  private MultipleLinearRandomRetry(List&lt;Pair&gt; pairs) {</span>
+<span class="nc bnc" id="L79" title="All 4 branches missed.">    if (pairs == null || pairs.isEmpty()) {</span>
+<span class="nc" id="L80">      throw new IllegalArgumentException(&quot;pairs must be neither null nor empty.&quot;);</span>
+    }
+<span class="nc" id="L82">    this.pairs = Collections.unmodifiableList(pairs);</span>
+<span class="nc" id="L83">    this.myString = JavaUtils.memoize(() -&gt; JavaUtils.getClassSimpleName(getClass()) + pairs);</span>
+<span class="nc" id="L84">  }</span>
+
+  @Override
+  public Action handleAttemptFailure(Event event) {
+<span class="nc" id="L88">    final Pair p = searchPair(event.getAttemptCount());</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    return p == null? NO_RETRY_ACTION: p::getRandomSleepTime;</span>
+  }
+
+  /**
+   * Given the current number of retry, search the corresponding pair.
+   * @return the corresponding pair,
+   *   or null if the current number of retry &gt; maximum number of retry.
+   */
+  private Pair searchPair(int curRetry) {
+<span class="nc" id="L98">    int i = 0;</span>
+<span class="nc bnc" id="L99" title="All 4 branches missed.">    for(; i &lt; pairs.size() &amp;&amp; curRetry &gt; pairs.get(i).numRetries; i++) {</span>
+<span class="nc" id="L100">      curRetry -= pairs.get(i).numRetries;</span>
+    }
+<span class="nc bnc" id="L102" title="All 2 branches missed.">    return i == pairs.size()? null: pairs.get(i);</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L107">    return toString().hashCode();</span>
+  }
+
+  @Override
+  public boolean equals(final Object that) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (this == that) {</span>
+<span class="nc" id="L113">      return true;</span>
+<span class="nc bnc" id="L114" title="All 4 branches missed.">    } else if (that == null || this.getClass() != that.getClass()) {</span>
+<span class="nc" id="L115">      return false;</span>
+    }
+<span class="nc" id="L117">    return this.toString().equals(that.toString());</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L122">    return myString.get();</span>
+  }
+
+  /**
+   * Parse the given string as a MultipleLinearRandomRetry object.
+   * The format of the string is &quot;t_1, n_1, t_2, n_2, ...&quot;,
+   * where t_i and n_i are the i-th pair of sleep time and number of retries.
+   * Note that the white spaces in the string are ignored.
+   *
+   * @return the parsed object, or null if the parsing fails.
+   */
+  public static MultipleLinearRandomRetry parseCommaSeparated(String input) {
+<span class="nc" id="L134">    final String[] elements = input.split(&quot;,&quot;);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">    if (elements.length == 0) {</span>
+<span class="nc" id="L136">      LOG.warn(&quot;Illegal value: there is no element in \&quot;{}\&quot;.&quot;, input);</span>
+<span class="nc" id="L137">      return null;</span>
+    }
+<span class="nc bnc" id="L139" title="All 2 branches missed.">    if (elements.length % 2 != 0) {</span>
+<span class="nc" id="L140">      LOG.warn(&quot;Illegal value: the number of elements in \&quot;{}\&quot; is {} but an even number of elements is expected.&quot;,</span>
+<span class="nc" id="L141">          input, elements.length);</span>
+<span class="nc" id="L142">      return null;</span>
+    }
+
+<span class="nc" id="L145">    final List&lt;Pair&gt; pairs = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    for(int i = 0; i &lt; elements.length; ) {</span>
+      //parse the i-th sleep-time
+<span class="nc" id="L148">      final TimeDuration sleep = parseElement(elements, i++, input, MultipleLinearRandomRetry::parsePositiveTime);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">      if (sleep == null) {</span>
+<span class="nc" id="L150">        return null; //parse fails</span>
+      }
+      //parse the i-th number-of-retries
+<span class="nc" id="L153">      final Integer retries = parseElement(elements, i++, input, MultipleLinearRandomRetry::parsePositiveInt);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">      if (retries == null) {</span>
+<span class="nc" id="L155">        return null; //parse fails</span>
+      }
+
+<span class="nc" id="L158">      pairs.add(new Pair(retries, sleep));</span>
+<span class="nc" id="L159">    }</span>
+<span class="nc" id="L160">    return new MultipleLinearRandomRetry(pairs);</span>
+  }
+
+  private static TimeDuration parsePositiveTime(String s) {
+<span class="nc" id="L164">    final TimeDuration t = TimeDuration.valueOf(s, TimeUnit.MILLISECONDS);</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    if (t.isNonPositive()) {</span>
+<span class="nc" id="L166">      throw new IllegalArgumentException(&quot;Non-positive value: &quot; + t);</span>
+    }
+<span class="nc" id="L168">    return t;</span>
+  }
+
+  private static int parsePositiveInt(String trimmed) {
+<span class="nc" id="L172">    final int n = Integer.parseInt(trimmed);</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">    if (n &lt;= 0) {</span>
+<span class="nc" id="L174">      throw new IllegalArgumentException(&quot;Non-positive value: &quot; + n);</span>
+    }
+<span class="nc" id="L176">    return n;</span>
+  }
+
+  private static &lt;E&gt; E parseElement(String[] elements, int i, String input, Function&lt;String, E&gt; parser) {
+<span class="nc" id="L180">    final String s = elements[i].trim().replace(&quot;_&quot;, &quot;&quot;);</span>
+    try {
+<span class="nc" id="L182">      return parser.apply(s);</span>
+<span class="nc" id="L183">    } catch(Exception t) {</span>
+<span class="nc" id="L184">      LOG.warn(&quot;Failed to parse \&quot;{}\&quot;, which is the index {} element in \&quot;{}\&quot;&quot;, s, i, input, t);</span>
+<span class="nc" id="L185">      return null;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

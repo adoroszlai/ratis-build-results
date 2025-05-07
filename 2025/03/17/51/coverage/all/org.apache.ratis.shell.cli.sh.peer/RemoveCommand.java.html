@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RemoveCommand.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.shell.cli.sh.peer</a> &gt; <span class="el_source">RemoveCommand.java</span></div><h1>RemoveCommand.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.shell.cli.sh.peer;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.ratis.client.RaftClient;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.shell.cli.sh.command.AbstractRatisCommand;
+import org.apache.ratis.shell.cli.sh.command.Context;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * Command for remove ratis server.
+ */
+public class RemoveCommand extends AbstractRatisCommand {
+
+  public static final String ADDRESS_OPTION_NAME = &quot;address&quot;;
+  public static final String PEER_ID_OPTION_NAME = &quot;peerId&quot;;
+  /**
+   * @param context command context
+   */
+  public RemoveCommand(Context context) {
+<span class="nc" id="L47">    super(context);</span>
+<span class="nc" id="L48">  }</span>
+
+  @Override
+  public String getCommandName() {
+<span class="nc" id="L52">    return &quot;remove&quot;;</span>
+  }
+
+  @Override
+  public int run(CommandLine cl) throws IOException {
+<span class="nc" id="L57">    super.run(cl);</span>
+    final List&lt;RaftPeerId&gt; ids;
+<span class="nc bnc" id="L59" title="All 2 branches missed.">    if (cl.hasOption(PEER_ID_OPTION_NAME)) {</span>
+<span class="nc" id="L60">      ids = Arrays.stream(cl.getOptionValue(PEER_ID_OPTION_NAME).split(&quot;,&quot;))</span>
+<span class="nc" id="L61">          .map(RaftPeerId::getRaftPeerId).collect(Collectors.toList());</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    } else if (cl.hasOption(ADDRESS_OPTION_NAME)) {</span>
+<span class="nc" id="L63">      ids = getIds(cl.getOptionValue(ADDRESS_OPTION_NAME).split(&quot;,&quot;), (a, b) -&gt; {});</span>
+    } else {
+<span class="nc" id="L65">      throw new IllegalArgumentException(</span>
+          &quot;Both &quot; + PEER_ID_OPTION_NAME + &quot; and &quot; + ADDRESS_OPTION_NAME + &quot; options are missing.&quot;);
+    }
+<span class="nc" id="L68">    try (RaftClient client = newRaftClient()) {</span>
+<span class="nc" id="L69">      final List&lt;RaftPeer&gt; peers = getPeerStream(RaftPeerRole.FOLLOWER)</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">          .filter(raftPeer -&gt; !ids.contains(raftPeer.getId())).collect(Collectors.toList());</span>
+<span class="nc" id="L71">      final List&lt;RaftPeer&gt; listeners = getPeerStream(RaftPeerRole.LISTENER)</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">          .filter(raftPeer -&gt; !ids.contains(raftPeer.getId())).collect(Collectors.toList());</span>
+<span class="nc" id="L73">      System.out.println(&quot;New peer list: &quot; + peers);</span>
+<span class="nc" id="L74">      System.out.println(&quot;New listener list:  &quot; + listeners);</span>
+<span class="nc" id="L75">      final RaftClientReply reply = client.admin().setConfiguration(peers, listeners);</span>
+<span class="nc" id="L76">      processReply(reply, () -&gt; &quot;Failed to change raft peer&quot;);</span>
+    }
+<span class="nc" id="L78">    return 0;</span>
+  }
+
+  @Override
+  public String getUsage() {
+<span class="nc" id="L83">    return String.format(&quot;%s&quot;</span>
+            + &quot; -%s &lt;PEER0_HOST:PEER0_PORT,PEER1_HOST:PEER1_PORT,PEER2_HOST:PEER2_PORT&gt;&quot;
+            + &quot; [-%s &lt;RAFT_GROUP_ID&gt;]&quot;
+            + &quot; &lt;[-%s &lt;PEER0_HOST:PEER0_PORT&gt;]|[-%s &lt;peerId&gt;]&gt;&quot;,
+<span class="nc" id="L87">        getCommandName(), PEER_OPTION_NAME, GROUPID_OPTION_NAME,</span>
+        ADDRESS_OPTION_NAME, PEER_ID_OPTION_NAME);
+  }
+
+  @Override
+  public String getDescription() {
+<span class="nc" id="L93">    return description();</span>
+  }
+
+  @Override
+  public Options getOptions() {
+<span class="nc" id="L98">    return super.getOptions()</span>
+<span class="nc" id="L99">        .addOption(Option.builder()</span>
+<span class="nc" id="L100">            .option(ADDRESS_OPTION_NAME)</span>
+<span class="nc" id="L101">            .hasArg()</span>
+<span class="nc" id="L102">            .desc(&quot;The address information of ratis peers&quot;)</span>
+<span class="nc" id="L103">            .build())</span>
+<span class="nc" id="L104">        .addOption(Option.builder()</span>
+<span class="nc" id="L105">            .option(PEER_ID_OPTION_NAME).hasArg()</span>
+<span class="nc" id="L106">            .desc(&quot;The peer id of ratis peers&quot;)</span>
+<span class="nc" id="L107">            .build());</span>
+  }
+
+  /**
+   * @return command's description
+   */
+  public static String description() {
+<span class="nc" id="L114">    return &quot;Remove peers to a ratis group&quot;;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

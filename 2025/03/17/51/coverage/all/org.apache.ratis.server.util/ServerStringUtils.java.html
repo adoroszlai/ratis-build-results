@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerStringUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.util</a> &gt; <span class="el_source">ServerStringUtils.java</span></div><h1>ServerStringUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.util;
+
+import org.apache.ratis.proto.RaftProtos.AppendEntriesReplyProto;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotReplyProto;
+import org.apache.ratis.proto.RaftProtos.InstallSnapshotRequestProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.RequestVoteReplyProto;
+import org.apache.ratis.proto.RaftProtos.StateMachineLogEntryProto;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.util.ProtoUtils;
+
+import java.util.List;
+import java.util.function.Function;
+
+/**
+ *  This class provides convenient utilities for converting Protocol Buffers messages to strings.
+ *  The output strings are for information purpose only.
+ *  They are concise and compact compared to the Protocol Buffers implementations of {@link Object#toString()}.
+ * &lt;p&gt;
+ *  The output messages or the output formats may be changed without notice.
+ *  Callers of this class should not try to parse the output strings for any purposes.
+ *  Instead, they should use the public APIs provided by Protocol Buffers.
+ */
+public final class ServerStringUtils {
+  private ServerStringUtils() {}
+
+  public static String toAppendEntriesRequestString(AppendEntriesRequestProto request,
+      Function&lt;StateMachineLogEntryProto, String&gt; stateMachineToString) {
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    if (request == null) {</span>
+<span class="nc" id="L49">      return null;</span>
+    }
+<span class="nc" id="L51">    final List&lt;LogEntryProto&gt; entries = request.getEntriesList();</span>
+<span class="nc" id="L52">    return ProtoUtils.toString(request.getServerRequest())</span>
+<span class="nc" id="L53">        + &quot;-t&quot; + request.getLeaderTerm()</span>
+<span class="nc" id="L54">        + &quot;,previous=&quot; + TermIndex.valueOf(request.getPreviousLog())</span>
+<span class="nc" id="L55">        + &quot;,leaderCommit=&quot; + request.getLeaderCommit()</span>
+<span class="nc" id="L56">        + &quot;,initializing? &quot; + request.getInitializing()</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        + &quot;,&quot; + (entries.isEmpty()? &quot;HEARTBEAT&quot; : &quot;entries: &quot; +</span>
+<span class="nc" id="L58">        LogProtoUtils.toLogEntriesShortString(entries, stateMachineToString));</span>
+  }
+
+  public static String toAppendEntriesReplyString(AppendEntriesReplyProto reply) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (reply == null) {</span>
+<span class="nc" id="L63">      return null;</span>
+    }
+<span class="nc" id="L65">    return ProtoUtils.toString(reply.getServerReply())</span>
+<span class="nc" id="L66">        + &quot;-t&quot; + reply.getTerm()</span>
+<span class="nc" id="L67">        + &quot;,&quot; + reply.getResult()</span>
+<span class="nc" id="L68">        + &quot;,nextIndex=&quot; + reply.getNextIndex()</span>
+<span class="nc" id="L69">        + &quot;,followerCommit=&quot; + reply.getFollowerCommit()</span>
+<span class="nc" id="L70">        + &quot;,matchIndex=&quot; + reply.getMatchIndex();</span>
+  }
+
+  public static String toInstallSnapshotRequestString(InstallSnapshotRequestProto request) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    if (request == null) {</span>
+<span class="nc" id="L75">      return null;</span>
+    }
+    final String s;
+<span class="nc bnc" id="L78" title="All 3 branches missed.">    switch (request.getInstallSnapshotRequestBodyCase()) {</span>
+      case SNAPSHOTCHUNK:
+<span class="nc" id="L80">        final InstallSnapshotRequestProto.SnapshotChunkProto chunk = request.getSnapshotChunk();</span>
+<span class="nc" id="L81">        s = &quot;chunk:&quot; + chunk.getRequestId() + &quot;,&quot; + chunk.getRequestIndex();</span>
+<span class="nc" id="L82">        break;</span>
+      case NOTIFICATION:
+<span class="nc" id="L84">        final InstallSnapshotRequestProto.NotificationProto notification = request.getNotification();</span>
+<span class="nc" id="L85">        s = &quot;notify:&quot; + TermIndex.valueOf(notification.getFirstAvailableTermIndex());</span>
+<span class="nc" id="L86">        break;</span>
+      default:
+<span class="nc" id="L88">        throw new IllegalStateException(&quot;Unexpected body case in &quot; + request);</span>
+    }
+<span class="nc" id="L90">    return ProtoUtils.toString(request.getServerRequest())</span>
+<span class="nc" id="L91">        + &quot;-t&quot; + request.getLeaderTerm()</span>
+        + &quot;,&quot; + s;
+  }
+
+  public static String toInstallSnapshotReplyString(InstallSnapshotReplyProto reply) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    if (reply == null) {</span>
+<span class="nc" id="L97">      return null;</span>
+    }
+    final String s;
+<span class="nc bnc" id="L100" title="All 3 branches missed.">    switch (reply.getInstallSnapshotReplyBodyCase()) {</span>
+      case REQUESTINDEX:
+<span class="nc" id="L102">        s = &quot;,requestIndex=&quot; + reply.getRequestIndex();</span>
+<span class="nc" id="L103">        break;</span>
+      case SNAPSHOTINDEX:
+<span class="nc" id="L105">        s = &quot;,snapshotIndex=&quot; + reply.getSnapshotIndex();</span>
+<span class="nc" id="L106">        break;</span>
+      default:
+<span class="nc" id="L108">        s = &quot;&quot;; // result is not SUCCESS</span>
+    }
+<span class="nc" id="L110">    return ProtoUtils.toString(reply.getServerReply())</span>
+<span class="nc" id="L111">        + &quot;-t&quot; + reply.getTerm()</span>
+<span class="nc" id="L112">        + &quot;,&quot; + reply.getResult() + s;</span>
+  }
+
+  public static String toRequestVoteReplyString(RequestVoteReplyProto proto) {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    if (proto == null) {</span>
+<span class="nc" id="L117">      return null;</span>
+    }
+<span class="nc" id="L119">    return ProtoUtils.toString(proto.getServerReply()) + &quot;-t&quot; + proto.getTerm();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

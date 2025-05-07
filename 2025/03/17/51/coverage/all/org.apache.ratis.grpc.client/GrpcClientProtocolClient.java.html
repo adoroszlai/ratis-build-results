@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcClientProtocolClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.client</a> &gt; <span class="el_source">GrpcClientProtocolClient.java</span></div><h1>GrpcClientProtocolClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.client;
+
+import org.apache.ratis.client.RaftClientConfigKeys;
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.grpc.GrpcConfigKeys;
+import org.apache.ratis.grpc.GrpcTlsConfig;
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.grpc.metrics.intercept.client.MetricClientInterceptor;
+import org.apache.ratis.proto.RaftProtos.GroupInfoReplyProto;
+import org.apache.ratis.proto.RaftProtos.GroupInfoRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupListReplyProto;
+import org.apache.ratis.proto.RaftProtos.GroupListRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.LeaderElectionManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientReplyProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.proto.RaftProtos.SetConfigurationRequestProto;
+import org.apache.ratis.proto.RaftProtos.SnapshotManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.TransferLeadershipRequestProto;
+import org.apache.ratis.proto.grpc.AdminProtocolServiceGrpc;
+import org.apache.ratis.proto.grpc.AdminProtocolServiceGrpc.AdminProtocolServiceBlockingStub;
+import org.apache.ratis.proto.grpc.RaftClientProtocolServiceGrpc;
+import org.apache.ratis.proto.grpc.RaftClientProtocolServiceGrpc.RaftClientProtocolServiceStub;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.LeaderNotReadyException;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.thirdparty.io.grpc.ManagedChannel;
+import org.apache.ratis.thirdparty.io.grpc.StatusRuntimeException;
+import org.apache.ratis.thirdparty.io.grpc.netty.GrpcSslContexts;
+import org.apache.ratis.thirdparty.io.grpc.netty.NegotiationType;
+import org.apache.ratis.thirdparty.io.grpc.netty.NettyChannelBuilder;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContextBuilder;
+import org.apache.ratis.util.CollectionUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.TimeoutExecutor;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public class GrpcClientProtocolClient implements Closeable {
+<span class="nc" id="L80">  public static final Logger LOG = LoggerFactory.getLogger(GrpcClientProtocolClient.class);</span>
+
+  private final Supplier&lt;String&gt; name;
+  private final RaftPeer target;
+  private final ManagedChannel clientChannel;
+  private final ManagedChannel adminChannel;
+
+  private final TimeDuration requestTimeoutDuration;
+  private final TimeDuration watchRequestTimeoutDuration;
+<span class="nc" id="L89">  private final TimeoutExecutor scheduler = TimeoutExecutor.getInstance();</span>
+
+  private final RaftClientProtocolServiceStub asyncStub;
+  private final AdminProtocolServiceBlockingStub adminBlockingStub;
+
+<span class="nc" id="L94">  private final AtomicReference&lt;AsyncStreamObservers&gt; orderedStreamObservers = new AtomicReference&lt;&gt;();</span>
+
+<span class="nc" id="L96">  private final AtomicReference&lt;AsyncStreamObservers&gt; unorderedStreamObservers = new AtomicReference&lt;&gt;();</span>
+  private final MetricClientInterceptor metricClientInterceptor;
+
+  GrpcClientProtocolClient(ClientId id, RaftPeer target, RaftProperties properties,
+<span class="nc" id="L100">      GrpcTlsConfig adminTlsConfig, GrpcTlsConfig clientTlsConfig) {</span>
+<span class="nc" id="L101">    this.name = JavaUtils.memoize(() -&gt; id + &quot;-&gt;&quot; + target.getId());</span>
+<span class="nc" id="L102">    this.target = target;</span>
+<span class="nc" id="L103">    final SizeInBytes flowControlWindow = GrpcConfigKeys.flowControlWindow(properties, LOG::debug);</span>
+<span class="nc" id="L104">    final SizeInBytes maxMessageSize = GrpcConfigKeys.messageSizeMax(properties, LOG::debug);</span>
+<span class="nc" id="L105">    metricClientInterceptor = new MetricClientInterceptor(getName());</span>
+
+<span class="nc" id="L107">    final String clientAddress = Optional.ofNullable(target.getClientAddress())</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        .filter(x -&gt; !x.isEmpty()).orElse(target.getAddress());</span>
+<span class="nc" id="L109">    final String adminAddress = Optional.ofNullable(target.getAdminAddress())</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        .filter(x -&gt; !x.isEmpty()).orElse(target.getAddress());</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">    final boolean separateAdminChannel = !Objects.equals(clientAddress, adminAddress);</span>
+
+<span class="nc" id="L113">    clientChannel = buildChannel(clientAddress, clientTlsConfig,</span>
+        flowControlWindow, maxMessageSize);
+<span class="nc bnc" id="L115" title="All 2 branches missed.">    adminChannel = separateAdminChannel</span>
+<span class="nc" id="L116">        ? buildChannel(adminAddress, adminTlsConfig,</span>
+            flowControlWindow, maxMessageSize)
+        : clientChannel;
+
+<span class="nc" id="L120">    asyncStub = RaftClientProtocolServiceGrpc.newStub(clientChannel);</span>
+<span class="nc" id="L121">    adminBlockingStub = AdminProtocolServiceGrpc.newBlockingStub(adminChannel);</span>
+<span class="nc" id="L122">    this.requestTimeoutDuration = RaftClientConfigKeys.Rpc.requestTimeout(properties);</span>
+<span class="nc" id="L123">    this.watchRequestTimeoutDuration =</span>
+<span class="nc" id="L124">        RaftClientConfigKeys.Rpc.watchRequestTimeout(properties);</span>
+<span class="nc" id="L125">  }</span>
+
+  private ManagedChannel buildChannel(String address, GrpcTlsConfig tlsConf,
+      SizeInBytes flowControlWindow, SizeInBytes maxMessageSize) {
+<span class="nc" id="L129">    NettyChannelBuilder channelBuilder =</span>
+<span class="nc" id="L130">        NettyChannelBuilder.forTarget(address);</span>
+    // ignore any http proxy for grpc
+<span class="nc" id="L132">    channelBuilder.proxyDetector(uri -&gt; null);</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">    if (tlsConf != null) {</span>
+<span class="nc" id="L135">      LOG.debug(&quot;Setting TLS for {}&quot;, address);</span>
+<span class="nc" id="L136">      SslContextBuilder sslContextBuilder = GrpcSslContexts.forClient();</span>
+<span class="nc" id="L137">      GrpcUtil.setTrustManager(sslContextBuilder, tlsConf.getTrustManager());</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      if (tlsConf.getMtlsEnabled()) {</span>
+<span class="nc" id="L139">        GrpcUtil.setKeyManager(sslContextBuilder, tlsConf.getKeyManager());</span>
+      }
+      try {
+<span class="nc" id="L142">        channelBuilder.useTransportSecurity().sslContext(</span>
+<span class="nc" id="L143">            sslContextBuilder.build());</span>
+<span class="nc" id="L144">      } catch (Exception ex) {</span>
+<span class="nc" id="L145">        throw new RuntimeException(ex);</span>
+<span class="nc" id="L146">      }</span>
+<span class="nc" id="L147">    } else {</span>
+<span class="nc" id="L148">      channelBuilder.negotiationType(NegotiationType.PLAINTEXT);</span>
+    }
+
+<span class="nc" id="L151">    return channelBuilder.flowControlWindow(flowControlWindow.getSizeInt())</span>
+<span class="nc" id="L152">        .maxInboundMessageSize(maxMessageSize.getSizeInt())</span>
+<span class="nc" id="L153">        .intercept(metricClientInterceptor)</span>
+<span class="nc" id="L154">        .build();</span>
+  }
+
+  String getName() {
+<span class="nc" id="L158">    return name.get();</span>
+  }
+
+  @Override
+  public void close() {
+<span class="nc" id="L163">    Optional.ofNullable(orderedStreamObservers.getAndSet(null)).ifPresent(AsyncStreamObservers::close);</span>
+<span class="nc" id="L164">    Optional.ofNullable(unorderedStreamObservers.getAndSet(null)).ifPresent(AsyncStreamObservers::close);</span>
+<span class="nc" id="L165">    GrpcUtil.shutdownManagedChannel(clientChannel);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">    if (clientChannel != adminChannel) {</span>
+<span class="nc" id="L167">      GrpcUtil.shutdownManagedChannel(adminChannel);</span>
+    }
+<span class="nc" id="L169">    metricClientInterceptor.close();</span>
+<span class="nc" id="L170">  }</span>
+
+  RaftClientReplyProto groupAdd(GroupManagementRequestProto request) throws IOException {
+<span class="nc" id="L173">    return blockingCall(() -&gt; adminBlockingStub</span>
+<span class="nc" id="L174">        .withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L175">        .groupManagement(request));</span>
+  }
+
+  GroupListReplyProto groupList(GroupListRequestProto request) {
+<span class="nc" id="L179">    return adminBlockingStub</span>
+<span class="nc" id="L180">        .withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L181">        .groupList(request);</span>
+  }
+
+  GroupInfoReplyProto groupInfo(GroupInfoRequestProto request) {
+<span class="nc" id="L185">    return adminBlockingStub</span>
+<span class="nc" id="L186">        .withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L187">        .groupInfo(request);</span>
+  }
+
+  RaftClientReplyProto setConfiguration(
+      SetConfigurationRequestProto request) throws IOException {
+<span class="nc" id="L192">    return blockingCall(() -&gt; adminBlockingStub</span>
+<span class="nc" id="L193">        .withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L194">        .setConfiguration(request));</span>
+  }
+
+  RaftClientReplyProto transferLeadership(
+      TransferLeadershipRequestProto request) throws IOException {
+<span class="nc" id="L199">    TimeDuration newDuration = requestTimeoutDuration.add(</span>
+<span class="nc" id="L200">        request.getRpcRequest().getTimeoutMs(), TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L201">    return blockingCall(() -&gt; adminBlockingStub</span>
+<span class="nc" id="L202">        .withDeadlineAfter(newDuration.getDuration(), newDuration.getUnit())</span>
+<span class="nc" id="L203">        .transferLeadership(request));</span>
+  }
+
+  RaftClientReplyProto snapshotManagement(
+      SnapshotManagementRequestProto request) throws IOException {
+<span class="nc" id="L208">    return blockingCall(() -&gt; adminBlockingStub</span>
+<span class="nc" id="L209">        .withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L210">        .snapshotManagement(request));</span>
+  }
+
+  RaftClientReplyProto leaderElectionManagement(
+      LeaderElectionManagementRequestProto request) throws IOException {
+<span class="nc" id="L215">    return blockingCall(() -&gt; adminBlockingStub</span>
+<span class="nc" id="L216">        .withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L217">        .leaderElectionManagement(request));</span>
+  }
+
+  private static RaftClientReplyProto blockingCall(
+      CheckedSupplier&lt;RaftClientReplyProto, StatusRuntimeException&gt; supplier
+      ) throws IOException {
+    try {
+<span class="nc" id="L224">      return supplier.get();</span>
+<span class="nc" id="L225">    } catch (StatusRuntimeException e) {</span>
+<span class="nc" id="L226">      throw GrpcUtil.unwrapException(e);</span>
+    }
+  }
+
+  StreamObserver&lt;RaftClientRequestProto&gt; ordered(StreamObserver&lt;RaftClientReplyProto&gt; responseHandler) {
+<span class="nc" id="L231">    return asyncStub.ordered(responseHandler);</span>
+  }
+
+  StreamObserver&lt;RaftClientRequestProto&gt; unorderedWithTimeout(StreamObserver&lt;RaftClientReplyProto&gt; responseHandler) {
+<span class="nc" id="L235">    return asyncStub.withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L236">        .unordered(responseHandler);</span>
+  }
+
+  AsyncStreamObservers getOrderedStreamObservers() {
+<span class="nc" id="L240">    return orderedStreamObservers.updateAndGet(</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        a -&gt; a != null? a : new AsyncStreamObservers(this::ordered));</span>
+  }
+
+  AsyncStreamObservers getUnorderedAsyncStreamObservers() {
+<span class="nc" id="L245">    return unorderedStreamObservers.updateAndGet(</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        a -&gt; a != null? a : new AsyncStreamObservers(asyncStub::unordered));</span>
+  }
+
+  public RaftPeer getTarget() {
+<span class="nc" id="L250">    return target;</span>
+  }
+
+<span class="nc" id="L253">  class ReplyMap {</span>
+<span class="nc" id="L254">    private final AtomicReference&lt;Map&lt;Long, CompletableFuture&lt;RaftClientReply&gt;&gt;&gt; map</span>
+        = new AtomicReference&lt;&gt;(new ConcurrentHashMap&lt;&gt;());
+
+    // synchronized to avoid putNew after getAndSetNull
+    synchronized CompletableFuture&lt;RaftClientReply&gt; putNew(long callId) {
+<span class="nc" id="L259">      return Optional.ofNullable(map.get())</span>
+<span class="nc" id="L260">          .map(m -&gt; CollectionUtils.putNew(callId, new CompletableFuture&lt;&gt;(), m, this::toString))</span>
+<span class="nc" id="L261">          .orElse(null);</span>
+    }
+
+    Optional&lt;CompletableFuture&lt;RaftClientReply&gt;&gt; remove(long callId) {
+<span class="nc" id="L265">      return Optional.ofNullable(map.get()).map(m -&gt; m.remove(callId));</span>
+    }
+
+    // synchronized to avoid putNew after getAndSetNull
+    synchronized Map&lt;Long, CompletableFuture&lt;RaftClientReply&gt;&gt; getAndSetNull() {
+<span class="nc" id="L270">      return map.getAndSet(null);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L275">      return getName() + &quot;:&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+    }
+  }
+
+  static class RequestStreamer {
+    private final AtomicReference&lt;StreamObserver&lt;RaftClientRequestProto&gt;&gt; streamObserver;
+
+<span class="nc" id="L282">    RequestStreamer(StreamObserver&lt;RaftClientRequestProto&gt; streamObserver) {</span>
+<span class="nc" id="L283">      this.streamObserver = new AtomicReference&lt;&gt;(streamObserver);</span>
+<span class="nc" id="L284">    }</span>
+
+    synchronized boolean onNext(RaftClientRequestProto request) {
+<span class="nc" id="L287">      final StreamObserver&lt;RaftClientRequestProto&gt; s = streamObserver.get();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">      if (s != null) {</span>
+<span class="nc" id="L289">        s.onNext(request);</span>
+<span class="nc" id="L290">        return true;</span>
+      }
+<span class="nc" id="L292">      return false;</span>
+    }
+
+    synchronized void onCompleted() {
+<span class="nc" id="L296">      final StreamObserver&lt;RaftClientRequestProto&gt; s = streamObserver.getAndSet(null);</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">      if (s != null) {</span>
+<span class="nc" id="L298">        s.onCompleted();</span>
+      }
+<span class="nc" id="L300">    }</span>
+  }
+
+  class AsyncStreamObservers {
+    /** Request map: callId -&gt; future */
+<span class="nc" id="L305">    private final ReplyMap replies = new ReplyMap();</span>
+
+<span class="nc" id="L307">    private final StreamObserver&lt;RaftClientReplyProto&gt; replyStreamObserver</span>
+<span class="nc" id="L308">        = new StreamObserver&lt;RaftClientReplyProto&gt;() {</span>
+      @Override
+      public void onNext(RaftClientReplyProto proto) {
+<span class="nc" id="L311">        final long callId = proto.getRpcReply().getCallId();</span>
+        try {
+<span class="nc" id="L313">          final RaftClientReply reply = ClientProtoUtils.toRaftClientReply(proto);</span>
+<span class="nc" id="L314">          LOG.trace(&quot;{}: receive {}&quot;, getName(), reply);</span>
+<span class="nc" id="L315">          final NotLeaderException nle = reply.getNotLeaderException();</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">          if (nle != null) {</span>
+<span class="nc" id="L317">            completeReplyExceptionally(nle, NotLeaderException.class.getName());</span>
+<span class="nc" id="L318">            return;</span>
+          }
+<span class="nc" id="L320">          final LeaderNotReadyException lnre = reply.getLeaderNotReadyException();</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">          if (lnre != null) {</span>
+<span class="nc" id="L322">            completeReplyExceptionally(lnre, LeaderNotReadyException.class.getName());</span>
+<span class="nc" id="L323">            return;</span>
+          }
+<span class="nc" id="L325">          handleReplyFuture(callId, f -&gt; f.complete(reply));</span>
+<span class="nc" id="L326">        } catch (Exception e) {</span>
+<span class="nc" id="L327">          handleReplyFuture(callId, f -&gt; f.completeExceptionally(e));</span>
+<span class="nc" id="L328">        }</span>
+<span class="nc" id="L329">      }</span>
+
+      @Override
+      public void onError(Throwable t) {
+<span class="nc" id="L333">        final IOException ioe = GrpcUtil.unwrapIOException(t);</span>
+<span class="nc" id="L334">        completeReplyExceptionally(ioe, &quot;onError&quot;);</span>
+<span class="nc" id="L335">      }</span>
+
+      @Override
+      public void onCompleted() {
+<span class="nc" id="L339">        completeReplyExceptionally(null, &quot;completed&quot;);</span>
+<span class="nc" id="L340">      }</span>
+    };
+    private final RequestStreamer requestStreamer;
+
+<span class="nc" id="L344">    AsyncStreamObservers(Function&lt;StreamObserver&lt;RaftClientReplyProto&gt;, StreamObserver&lt;RaftClientRequestProto&gt;&gt; f) {</span>
+<span class="nc" id="L345">      this.requestStreamer = new RequestStreamer(f.apply(replyStreamObserver));</span>
+<span class="nc" id="L346">    }</span>
+
+    CompletableFuture&lt;RaftClientReply&gt; onNext(RaftClientRequest request) {
+<span class="nc" id="L349">      final long callId = request.getCallId();</span>
+<span class="nc" id="L350">      final CompletableFuture&lt;RaftClientReply&gt; f = replies.putNew(callId);</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">      if (f == null) {</span>
+<span class="nc" id="L352">        return JavaUtils.completeExceptionally(new AlreadyClosedException(getName() + &quot; is closed.&quot;));</span>
+      }
+      try {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">        if (!requestStreamer.onNext(ClientProtoUtils.toRaftClientRequestProto(request))) {</span>
+<span class="nc" id="L356">          return JavaUtils.completeExceptionally(new AlreadyClosedException(getName() + &quot;: the stream is closed.&quot;));</span>
+        }
+<span class="nc" id="L358">      } catch(Exception t) {</span>
+<span class="nc" id="L359">        handleReplyFuture(request.getCallId(), future -&gt; future.completeExceptionally(t));</span>
+<span class="nc" id="L360">        return f;</span>
+<span class="nc" id="L361">      }</span>
+
+<span class="nc bnc" id="L363" title="All 2 branches missed.">      if (RaftClientRequestProto.TypeCase.WATCH.equals(request.getType().getTypeCase())) {</span>
+<span class="nc" id="L364">        scheduler.onTimeout(watchRequestTimeoutDuration, () -&gt;</span>
+<span class="nc" id="L365">                timeoutCheck(callId, watchRequestTimeoutDuration), LOG,</span>
+<span class="nc" id="L366">            () -&gt; &quot;Timeout check failed for client request #&quot; + callId);</span>
+      } else {
+<span class="nc" id="L368">        scheduler.onTimeout(requestTimeoutDuration,</span>
+<span class="nc" id="L369">            () -&gt; timeoutCheck(callId, requestTimeoutDuration), LOG,</span>
+<span class="nc" id="L370">            () -&gt; &quot;Timeout check failed for client request #&quot; + callId);</span>
+      }
+<span class="nc" id="L372">      return f;</span>
+    }
+
+    private void timeoutCheck(long callId, TimeDuration timeOutDuration) {
+<span class="nc" id="L376">      handleReplyFuture(callId, f -&gt; f.completeExceptionally(</span>
+<span class="nc" id="L377">          new TimeoutIOException(getName() + &quot; request #&quot; + callId + &quot; timeout &quot; + timeOutDuration)));</span>
+<span class="nc" id="L378">    }</span>
+
+    private void handleReplyFuture(long callId, Consumer&lt;CompletableFuture&lt;RaftClientReply&gt;&gt; handler) {
+<span class="nc" id="L381">      replies.remove(callId).ifPresent(handler);</span>
+<span class="nc" id="L382">    }</span>
+
+    private void close() {
+<span class="nc" id="L385">      requestStreamer.onCompleted();</span>
+<span class="nc" id="L386">      completeReplyExceptionally(null, &quot;close&quot;);</span>
+<span class="nc" id="L387">    }</span>
+
+    private void completeReplyExceptionally(Throwable t, String event) {
+<span class="nc" id="L390">      final Map&lt;Long, CompletableFuture&lt;RaftClientReply&gt;&gt; map = replies.getAndSetNull();</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">      if (map == null) {</span>
+<span class="nc" id="L392">        return;</span>
+      }
+<span class="nc bnc" id="L394" title="All 2 branches missed.">      for (Map.Entry&lt;Long, CompletableFuture&lt;RaftClientReply&gt;&gt; entry : map.entrySet()) {</span>
+<span class="nc" id="L395">        final CompletableFuture&lt;RaftClientReply&gt; f = entry.getValue();</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">        if (!f.isDone()) {</span>
+<span class="nc bnc" id="L397" title="All 2 branches missed.">          f.completeExceptionally(t != null? t</span>
+<span class="nc" id="L398">              : new AlreadyClosedException(getName() + &quot;: Stream &quot; + event</span>
+<span class="nc" id="L399">                  + &quot;: no reply for async request cid=&quot; + entry.getKey()));</span>
+        }
+<span class="nc" id="L401">      }</span>
+<span class="nc" id="L402">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

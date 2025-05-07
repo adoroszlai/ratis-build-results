@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemoizedCheckedSupplier.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">MemoizedCheckedSupplier.java</span></div><h1>MemoizedCheckedSupplier.java</h1><pre class="source lang-java linenums">/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedSupplier;
+
+import java.util.Objects;
+
+/**
+ * A memoized supplier is a {@link CheckedSupplier}
+ * which gets a value by invoking its initializer once.
+ * and then keeps returning the same value as its supplied results.
+ *
+ * This class is thread safe.
+ *
+ * @param &lt;RETURN&gt; The return type of the supplier.
+ * @param &lt;THROW&gt; The throwable type of the supplier.
+ */
+public final class MemoizedCheckedSupplier&lt;RETURN, THROW extends Throwable&gt;
+    implements CheckedSupplier&lt;RETURN, THROW&gt; {
+  /**
+   * @param supplier to supply at most one non-null value.
+   * @return a {@link MemoizedCheckedSupplier} with the given supplier.
+   */
+  public static &lt;RETURN, THROW extends Throwable&gt; MemoizedCheckedSupplier&lt;RETURN, THROW&gt; valueOf(
+      CheckedSupplier&lt;RETURN, THROW&gt; supplier) {
+<span class="nc bnc" id="L42" title="All 2 branches missed.">    return supplier instanceof MemoizedCheckedSupplier ?</span>
+        (MemoizedCheckedSupplier&lt;RETURN, THROW&gt;) supplier : new MemoizedCheckedSupplier&lt;&gt;(supplier);
+  }
+
+  private final CheckedSupplier&lt;RETURN, THROW&gt; initializer;
+
+<span class="nc" id="L48">  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type</span>
+  private volatile RETURN value = null;
+
+  /**
+   * Create a memoized supplier.
+   * @param initializer to supply at most one non-null value.
+   */
+<span class="nc" id="L55">  private MemoizedCheckedSupplier(CheckedSupplier&lt;RETURN, THROW&gt; initializer) {</span>
+<span class="nc" id="L56">    Objects.requireNonNull(initializer, &quot;initializer == null&quot;);</span>
+<span class="nc" id="L57">    this.initializer = initializer;</span>
+<span class="nc" id="L58">  }</span>
+
+  /** @return the lazily initialized object. */
+  @Override
+  public RETURN get() throws THROW {
+<span class="nc" id="L63">    RETURN v = value;</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">    if (v == null) {</span>
+<span class="nc" id="L65">      synchronized (this) {</span>
+<span class="nc" id="L66">        v = value;</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (v == null) {</span>
+<span class="nc" id="L68">          v = value = Objects.requireNonNull(initializer.get(), &quot;initializer.get() returns null&quot;);</span>
+        }
+<span class="nc" id="L70">      }</span>
+    }
+<span class="nc" id="L72">    return v;</span>
+  }
+
+  /**
+   * @return the already initialized object.
+   * @throws NullPointerException if the object is uninitialized.
+   */
+  public RETURN getUnchecked() {
+<span class="nc" id="L80">    return Objects.requireNonNull(value, &quot;value == null&quot;);</span>
+  }
+
+  /** @return is the object initialized? */
+  public boolean isInitialized() {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    return value != null;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc bnc" id="L90" title="All 2 branches missed.">    return isInitialized()? &quot;Memoized:&quot; + value: &quot;UNINITIALIZED&quot;;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TermIndex.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.protocol</a> &gt; <span class="el_source">TermIndex.java</span></div><h1>TermIndex.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.protocol;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.TermIndexProto;
+import org.apache.ratis.server.raftlog.RaftLog;
+
+import java.util.Comparator;
+import java.util.Optional;
+
+/** The term and the log index defined in the Raft consensus algorithm. */
+public interface TermIndex extends Comparable&lt;TermIndex&gt; {
+  /**
+   * The initial value.
+   * When a new Raft group starts,
+   * all the servers has term 0 and index -1 (= {@link RaftLog#INVALID_LOG_INDEX}).
+   * Note that term is incremented during leader election
+   * and index is incremented when writing to the {@link RaftLog}.
+   * The least term and index possibly written to the {@link RaftLog}
+   * are respectively 1 and 0 (= {@link RaftLog#LEAST_VALID_LOG_INDEX}).
+   */
+<span class="nc" id="L38">  TermIndex INITIAL_VALUE = valueOf(0, RaftLog.INVALID_LOG_INDEX);</span>
+
+  /** An empty {@link TermIndex} array. */
+<span class="nc" id="L41">  TermIndex[] EMPTY_ARRAY = {};</span>
+
+  /** @return the term. */
+  long getTerm();
+
+  /** @return the index. */
+  long getIndex();
+
+  /** @return the {@link TermIndexProto}. */
+  default TermIndexProto toProto() {
+<span class="nc" id="L51">    return TermIndexProto.newBuilder()</span>
+<span class="nc" id="L52">        .setTerm(getTerm())</span>
+<span class="nc" id="L53">        .setIndex(getIndex())</span>
+<span class="nc" id="L54">        .build();</span>
+  }
+
+  @Override
+  default int compareTo(TermIndex that) {
+<span class="nc" id="L59">    return Comparator.comparingLong(TermIndex::getTerm)</span>
+<span class="nc" id="L60">        .thenComparingLong(TermIndex::getIndex)</span>
+<span class="nc" id="L61">        .compare(this, that);</span>
+  }
+
+  /** @return a {@link TermIndex} object from the given proto. */
+  static TermIndex valueOf(TermIndexProto proto) {
+<span class="nc" id="L66">    return Optional.ofNullable(proto).map(p -&gt; valueOf(p.getTerm(), p.getIndex())).orElse(null);</span>
+  }
+
+  /** @return a {@link TermIndex} object from the given proto. */
+  static TermIndex valueOf(LogEntryProto proto) {
+<span class="nc" id="L71">    return Optional.ofNullable(proto).map(p -&gt; valueOf(p.getTerm(), p.getIndex())).orElse(null);</span>
+  }
+
+  /** @return a {@link TermIndex} object. */
+  static TermIndex valueOf(long term, long index) {
+<span class="nc" id="L76">    return new TermIndex() {</span>
+      @Override
+      public long getTerm() {
+<span class="nc" id="L79">        return term;</span>
+      }
+
+      @Override
+      public long getIndex() {
+<span class="nc" id="L84">        return index;</span>
+      }
+
+      @Override
+      public boolean equals(Object obj) {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L90">          return true;</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        } else if (!(obj instanceof TermIndex)) {</span>
+<span class="nc" id="L92">          return false;</span>
+        }
+
+<span class="nc" id="L95">        final TermIndex that = (TermIndex) obj;</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        return this.getTerm() == that.getTerm()</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            &amp;&amp; this.getIndex() == that.getIndex();</span>
+      }
+
+      @Override
+      public int hashCode() {
+<span class="nc" id="L102">        return Long.hashCode(term) ^ Long.hashCode(index);</span>
+      }
+
+      private String longToString(long n) {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        return n &gt;= 0L? String.valueOf(n) : &quot;~&quot;;</span>
+      }
+
+      @Override
+      public String toString() {
+<span class="nc" id="L111">        return String.format(&quot;(t:%s, i:%s)&quot;, longToString(term), longToString(index));</span>
+      }
+    };
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

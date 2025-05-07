@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CacheInvalidationPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">CacheInvalidationPolicy.java</span></div><h1>CacheInvalidationPolicy.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.ratis.server.raftlog.segmented.SegmentedRaftLogCache.LogSegmentList;
+import org.apache.ratis.util.AutoCloseableLock;
+
+public interface CacheInvalidationPolicy {
+  /**
+   * Determine which log segments should evict their log entry cache
+   * @param followerNextIndices the next indices of all the follower peers. Null
+   *                            if the local peer is not a leader.
+   * @param safeEvictIndex the index up to which cache can be evicted. This
+   *                       index depends on two factors:
+   *                       1. the largest index belonging to a closed segment
+   *                       2. the latest snapshotIndex
+   *                       Logs with endIndex less than the max of these two
+   *                       indices can be evicted.
+   * @param lastAppliedIndex the last index that has been applied to state machine
+   * @param segments The list of log segments. The segments should be sorted in
+   *                 ascending order according to log index.
+   * @param maxCachedSegments the max number of segments with cached log entries
+   * @return the log segments that should evict cache
+   */
+  List&lt;LogSegment&gt; evict(long[] followerNextIndices, long safeEvictIndex,
+      long lastAppliedIndex, LogSegmentList segments, int maxCachedSegments);
+
+<span class="nc" id="L47">  class CacheInvalidationPolicyDefault implements CacheInvalidationPolicy {</span>
+    @Override
+    public List&lt;LogSegment&gt; evict(long[] followerNextIndices,
+        long safeEvictIndex, long lastAppliedIndex,
+        LogSegmentList segments, final int maxCachedSegments) {
+<span class="nc" id="L52">      try(AutoCloseableLock readLock = segments.readLock()) {</span>
+<span class="nc" id="L53">        return evictImpl(followerNextIndices, safeEvictIndex, lastAppliedIndex, segments);</span>
+      }
+    }
+
+    private List&lt;LogSegment&gt; evictImpl(long[] followerNextIndices,
+        long safeEvictIndex, long lastAppliedIndex,
+        LogSegmentList segments) {
+<span class="nc" id="L60">      List&lt;LogSegment&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L61">      int safeIndex = segments.size() - 1;</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      for (; safeIndex &gt;= 0; safeIndex--) {</span>
+<span class="nc" id="L63">        LogSegment segment = segments.get(safeIndex);</span>
+        // a segment's cache can be invalidated only if it's close and all its
+        // entries have been flushed to the local disk and the local disk
+        // segment is also closed.
+<span class="nc bnc" id="L67" title="All 4 branches missed.">        if (!segment.isOpen() &amp;&amp; segment.getEndIndex() &lt;= safeEvictIndex) {</span>
+<span class="nc" id="L68">          break;</span>
+        }
+      }
+<span class="nc bnc" id="L71" title="All 4 branches missed.">      if (followerNextIndices == null || followerNextIndices.length == 0) {</span>
+        // no followers, determine the eviction based on lastAppliedIndex
+        // first scan from the oldest segment to the one that is right before
+        // lastAppliedIndex. All these segment's cache can be invalidated.
+<span class="nc" id="L75">        int j = 0;</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        for (; j &lt;= safeIndex; j++) {</span>
+<span class="nc" id="L77">          LogSegment segment = segments.get(j);</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">          if (segment.getEndIndex() &gt; lastAppliedIndex) {</span>
+<span class="nc" id="L79">            break;</span>
+          }
+<span class="nc bnc" id="L81" title="All 2 branches missed.">          if (segment.hasCache()) {</span>
+<span class="nc" id="L82">            result.add(segment);</span>
+          }
+        }
+        // if there is no cache invalidation target found, pick a segment that
+        // later (but not now) the state machine will consume
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (result.isEmpty()) {</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">          for (int i = safeIndex; i &gt;= j; i--) {</span>
+<span class="nc" id="L89">            LogSegment s = segments.get(i);</span>
+<span class="nc bnc" id="L90" title="All 4 branches missed.">            if (s.getStartIndex() &gt; lastAppliedIndex &amp;&amp; s.hasCache()) {</span>
+<span class="nc" id="L91">              result.add(s);</span>
+<span class="nc" id="L92">              break;</span>
+            }
+          }
+        }
+<span class="nc" id="L96">      } else {</span>
+        // this peer is the leader with followers. determine the eviction based
+        // on followers' next indices and the local lastAppliedIndex.
+<span class="nc" id="L99">        Arrays.sort(followerNextIndices);</span>
+        // segments covering index minToRead will still be loaded. Thus we first
+        // try to evict cache for segments before minToRead.
+<span class="nc" id="L102">        final long minToRead = Math.min(followerNextIndices[0], lastAppliedIndex);</span>
+<span class="nc" id="L103">        int j = 0;</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        for (; j &lt;= safeIndex; j++) {</span>
+<span class="nc" id="L105">          LogSegment s = segments.get(j);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">          if (s.getEndIndex() &gt;= minToRead) {</span>
+<span class="nc" id="L107">            break;</span>
+          }
+<span class="nc bnc" id="L109" title="All 2 branches missed.">          if (s.hasCache()) {</span>
+<span class="nc" id="L110">            result.add(s);</span>
+          }
+        }
+        // if there is no eviction target, continue the scanning and evict
+        // the one that is not being read currently.
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        if (result.isEmpty()) {</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">          for (; j &lt;= safeIndex; j++) {</span>
+<span class="nc" id="L117">            LogSegment s = segments.get(j);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">            if (Arrays.stream(followerNextIndices).noneMatch(s::containsIndex)</span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">                &amp;&amp; !s.containsIndex(lastAppliedIndex) &amp;&amp; s.hasCache()) {</span>
+<span class="nc" id="L120">              result.add(s);</span>
+<span class="nc" id="L121">              break;</span>
+            }
+          }
+        }
+      }
+<span class="nc" id="L126">      return result;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyServerStreamRpc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty.server</a> &gt; <span class="el_source">NettyServerStreamRpc.java</span></div><h1>NettyServerStreamRpc.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.apache.ratis.netty.server;
+
+import org.apache.ratis.client.DataStreamClient;
+import org.apache.ratis.client.DataStreamOutputRpc;
+import org.apache.ratis.client.impl.DataStreamClientImpl.DataStreamOutputImpl;
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.datastream.impl.DataStreamReplyByteBuffer;
+import org.apache.ratis.datastream.impl.DataStreamRequestByteBuf;
+import org.apache.ratis.netty.NettyConfigKeys;
+import org.apache.ratis.netty.NettyDataStreamUtils;
+import org.apache.ratis.netty.NettyUtils;
+import org.apache.ratis.netty.metrics.NettyServerStreamRpcMetrics;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.DataStreamPacket;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.security.TlsConf;
+import org.apache.ratis.server.DataStreamServerRpc;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.thirdparty.io.netty.bootstrap.ServerBootstrap;
+import org.apache.ratis.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelFuture;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelHandler;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelHandlerContext;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInboundHandler;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInboundHandlerAdapter;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelInitializer;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelOption;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelPipeline;
+import org.apache.ratis.thirdparty.io.netty.channel.EventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.ByteToMessageDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.MessageToMessageEncoder;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LogLevel;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LoggingHandler;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.ratis.util.ConcurrentUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.PeerProxyMap;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.UncheckedAutoCloseable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+public class NettyServerStreamRpc implements DataStreamServerRpc {
+<span class="nc" id="L80">  public static final Logger LOG = LoggerFactory.getLogger(NettyServerStreamRpc.class);</span>
+
+  /** Proxies to other peers. */
+  static class Proxies {
+    private final PeerProxyMap&lt;DataStreamClient&gt; map;
+
+<span class="nc" id="L86">    Proxies(PeerProxyMap&lt;DataStreamClient&gt; map) {</span>
+<span class="nc" id="L87">      this.map = map;</span>
+<span class="nc" id="L88">    }</span>
+
+    void addPeers(Collection&lt;RaftPeer&gt; newPeers) {
+      // add to the map first in order to preserve the invariant.
+<span class="nc" id="L92">      map.addRaftPeers(newPeers);</span>
+<span class="nc" id="L93">    }</span>
+
+    Set&lt;DataStreamOutputImpl&gt; getDataStreamOutput(RaftClientRequest request, Set&lt;RaftPeer&gt; peers) throws IOException {
+<span class="nc" id="L96">      final Set&lt;DataStreamOutputImpl&gt; outs = new HashSet&lt;&gt;();</span>
+      try {
+<span class="nc" id="L98">        getDataStreamOutput(request, peers, outs);</span>
+<span class="nc" id="L99">      } catch (IOException e) {</span>
+<span class="nc" id="L100">        outs.forEach(DataStreamOutputRpc::closeAsync);</span>
+<span class="nc" id="L101">        throw e;</span>
+<span class="nc" id="L102">      }</span>
+<span class="nc" id="L103">      return outs;</span>
+    }
+
+    private void getDataStreamOutput(RaftClientRequest request, Set&lt;RaftPeer&gt; peers, Set&lt;DataStreamOutputImpl&gt; outs)
+        throws IOException {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">      for (RaftPeer peer : peers) {</span>
+        try {
+<span class="nc" id="L110">          outs.add((DataStreamOutputImpl) map.computeIfAbsent(peer).get().stream(request));</span>
+<span class="nc" id="L111">        } catch (IOException e) {</span>
+<span class="nc" id="L112">          map.handleException(peer.getId(), e, true);</span>
+<span class="nc" id="L113">          throw new IOException(map.getName() + &quot;: Failed to getDataStreamOutput for &quot; + peer, e);</span>
+<span class="nc" id="L114">        }</span>
+<span class="nc" id="L115">      }</span>
+<span class="nc" id="L116">    }</span>
+
+    void close() {
+<span class="nc" id="L119">      map.close();</span>
+<span class="nc" id="L120">    }</span>
+  }
+
+  static class ProxiesPool {
+    private final List&lt;Proxies&gt; list;
+
+<span class="nc" id="L126">    ProxiesPool(String name, RaftProperties properties, Parameters parameters) {</span>
+<span class="nc" id="L127">      final int clientPoolSize = RaftServerConfigKeys.DataStream.clientPoolSize(properties);</span>
+<span class="nc" id="L128">      final List&lt;Proxies&gt; proxies = new ArrayList&lt;&gt;(clientPoolSize);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      for (int i = 0; i &lt; clientPoolSize; i++) {</span>
+<span class="nc" id="L130">        proxies.add(new Proxies(new PeerProxyMap&lt;&gt;(name, peer -&gt; newClient(peer, properties, parameters))));</span>
+      }
+<span class="nc" id="L132">      this.list = Collections.unmodifiableList(proxies);</span>
+<span class="nc" id="L133">    }</span>
+
+    void addRaftPeers(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="nc" id="L136">      list.forEach(proxy -&gt; proxy.addPeers(newPeers));</span>
+<span class="nc" id="L137">    }</span>
+
+    Proxies get(DataStreamPacket p) {
+<span class="nc" id="L140">      final long hash = Integer.toUnsignedLong(Objects.hash(p.getClientId(), p.getStreamId()));</span>
+<span class="nc" id="L141">      return list.get(Math.toIntExact(hash % list.size()));</span>
+    }
+
+    void close() {
+<span class="nc" id="L145">      list.forEach(Proxies::close);</span>
+<span class="nc" id="L146">    }</span>
+  }
+
+  private final String name;
+  private final EventLoopGroup bossGroup;
+  private final EventLoopGroup workerGroup;
+  private final ChannelFuture channelFuture;
+
+  private final DataStreamManagement requests;
+  private final ProxiesPool proxies;
+
+  private final NettyServerStreamRpcMetrics metrics;
+
+  private final TimeDuration channelInactiveGracePeriod;
+
+<span class="nc" id="L161">  public NettyServerStreamRpc(RaftServer server, Parameters parameters) {</span>
+<span class="nc" id="L162">    this.name = server.getId() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L163">    this.metrics = new NettyServerStreamRpcMetrics(this.name);</span>
+<span class="nc" id="L164">    this.requests = new DataStreamManagement(server, metrics);</span>
+
+<span class="nc" id="L166">    final RaftProperties properties = server.getProperties();</span>
+
+<span class="nc" id="L168">    this.channelInactiveGracePeriod = NettyConfigKeys.DataStream.Server</span>
+<span class="nc" id="L169">        .channelInactiveGracePeriod(properties);</span>
+
+<span class="nc" id="L171">    this.proxies = new ProxiesPool(name, properties, parameters);</span>
+
+<span class="nc" id="L173">    final boolean useEpoll = NettyConfigKeys.DataStream.Server.useEpoll(properties);</span>
+<span class="nc" id="L174">    this.bossGroup = NettyUtils.newEventLoopGroup(name + &quot;-bossGroup&quot;,</span>
+<span class="nc" id="L175">        NettyConfigKeys.DataStream.Server.bossGroupSize(properties), useEpoll);</span>
+<span class="nc" id="L176">    this.workerGroup = NettyUtils.newEventLoopGroup(name + &quot;-workerGroup&quot;,</span>
+<span class="nc" id="L177">        NettyConfigKeys.DataStream.Server.workerGroupSize(properties), useEpoll);</span>
+
+<span class="nc" id="L179">    final TlsConf tlsConf = NettyConfigKeys.DataStream.Server.tlsConf(parameters);</span>
+<span class="nc" id="L180">    final SslContext sslContext = NettyUtils.buildSslContextForServer(tlsConf);</span>
+<span class="nc" id="L181">    final String host = NettyConfigKeys.DataStream.host(server.getProperties());</span>
+<span class="nc" id="L182">    final int port = NettyConfigKeys.DataStream.port(properties);</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">    InetSocketAddress socketAddress =</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            host == null || host.isEmpty() ? new InetSocketAddress(port) : new InetSocketAddress(host, port);</span>
+<span class="nc" id="L185">    this.channelFuture = new ServerBootstrap()</span>
+<span class="nc" id="L186">        .group(bossGroup, workerGroup)</span>
+<span class="nc" id="L187">        .channel(NettyUtils.getServerChannelClass(bossGroup))</span>
+<span class="nc" id="L188">        .handler(new LoggingHandler(LogLevel.INFO))</span>
+<span class="nc" id="L189">        .childHandler(newChannelInitializer(sslContext))</span>
+<span class="nc" id="L190">        .childOption(ChannelOption.SO_KEEPALIVE, true)</span>
+<span class="nc" id="L191">        .childOption(ChannelOption.TCP_NODELAY, true)</span>
+<span class="nc" id="L192">        .bind(socketAddress);</span>
+<span class="nc" id="L193">  }</span>
+
+  static DataStreamClient newClient(RaftPeer peer, RaftProperties properties, Parameters parameters) {
+<span class="nc" id="L196">    return DataStreamClient.newBuilder()</span>
+<span class="nc" id="L197">        .setClientId(ClientId.randomId())</span>
+<span class="nc" id="L198">        .setDataStreamServer(peer)</span>
+<span class="nc" id="L199">        .setProperties(properties)</span>
+<span class="nc" id="L200">        .setParameters(parameters)</span>
+<span class="nc" id="L201">        .build();</span>
+  }
+
+  @Override
+  public void addRaftPeers(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="nc" id="L206">    proxies.addRaftPeers(newPeers);</span>
+<span class="nc" id="L207">  }</span>
+
+<span class="nc" id="L209">  static class RequestRef {</span>
+<span class="nc" id="L210">    private final AtomicReference&lt;DataStreamRequestByteBuf&gt; ref = new AtomicReference&lt;&gt;();</span>
+
+    UncheckedAutoCloseable set(DataStreamRequestByteBuf current) {
+<span class="nc bnc" id="L213" title="All 2 branches missed.">      final DataStreamRequestByteBuf previous = ref.getAndUpdate(p -&gt; p == null ? current : p);</span>
+<span class="nc" id="L214">      Preconditions.assertNull(previous, () -&gt; &quot;previous = &quot; + previous + &quot; != null, current = &quot; + current);</span>
+
+<span class="nc" id="L216">      return () -&gt; Preconditions.assertSame(current, getAndSetNull(), &quot;RequestRef&quot;);</span>
+    }
+
+    DataStreamRequestByteBuf getAndSetNull() {
+<span class="nc" id="L220">      return ref.getAndSet(null);</span>
+    }
+  }
+
+  private ChannelInboundHandler newChannelInboundHandlerAdapter(){
+<span class="nc" id="L225">    return new ChannelInboundHandlerAdapter(){</span>
+<span class="nc" id="L226">      private final RequestRef requestRef = new RequestRef();</span>
+
+      @Override
+      public void channelRead(ChannelHandlerContext ctx, Object msg) {
+<span class="nc" id="L230">        metrics.onRequestCreate(NettyServerStreamRpcMetrics.RequestType.CHANNEL_READ);</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (!(msg instanceof DataStreamRequestByteBuf)) {</span>
+<span class="nc" id="L232">          LOG.error(&quot;Unexpected message class {}, ignoring ...&quot;, msg.getClass().getName());</span>
+<span class="nc" id="L233">          return;</span>
+        }
+
+<span class="nc" id="L236">        final DataStreamRequestByteBuf request = (DataStreamRequestByteBuf)msg;</span>
+<span class="nc" id="L237">        try(UncheckedAutoCloseable autoReset = requestRef.set(request)) {</span>
+<span class="nc" id="L238">          requests.read(request, ctx, proxies.get(request)::getDataStreamOutput);</span>
+        }
+<span class="nc" id="L240">      }</span>
+
+      @Override
+      public void channelInactive(ChannelHandlerContext ctx) {
+<span class="nc" id="L244">        requests.cleanUpOnChannelInactive(ctx.channel().id(), channelInactiveGracePeriod);</span>
+<span class="nc" id="L245">      }</span>
+
+      @Override
+      public void exceptionCaught(ChannelHandlerContext ctx, Throwable throwable) {
+<span class="nc" id="L249">        Optional.ofNullable(requestRef.getAndSetNull())</span>
+<span class="nc" id="L250">            .ifPresent(request -&gt; requests.replyDataStreamException(throwable, request, ctx));</span>
+<span class="nc" id="L251">      }</span>
+    };
+  }
+
+  private ChannelInitializer&lt;SocketChannel&gt; newChannelInitializer(SslContext sslContext){
+<span class="nc" id="L256">    return new ChannelInitializer&lt;SocketChannel&gt;(){</span>
+      @Override
+      public void initChannel(SocketChannel ch) {
+<span class="nc" id="L259">        ChannelPipeline p = ch.pipeline();</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (sslContext != null) {</span>
+<span class="nc" id="L261">          p.addLast(&quot;ssl&quot;, sslContext.newHandler(ch.alloc()));</span>
+        }
+<span class="nc" id="L263">        p.addLast(newDecoder());</span>
+<span class="nc" id="L264">        p.addLast(ENCODER);</span>
+<span class="nc" id="L265">        p.addLast(newChannelInboundHandlerAdapter());</span>
+<span class="nc" id="L266">      }</span>
+    };
+  }
+
+  static ByteToMessageDecoder newDecoder() {
+<span class="nc" id="L271">    return new ByteToMessageDecoder() {</span>
+      {
+<span class="nc" id="L273">        this.setCumulator(ByteToMessageDecoder.COMPOSITE_CUMULATOR);</span>
+<span class="nc" id="L274">      }</span>
+
+      @Override
+      protected void decode(ChannelHandlerContext context, ByteBuf buf, List&lt;Object&gt; out) {
+<span class="nc" id="L278">        Optional.ofNullable(NettyDataStreamUtils.decodeDataStreamRequestByteBuf(buf)).ifPresent(out::add);</span>
+<span class="nc" id="L279">      }</span>
+    };
+  }
+
+<span class="nc" id="L283">  static final MessageToMessageEncoder&lt;DataStreamReplyByteBuffer&gt; ENCODER = new Encoder();</span>
+
+  @ChannelHandler.Sharable
+<span class="nc" id="L286">  static class Encoder extends MessageToMessageEncoder&lt;DataStreamReplyByteBuffer&gt; {</span>
+    @Override
+    protected void encode(ChannelHandlerContext context, DataStreamReplyByteBuffer reply, List&lt;Object&gt; out) {
+<span class="nc" id="L289">      NettyDataStreamUtils.encodeDataStreamReplyByteBuffer(reply, out::add, context.alloc());</span>
+<span class="nc" id="L290">    }</span>
+  }
+
+  @Override
+  public void start() {
+<span class="nc" id="L295">    channelFuture.syncUninterruptibly();</span>
+<span class="nc" id="L296">  }</span>
+
+  @Override
+  public InetSocketAddress getInetSocketAddress() {
+<span class="nc" id="L300">    channelFuture.awaitUninterruptibly();</span>
+<span class="nc" id="L301">    return (InetSocketAddress) channelFuture.channel().localAddress();</span>
+  }
+
+  @Override
+  public void close() {
+    try {
+<span class="nc" id="L307">      proxies.close();</span>
+<span class="nc" id="L308">    } catch (Exception e) {</span>
+<span class="nc" id="L309">      LOG.error(this + &quot;: Failed to close proxies.&quot;, e);</span>
+<span class="nc" id="L310">    }</span>
+
+    try {
+<span class="nc" id="L313">      requests.shutdown();</span>
+<span class="nc" id="L314">    } catch (Exception e) {</span>
+<span class="nc" id="L315">      LOG.error(this + &quot;: Failed to shutdown request service.&quot;, e);</span>
+<span class="nc" id="L316">    }</span>
+
+    try {
+<span class="nc" id="L319">      channelFuture.channel().close().sync();</span>
+<span class="nc" id="L320">      bossGroup.shutdownGracefully(0, 100, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L321">      workerGroup.shutdownGracefully(0, 100, TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L322">      ConcurrentUtils.shutdownAndWait(TimeDuration.ONE_SECOND, bossGroup,</span>
+<span class="nc" id="L323">          timeout -&gt; LOG.warn(&quot;{}: bossGroup shutdown timeout in {}&quot;, this, timeout));</span>
+<span class="nc" id="L324">      ConcurrentUtils.shutdownAndWait(TimeDuration.ONE_SECOND, workerGroup,</span>
+<span class="nc" id="L325">          timeout -&gt; LOG.warn(&quot;{}: workerGroup shutdown timeout in {}&quot;, this, timeout));</span>
+<span class="nc" id="L326">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L327">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L328">      LOG.error(this + &quot;: Interrupted close()&quot;, e);</span>
+<span class="nc" id="L329">    }</span>
+
+<span class="nc" id="L331">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L335">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

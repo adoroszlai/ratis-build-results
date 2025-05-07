@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AwaitForSignal.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">AwaitForSignal.java</span></div><h1>AwaitForSignal.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+/**
+ * This class is a partial implementation of {@link java.util.concurrent.locks.Condition}.
+ * Only some of the await and signal methods are implemented.
+ * &lt;p&gt;
+ * This class is threadsafe.
+ */
+public class AwaitForSignal {
+  private final String name;
+<span class="nc" id="L35">  private final Lock lock = new ReentrantLock();</span>
+<span class="nc" id="L36">  private final Condition condition = lock.newCondition();</span>
+<span class="nc" id="L37">  private final AtomicReference&lt;AtomicBoolean&gt; signaled = new AtomicReference&lt;&gt;(new AtomicBoolean());</span>
+
+<span class="nc" id="L39">  public AwaitForSignal(Object name) {</span>
+<span class="nc" id="L40">    this.name = name + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="nc" id="L41">  }</span>
+
+  /** The same as {@link java.util.concurrent.locks.Condition#await()} */
+  public void await() throws InterruptedException {
+<span class="nc" id="L45">    lock.lock();</span>
+    try {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">      for (final AtomicBoolean s = signaled.get(); !s.get(); ) {</span>
+<span class="nc" id="L48">        condition.await();</span>
+      }
+    } finally {
+<span class="nc" id="L51">      lock.unlock();</span>
+    }
+<span class="nc" id="L53">  }</span>
+
+  /** The same as {@link java.util.concurrent.locks.Condition#await(long, TimeUnit)} */
+  public boolean await(long time, TimeUnit unit) throws InterruptedException {
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    if (time &lt;= 0) {</span>
+<span class="nc" id="L58">      return false;</span>
+    }
+<span class="nc" id="L60">    lock.lock();</span>
+    try {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      if (signaled.get().get()) {</span>
+<span class="nc" id="L63">        return true;</span>
+      }
+<span class="nc" id="L65">      return condition.await(time, unit);</span>
+    } finally {
+<span class="nc" id="L67">      lock.unlock();</span>
+    }
+  }
+
+  /** The same as {@link java.util.concurrent.locks.Condition#signal()} */
+  public void signal() {
+<span class="nc" id="L73">    lock.lock();</span>
+    try {
+<span class="nc" id="L75">      signaled.getAndSet(new AtomicBoolean()).set(true);</span>
+<span class="nc" id="L76">      condition.signalAll();</span>
+    } finally {
+<span class="nc" id="L78">      lock.unlock();</span>
+    }
+<span class="nc" id="L80">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L84">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
