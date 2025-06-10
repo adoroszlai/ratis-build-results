@@ -1,0 +1,26 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestRaftReconfigurationWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 18, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 106.749 s <<< FAILURE! - in org.apache.ratis.grpc.TestRaftReconfigurationWithGrpc
+org.apache.ratis.grpc.TestRaftReconfigurationWithGrpc.testLeaderElectionWhenChangeFromSingleToHA  Time elapsed: 55.257 s  <<< ERROR!
+java.lang.IllegalStateException: 
+No leader yet : printing ALL groups
+  s0:  RUNNING  FOLLOWER (RUNNING): s0@group-6876B2C99B77:t7, leader=null, voted=s0, raftlog=Memoized:s0@group-6876B2C99B77-SegmentedRaftLog:OPENED:c0:last(t:7, i:6), conf=conf: {index: 4611686018427387903, cur=peers:[s0|localhost:15176, s1|0.0.0.0:15180]|listeners:[], old=peers:[s0|localhost:15176]|listeners:[]}
+  s1:  RUNNING CANDIDATE (CLOSED): s1@group-6876B2C99B77:t2, leader=null, voted=null, raftlog=Memoized:s1@group-6876B2C99B77-SegmentedRaftLog:CLOSED:c-1, conf=conf: {index: -1, cur=peers:[]|listeners:[], old=null}
+	at org.apache.ratis.server.impl.MiniRaftCluster.newIllegalStateExceptionForNoLeaders(MiniRaftCluster.java:586)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$1(RaftTestUtil.java:111)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:620)
+	at org.apache.ratis.server.impl.MiniRaftCluster.getLeader(MiniRaftCluster.java:613)
+	at org.apache.ratis.RaftTestUtil.lambda$waitForLeader$3(RaftTestUtil.java:120)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:118)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:99)
+	at org.apache.ratis.RaftTestUtil.waitForLeader(RaftTestUtil.java:94)
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.lambda$testLeaderElectionWhenChangeFromSingleToHA$2(RaftReconfigurationBaseTest.java:180)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:142)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:120)
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.testLeaderElectionWhenChangeFromSingleToHA(RaftReconfigurationBaseTest.java:159)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+
