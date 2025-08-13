@@ -1,0 +1,23 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestInstallSnapshotNotificationWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 136.179 s <<< FAILURE! - in org.apache.ratis.grpc.TestInstallSnapshotNotificationWithGrpc
+org.apache.ratis.grpc.TestInstallSnapshotNotificationWithGrpc.testInstallSnapshotDuringBootstrap  Time elapsed: 100.047 s  <<< ERROR!
+java.util.concurrent.TimeoutException: testInstallSnapshotDuringBootstrap() timed out after 100 seconds
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	Suppressed: java.io.InterruptedIOException: retry policy=RetryForeverWithSleep(sleepTime = 100ms)
+		at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:138)
+		at org.apache.ratis.client.impl.AdminImpl.setConfiguration(AdminImpl.java:46)
+		at org.apache.ratis.client.api.AdminApi.setConfiguration(AdminApi.java:51)
+		at org.apache.ratis.client.api.AdminApi.setConfiguration(AdminApi.java:45)
+		at org.apache.ratis.server.impl.MiniRaftCluster.setConfiguration(MiniRaftCluster.java:825)
+		at org.apache.ratis.InstallSnapshotNotificationTests.lambda$testInstallSnapshotDuringBootstrap$13(InstallSnapshotNotificationTests.java:564)
+		at org.apache.ratis.server.impl.RaftServerTestUtil.runWithMinorityPeers(RaftServerTestUtil.java:231)
+		at org.apache.ratis.InstallSnapshotNotificationTests.testInstallSnapshotDuringBootstrap(InstallSnapshotNotificationTests.java:563)
+		at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:142)
+		at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:120)
+		at org.apache.ratis.InstallSnapshotNotificationTests.testInstallSnapshotDuringBootstrap(InstallSnapshotNotificationTests.java:523)
+		at java.lang.reflect.Method.invoke(Method.java:498)
+		... 2 more
+
