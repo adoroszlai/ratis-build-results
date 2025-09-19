@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftSnapshotWithNetty
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 108.29 s <<< FAILURE! - in org.apache.ratis.netty.TestRaftSnapshotWithNetty
+org.apache.ratis.netty.TestRaftSnapshotWithNetty.testInstallSnapshotDuringBootstrap  Time elapsed: 100.962 s  <<< ERROR!
+java.util.concurrent.TimeoutException: testInstallSnapshotDuringBootstrap() timed out after 100 seconds
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	at java.util.ArrayList.forEach(ArrayList.java:1259)
+	Suppressed: java.io.InterruptedIOException: retry policy=RetryForeverWithSleep(sleepTime = 100ms)
+		at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:138)
+		at org.apache.ratis.client.impl.AdminImpl.setConfiguration(AdminImpl.java:46)
+		at org.apache.ratis.client.api.AdminApi.setConfiguration(AdminApi.java:51)
+		at org.apache.ratis.client.api.AdminApi.setConfiguration(AdminApi.java:45)
+		at org.apache.ratis.server.impl.MiniRaftCluster.setConfiguration(MiniRaftCluster.java:827)
+		at org.apache.ratis.statemachine.RaftSnapshotBaseTest.lambda$testInstallSnapshotDuringBootstrap$6(RaftSnapshotBaseTest.java:308)
+		at org.apache.ratis.server.impl.RaftServerTestUtil.runWithMinorityPeers(RaftServerTestUtil.java:231)
+		at org.apache.ratis.statemachine.RaftSnapshotBaseTest.testInstallSnapshotDuringBootstrap(RaftSnapshotBaseTest.java:307)
+		at java.lang.reflect.Method.invoke(Method.java:498)
+		... 2 more
+
