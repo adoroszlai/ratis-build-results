@@ -1,0 +1,299 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftAsyncWithNetty
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 10, Errors: 0, Skipped: 0, Time elapsed: 12.58 s <<< FAILURE! -- in org.apache.ratis.netty.TestRaftAsyncWithNetty
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testBasicAppendEntriesAsyncKillLeader -- Time elapsed: 5.617 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.server.impl.MiniRaftCluster.shutdown(MiniRaftCluster.java:819)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:149)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.RaftAsyncTests.runTestBasicAppendEntriesAsync(RaftAsyncTests.java:267)
+	at org.apache.ratis.RaftAsyncTests.testBasicAppendEntriesAsyncKillLeader(RaftAsyncTests.java:278)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: java.lang.AssertionError: Unexpected exit.
+		at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+		at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+		... 3 more
+	Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+		at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+		at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+		at java.base/java.lang.Thread.run(Thread.java:840)
+	Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+		at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+		at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+		at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+		at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+		at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+		at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+		at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+		at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+		at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+		at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+		... 1 more
+Caused by: [CIRCULAR REFERENCE: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3]
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testAppendEntriesTimeout -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testWriteAsyncCustomReplicationLevel -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testWithLoadAsync -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testRequestTimeout -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testAsyncRequestSemaphore -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testBasicAppendEntriesAsync -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testNoRetryWaitOnNotLeaderException -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testRequestAsyncWithRetryFailureAfterInitialMessages -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
+org.apache.ratis.netty.TestRaftAsyncWithNetty.testCheckLeadershipFailure -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Unexpected exit.
+	at org.apache.ratis.util.ExitUtils.assertNotTerminated(ExitUtils.java:109)
+	at org.apache.ratis.BaseTest.assertNoFailures(BaseTest.java:99)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	Suppressed: org.opentest4j.TestAbortedException: Assumption failed: Already exited with org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+		at org.apache.ratis.BaseTest.checkAssumptions(BaseTest.java:89)
+		at org.apache.ratis.BaseTest.setup(BaseTest.java:76)
+		... 3 more
+Caused by: org.apache.ratis.util.ExitUtils$ExitException: Failed to kill/restart server: s3
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:141)
+	at org.apache.ratis.util.ExitUtils.terminate(ExitUtils.java:151)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:111)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+Caused by: java.lang.IllegalStateException: ILLEGAL TRANSITION: In s3-RaftServerProxy, CLOSED -> EXCEPTION
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:210)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:283)
+	at org.apache.ratis.server.impl.RaftServerProxy.start(RaftServerProxy.java:409)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:358)
+	at org.apache.ratis.server.impl.MiniRaftCluster.restartServer(MiniRaftCluster.java:349)
+	at org.apache.ratis.RaftBasicTests.lambda$killAndRestartServer$2(RaftBasicTests.java:108)
+	... 1 more
+
