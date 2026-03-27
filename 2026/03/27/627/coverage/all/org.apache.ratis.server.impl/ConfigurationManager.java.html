@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">ConfigurationManager.java</span></div><h1>ConfigurationManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.RaftConfiguration;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.StringUtils;
+
+import java.util.NavigableMap;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+
+/**
+ * Maintain the mappings between log index and corresponding raft configuration.
+ * Initialized when starting the raft peer. The mappings are loaded from the
+ * raft log, and updated while appending/truncating configuration related log
+ * entries.
+ */
+public class ConfigurationManager {
+  private final RaftPeerId id;
+  private final RaftConfigurationImpl initialConf;
+<span class="fc" id="L42">  private final NavigableMap&lt;Long, RaftConfigurationImpl&gt; configurations = new TreeMap&lt;&gt;();</span>
+  /**
+   * The current raft configuration. If configurations is not empty, should be
+   * the last entry of the map. Otherwise is initialConf.
+   */
+  private RaftConfigurationImpl currentConf;
+  /** Cache the peer corresponding to {@link #id}. */
+  private RaftPeer currentPeer;
+
+<span class="fc" id="L51">  ConfigurationManager(RaftPeerId id, RaftConfigurationImpl initialConf) {</span>
+<span class="fc" id="L52">    this.id = id;</span>
+<span class="fc" id="L53">    this.initialConf = initialConf;</span>
+<span class="fc" id="L54">    setCurrentConf(initialConf);</span>
+<span class="fc" id="L55">  }</span>
+
+  private void setCurrentConf(RaftConfigurationImpl currentConf) {
+<span class="fc" id="L58">    this.currentConf = currentConf;</span>
+<span class="fc" id="L59">    final RaftPeer peer = currentConf.getPeer(id, RaftPeerRole.FOLLOWER, RaftPeerRole.LISTENER);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">    if (peer != null) {</span>
+<span class="fc" id="L61">      this.currentPeer = peer;</span>
+    }
+<span class="fc" id="L63">  }</span>
+
+  synchronized void addConfiguration(RaftConfiguration conf) {
+<span class="fc" id="L66">    final long logIndex = conf.getLogEntryIndex();</span>
+<span class="fc" id="L67">    final RaftConfiguration found = configurations.get(logIndex);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">    if (found != null) {</span>
+<span class="fc" id="L69">      Preconditions.assertTrue(found.equals(conf));</span>
+<span class="fc" id="L70">      return;</span>
+    }
+<span class="fc" id="L72">    addRaftConfigurationImpl(logIndex, (RaftConfigurationImpl) conf);</span>
+<span class="fc" id="L73">  }</span>
+
+  private void addRaftConfigurationImpl(long logIndex, RaftConfigurationImpl conf) {
+<span class="fc" id="L76">    configurations.put(logIndex, conf);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">    if (logIndex == configurations.lastEntry().getKey()) {</span>
+<span class="fc" id="L78">      setCurrentConf(conf);</span>
+    }
+<span class="fc" id="L80">  }</span>
+
+  synchronized RaftConfigurationImpl getCurrent() {
+<span class="fc" id="L83">    return currentConf;</span>
+  }
+
+  synchronized RaftPeer getCurrentPeer() {
+<span class="fc" id="L87">    return currentPeer;</span>
+  }
+
+  /**
+   * Remove all the configurations whose log index is &gt;= the given index.
+   *
+   * @param index The given index. All the configurations whose log index is &gt;=
+   *              this value will be removed.
+   */
+  synchronized void removeConfigurations(long index) {
+    // remove all configurations starting at the index
+<span class="fc" id="L98">    final SortedMap&lt;Long, RaftConfigurationImpl&gt; tail = configurations.tailMap(index);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">    if (tail.isEmpty()) {</span>
+<span class="fc" id="L100">      return;</span>
+    }
+<span class="fc" id="L102">    tail.clear();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">    setCurrentConf(configurations.isEmpty() ? initialConf : configurations.lastEntry().getValue());</span>
+<span class="fc" id="L104">  }</span>
+
+  synchronized int numOfConf() {
+<span class="fc" id="L107">    return 1 + configurations.size();</span>
+  }
+
+  @Override
+  public synchronized String toString() {
+<span class="fc" id="L112">    return JavaUtils.getClassSimpleName(getClass())</span>
+        + &quot;, init=&quot; + initialConf
+<span class="fc" id="L114">        + &quot;, confs=&quot; + StringUtils.map2String(configurations);</span>
+  }
+
+  // TODO: remove Configuration entries after they are committed
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

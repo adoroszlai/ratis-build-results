@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReferenceCountedObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">ReferenceCountedObject.java</span></div><h1>ReferenceCountedObject.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.UncheckedAutoCloseableSupplier;
+
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+
+/**
+ * A reference-counted object can be retained for later use
+ * and then be released for returning the resource.
+ * &lt;p&gt;
+ * - When the object is retained, the reference count is incremented by 1.
+ * &lt;p&gt;
+ * - When the object is released, the reference count is decremented by 1.
+ * &lt;p&gt;
+ * - If the object is retained, it must be released afterward.
+ *   Otherwise, the object will not be returned, and it will cause a resource leak.
+ * &lt;p&gt;
+ * - If the object is retained multiple times,
+ *   it must be released the same number of times.
+ * &lt;p&gt;
+ * - If the object has been retained and then completely released (i.e. the reference count becomes 0),
+ *   it must not be retained/released/accessed anymore since it may have been allocated for other use.
+ *
+ * @param &lt;T&gt; The object type.
+ */
+public interface ReferenceCountedObject&lt;T&gt; {
+  /** @return the object. */
+  T get();
+
+  /**
+   * Retain the object for later use.
+   * The reference count will be increased by 1.
+   * &lt;p&gt;
+   * The {@link #release()} method must be invoked afterward.
+   * Otherwise, the object is not returned, and it will cause a resource leak.
+   *
+   * @return the object.
+   */
+  T retain();
+
+  /**
+   * The same as {@link #retain()} except that this method returns a {@link UncheckedAutoCloseableSupplier}.
+   *
+   * @return a {@link UncheckedAutoCloseableSupplier}
+   *         where {@link java.util.function.Supplier#get()} will return the retained object,
+   *         i.e. the object returned by {@link #retain()},
+   *         and calling {@link UncheckedAutoCloseable#close()} one or more times
+   *         is the same as calling {@link #release()} once (idempotent).
+   */
+  default UncheckedAutoCloseableSupplier&lt;T&gt; retainAndReleaseOnClose() {
+<span class="fc" id="L71">    final T retained = retain();</span>
+<span class="fc" id="L72">    final AtomicBoolean closed = new AtomicBoolean();</span>
+<span class="fc" id="L73">    return new UncheckedAutoCloseableSupplier&lt;T&gt;() {</span>
+      @Override
+      public T get() {
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (closed.get()) {</span>
+<span class="nc" id="L77">          throw new IllegalStateException(&quot;Already closed&quot;);</span>
+        }
+<span class="fc" id="L79">        return retained;</span>
+      }
+
+      @Override
+      public void close() {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (closed.compareAndSet(false, true)) {</span>
+<span class="fc" id="L85">          release();</span>
+        }
+<span class="fc" id="L87">      }</span>
+    };
+  }
+
+  /**
+   * Release the object.
+   * The reference count will be decreased by 1.
+   *
+   * @return true if the object is completely released (i.e. reference count becomes 0); otherwise, return false.
+   */
+  boolean release();
+
+  /** The same as wrap(value, EMPTY, EMPTY), where EMPTY is an empty method. */
+  static &lt;V&gt; ReferenceCountedObject&lt;V&gt; wrap(V value) {
+<span class="fc" id="L101">    return wrap(value, () -&gt; {}, ignored -&gt; {});</span>
+  }
+
+  /**
+   * Wrap the given value as a {@link ReferenceCountedObject}.
+   *
+   * @param value the value being wrapped.
+   * @param retainMethod a method to run when {@link #retain()} is invoked.
+   * @param releaseMethod a method to run when {@link #release()} is invoked,
+   *                      where the method takes a boolean which is the same as the one returned by {@link #release()}.
+   * @param &lt;V&gt; The value type.
+   * @return the wrapped reference-counted object.
+   */
+  static &lt;V&gt; ReferenceCountedObject&lt;V&gt; wrap(V value, Runnable retainMethod, Consumer&lt;Boolean&gt; releaseMethod) {
+<span class="fc" id="L115">    Objects.requireNonNull(value, &quot;value == null&quot;);</span>
+<span class="fc" id="L116">    Objects.requireNonNull(retainMethod, &quot;retainMethod == null&quot;);</span>
+<span class="fc" id="L117">    Objects.requireNonNull(releaseMethod, &quot;releaseMethod == null&quot;);</span>
+
+<span class="fc" id="L119">    return new ReferenceCountedObject&lt;V&gt;() {</span>
+<span class="fc" id="L120">      private final AtomicInteger count = new AtomicInteger();</span>
+
+      @Override
+      public V get() {
+<span class="fc" id="L124">        final int previous = count.get();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (previous &lt; 0) {</span>
+<span class="fc" id="L126">          throw new IllegalStateException(&quot;Failed to get: object has already been completely released.&quot;);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        } else if (previous == 0) {</span>
+<span class="fc" id="L128">          throw new IllegalStateException(&quot;Failed to get: object has not yet been retained.&quot;);</span>
+        }
+<span class="fc" id="L130">        return value;</span>
+      }
+
+      @Override
+      public V retain() {
+        // n &lt;  0: exception
+        // n &gt;= 0: n++
+<span class="fc bfc" id="L137" title="All 4 branches covered.">        if (count.getAndUpdate(n -&gt; n &lt; 0? n : n + 1) &lt; 0) {</span>
+<span class="fc" id="L138">          throw new IllegalStateException(&quot;Failed to retain: object has already been completely released.&quot;);</span>
+        }
+
+<span class="fc" id="L141">        retainMethod.run();</span>
+<span class="fc" id="L142">        return value;</span>
+      }
+
+      @Override
+      public boolean release() {
+        // n &lt;= 0: exception
+        // n &gt;  1: n--
+        // n == 1: n = -1
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        final int previous = count.getAndUpdate(n -&gt; n &lt;= 1? -1: n - 1);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (previous &lt; 0) {</span>
+<span class="fc" id="L152">          throw new IllegalStateException(&quot;Failed to release: object has already been completely released.&quot;);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        } else if (previous == 0) {</span>
+<span class="fc" id="L154">          throw new IllegalStateException(&quot;Failed to release: object has not yet been retained.&quot;);</span>
+        }
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        final boolean completedReleased = previous == 1;</span>
+<span class="fc" id="L157">        releaseMethod.accept(completedReleased);</span>
+<span class="fc" id="L158">        return completedReleased;</span>
+      }
+    };
+  }
+
+  /** The same as wrap(value, retainMethod, ignored -&gt; releaseMethod.run()). */
+  static &lt;V&gt; ReferenceCountedObject&lt;V&gt; wrap(V value, Runnable retainMethod, Runnable releaseMethod) {
+<span class="fc" id="L165">    return wrap(value, retainMethod, ignored -&gt; releaseMethod.run());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataStreamType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.datastream</a> &gt; <span class="el_source">DataStreamType.java</span></div><h1>DataStreamType.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.datastream;
+
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.ReflectionUtils;
+
+/** The type of data stream implementations. */
+public interface DataStreamType {
+  /**
+   * Parse the given string as a {@link SupportedDataStreamType}
+   * or a user-defined {@link DataStreamType}.
+   *
+   * @param dataStreamType The string representation of an {@link DataStreamType}.
+   * @return a {@link SupportedDataStreamType} or a user-defined {@link DataStreamType}.
+   */
+  static DataStreamType valueOf(String dataStreamType) {
+    final Throwable fromSupportedRpcType;
+    try { // Try parsing it as a SupportedRpcType
+<span class="nc" id="L36">      return SupportedDataStreamType.valueOfIgnoreCase(dataStreamType);</span>
+<span class="nc" id="L37">    } catch (Throwable t) {</span>
+<span class="nc" id="L38">      fromSupportedRpcType = t;</span>
+    }
+
+    try {
+      // Try using it as a class name
+<span class="nc" id="L43">      return ReflectionUtils.newInstance(ReflectionUtils.getClass(dataStreamType, DataStreamType.class));</span>
+<span class="nc" id="L44">    } catch(Throwable t) {</span>
+<span class="nc" id="L45">      final String classname = JavaUtils.getClassSimpleName(DataStreamType.class);</span>
+<span class="nc" id="L46">      final IllegalArgumentException iae = new IllegalArgumentException(</span>
+          &quot;Invalid &quot; + classname + &quot;: \&quot;&quot; + dataStreamType + &quot;\&quot; &quot;
+              + &quot; cannot be used as a user-defined &quot; + classname
+<span class="nc" id="L49">              + &quot; and it is not a &quot; + JavaUtils.getClassSimpleName(SupportedDataStreamType.class) + &quot;.&quot;);</span>
+<span class="nc" id="L50">      iae.addSuppressed(t);</span>
+<span class="nc" id="L51">      iae.addSuppressed(fromSupportedRpcType);</span>
+<span class="nc" id="L52">      throw iae;</span>
+    }
+  }
+
+  /** @return the name of the rpc type. */
+  String name();
+
+  /** @return a new client factory created using the given parameters. */
+  DataStreamFactory newClientFactory(Parameters parameters);
+
+  /** @return a new server factory created using the given parameters. */
+  DataStreamFactory newServerFactory(Parameters parameters);
+
+  /** An interface to get {@link DataStreamType}. */
+  interface Get {
+    /** @return the {@link DataStreamType}. */
+    DataStreamType getDataStreamType();
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcStubPool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.server</a> &gt; <span class="el_source">GrpcStubPool.java</span></div><h1>GrpcStubPool.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.server;
+
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.thirdparty.io.grpc.ManagedChannel;
+import org.apache.ratis.thirdparty.io.grpc.netty.NegotiationType;
+import org.apache.ratis.thirdparty.io.grpc.netty.NettyChannelBuilder;
+import org.apache.ratis.thirdparty.io.grpc.stub.AbstractStub;
+import org.apache.ratis.thirdparty.io.netty.channel.ChannelOption;
+import org.apache.ratis.thirdparty.io.netty.channel.WriteBufferWaterMark;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+final class GrpcStubPool&lt;S extends AbstractStub&lt;S&gt;&gt; {
+<span class="nc" id="L42">  public static final Logger LOG = LoggerFactory.getLogger(GrpcStubPool.class);</span>
+
+  static ManagedChannel buildManagedChannel(String address, SslContext sslContext) {
+<span class="nc" id="L45">    NettyChannelBuilder channelBuilder = NettyChannelBuilder.forTarget(address)</span>
+<span class="nc" id="L46">        .keepAliveTime(10, TimeUnit.MINUTES)</span>
+<span class="nc" id="L47">        .keepAliveWithoutCalls(false)</span>
+<span class="nc" id="L48">        .idleTimeout(30, TimeUnit.MINUTES)</span>
+<span class="nc" id="L49">        .withOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(64 &lt;&lt; 10, 128 &lt;&lt; 10));</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">    if (sslContext != null) {</span>
+<span class="nc" id="L51">      LOG.debug(&quot;Setting TLS for {}&quot;, address);</span>
+<span class="nc" id="L52">      channelBuilder.useTransportSecurity().sslContext(sslContext);</span>
+    } else {
+<span class="nc" id="L54">      channelBuilder.negotiationType(NegotiationType.PLAINTEXT);</span>
+    }
+<span class="nc" id="L56">    ManagedChannel ch = channelBuilder.build();</span>
+<span class="nc" id="L57">    ch.getState(true);</span>
+<span class="nc" id="L58">    return ch;</span>
+  }
+
+  static final class Stub&lt;S extends AbstractStub&lt;S&gt;&gt; {
+    private final ManagedChannel ch;
+    private final S stub;
+    private final Semaphore permits;
+
+<span class="nc" id="L66">    Stub(String address, SslContext sslContext, Function&lt;ManagedChannel, S&gt; stubFactory, int maxInflight) {</span>
+<span class="nc" id="L67">      this.ch = buildManagedChannel(address, sslContext);</span>
+<span class="nc" id="L68">      this.stub = stubFactory.apply(ch);</span>
+<span class="nc" id="L69">      this.permits = new Semaphore(maxInflight);</span>
+<span class="nc" id="L70">    }</span>
+
+    S getStub() {
+<span class="nc" id="L73">      return stub;</span>
+    }
+
+    void release() {
+<span class="nc" id="L77">      permits.release();</span>
+<span class="nc" id="L78">    }</span>
+
+    void shutdown() {
+<span class="nc" id="L81">      GrpcUtil.shutdownManagedChannel(ch);</span>
+<span class="nc" id="L82">    }</span>
+  }
+
+  private final List&lt;MemoizedSupplier&lt;Stub&lt;S&gt;&gt;&gt; pool;
+
+  GrpcStubPool(int connections, String address, SslContext sslContext, Function&lt;ManagedChannel, S&gt; stubFactory,
+<span class="nc" id="L88">               int maxInflightPerConn) {</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    Preconditions.assertTrue(connections &gt; 1, &quot;connections must be &gt; 1&quot;);</span>
+<span class="nc" id="L90">    final List&lt;MemoizedSupplier&lt;Stub&lt;S&gt;&gt;&gt; tmpPool = new ArrayList&lt;&gt;(connections);</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">    for (int i = 0; i &lt; connections; i++) {</span>
+<span class="nc" id="L92">      tmpPool.add(MemoizedSupplier.valueOf(() -&gt; new Stub&lt;&gt;(address, sslContext, stubFactory, maxInflightPerConn)));</span>
+    }
+<span class="nc" id="L94">    this.pool = Collections.unmodifiableList(tmpPool);</span>
+<span class="nc" id="L95">  }</span>
+
+  Stub&lt;S&gt; getStub(int i) {
+<span class="nc" id="L98">    return pool.get(i).get();</span>
+  }
+
+  Stub&lt;S&gt; acquire() throws InterruptedException {
+<span class="nc" id="L102">    final int size = pool.size();</span>
+<span class="nc" id="L103">    final int start = ThreadLocalRandom.current().nextInt(size);</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    for (int k = 0; k &lt; size; k++) {</span>
+<span class="nc" id="L105">      Stub&lt;S&gt; p = getStub((start + k) % size);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (p.permits.tryAcquire()) {</span>
+<span class="nc" id="L107">        return p;</span>
+      }
+    }
+<span class="nc" id="L110">    final Stub&lt;S&gt; p = getStub(start);</span>
+<span class="nc" id="L111">    p.permits.acquire();</span>
+<span class="nc" id="L112">    return p;</span>
+  }
+
+  public void close() {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    for (MemoizedSupplier&lt;Stub&lt;S&gt;&gt; p : pool) {</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">      if (p.isInitialized()) {</span>
+<span class="nc" id="L118">        p.get().shutdown();</span>
+      }
+<span class="nc" id="L120">    }</span>
+<span class="nc" id="L121">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

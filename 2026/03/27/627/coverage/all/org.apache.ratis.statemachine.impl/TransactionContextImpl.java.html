@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransactionContextImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.statemachine.impl</a> &gt; <span class="el_source">TransactionContextImpl.java</span></div><h1>TransactionContextImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.statemachine.impl;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.StateMachineLogEntryProto;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.statemachine.StateMachine;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.Preconditions;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+
+/**
+ * Implementation of {@link TransactionContext}
+ *
+ * This is a private API.  Applications should use {@link TransactionContext} and {@link TransactionContext.Builder}.
+ */
+public class TransactionContextImpl implements TransactionContext {
+  /** The role of the server when this object is created. */
+  private final RaftPeerRole serverRole;
+  /** The {@link StateMachine} that originated the transaction. */
+  private final StateMachine stateMachine;
+
+  /** Original request from the client */
+  private final RaftClientRequest clientRequest;
+
+  /** Exception from the {@link StateMachine} or from the log */
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile Exception exception;
+
+  /** Data from the {@link StateMachine} */
+  private final StateMachineLogEntryProto stateMachineLogEntry;
+
+  /**
+   * Context specific to the state machine.
+   * The {@link StateMachine} can use this object to carry state between
+   * {@link StateMachine#startTransaction(RaftClientRequest)} and
+   * {@link StateMachine#applyTransaction(TransactionContext)}.
+   */
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile Object stateMachineContext;
+
+  /**
+   * Whether to commit the transaction to the RAFT Log.
+   * In some cases the {@link StateMachine} may want to indicate
+   * that the transaction should not be committed
+   */
+<span class="fc" id="L69">  private boolean shouldCommit = true;</span>
+
+  /** Committed LogEntry. */
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile LogEntryProto logEntry;
+
+<span class="fc" id="L75">  private final CompletableFuture&lt;Long&gt; logIndexFuture = new CompletableFuture&lt;&gt;();</span>
+
+  private TransactionContextImpl(RaftPeerRole serverRole, RaftClientRequest clientRequest, StateMachine stateMachine,
+<span class="fc" id="L78">      StateMachineLogEntryProto stateMachineLogEntry) {</span>
+<span class="fc" id="L79">    this.serverRole = serverRole;</span>
+<span class="fc" id="L80">    this.clientRequest = clientRequest;</span>
+<span class="fc" id="L81">    this.stateMachine = stateMachine;</span>
+<span class="fc" id="L82">    this.stateMachineLogEntry = stateMachineLogEntry;</span>
+<span class="fc" id="L83">  }</span>
+
+  /**
+   * Construct a {@link TransactionContext} from a client request.
+   * Used by the state machine to start a transaction
+   * and send the Log entry representing the transaction data
+   * to be applied to the raft log.
+   */
+  TransactionContextImpl(RaftClientRequest clientRequest, StateMachine stateMachine,
+      StateMachineLogEntryProto stateMachineLogEntry, ByteString logData, ByteString stateMachineData,
+      Object stateMachineContext) {
+<span class="fc" id="L94">    this(RaftPeerRole.LEADER, clientRequest, stateMachine,</span>
+<span class="fc" id="L95">        get(stateMachineLogEntry, clientRequest, logData, stateMachineData));</span>
+<span class="fc" id="L96">    this.stateMachineContext = stateMachineContext;</span>
+<span class="fc" id="L97">  }</span>
+
+  private static StateMachineLogEntryProto get(StateMachineLogEntryProto stateMachineLogEntry,
+      RaftClientRequest clientRequest, ByteString logData, ByteString stateMachineData) {
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">    if (stateMachineLogEntry != null) {</span>
+<span class="nc" id="L102">      return stateMachineLogEntry;</span>
+    } else {
+<span class="fc" id="L104">      return LogProtoUtils.toStateMachineLogEntryProto(clientRequest, logData, stateMachineData);</span>
+    }
+  }
+
+  /**
+   * Construct a {@link TransactionContext} from a {@link LogEntryProto}.
+   * Used by followers for applying committed entries to the state machine.
+   * @param logEntry the log entry to be applied
+   */
+  TransactionContextImpl(RaftPeerRole serverRole, StateMachine stateMachine, LogEntryProto logEntry) {
+<span class="fc" id="L114">    this(serverRole, null, stateMachine, logEntry.getStateMachineLogEntry());</span>
+<span class="fc" id="L115">    this.logEntry = logEntry;</span>
+<span class="fc" id="L116">    this.logIndexFuture.complete(logEntry.getIndex());</span>
+<span class="fc" id="L117">  }</span>
+
+  @Override
+  public RaftPeerRole getServerRole() {
+<span class="fc" id="L121">    return serverRole;</span>
+  }
+
+  @Override
+  public RaftClientRequest getClientRequest() {
+<span class="fc" id="L126">    return clientRequest;</span>
+  }
+
+  @Override
+  public StateMachineLogEntryProto getStateMachineLogEntry() {
+<span class="fc" id="L131">    return stateMachineLogEntry;</span>
+  }
+
+  @Override
+  public Exception getException() {
+<span class="fc" id="L136">    return exception;</span>
+  }
+
+  @Override
+  public TransactionContext setStateMachineContext(Object context) {
+<span class="nc" id="L141">    this.stateMachineContext = context;</span>
+<span class="nc" id="L142">    return this;</span>
+  }
+
+  @Override
+  public Object getStateMachineContext() {
+<span class="fc" id="L147">    return stateMachineContext;</span>
+  }
+
+  @Override
+  public LogEntryProto initLogEntry(long term, long index) {
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">    Preconditions.assertTrue(serverRole == RaftPeerRole.LEADER);</span>
+<span class="fc" id="L153">    Preconditions.assertNull(logEntry, &quot;logEntry&quot;);</span>
+<span class="fc" id="L154">    Objects.requireNonNull(stateMachineLogEntry, &quot;stateMachineLogEntry == null&quot;);</span>
+
+<span class="fc" id="L156">    logIndexFuture.complete(index);</span>
+<span class="fc" id="L157">    return logEntry = LogProtoUtils.toLogEntryProto(stateMachineLogEntry, term, index);</span>
+  }
+
+  public CompletableFuture&lt;Long&gt; getLogIndexFuture() {
+<span class="fc" id="L161">    return logIndexFuture;</span>
+  }
+
+  @Override
+  public LogEntryProto getLogEntry() {
+<span class="fc" id="L166">    return logEntry;</span>
+  }
+
+  @Override
+  public TransactionContext setException(Exception ioe) {
+<span class="nc" id="L171">    this.exception = ioe;</span>
+<span class="nc" id="L172">    return this;</span>
+  }
+
+  @Override
+  public TransactionContext setShouldCommit(boolean sCommit) {
+<span class="nc" id="L177">    this.shouldCommit = sCommit;</span>
+<span class="nc" id="L178">    return this;</span>
+  }
+
+  @Override
+  public boolean shouldCommit() {
+    // TODO: Hook this up in the server to bypass the RAFT Log and send back a response to client
+<span class="nc" id="L184">    return this.shouldCommit;</span>
+  }
+
+  @Override
+  public TransactionContext preAppendTransaction() throws IOException {
+<span class="fc" id="L189">    return stateMachine.preAppendTransaction(this);</span>
+  }
+
+  @Override
+  public TransactionContext cancelTransaction() throws IOException {
+    // TODO: This is not called from Raft server / log yet. When an IOException happens, we should
+    // call this to let the SM know that Transaction cannot be synced
+<span class="nc" id="L196">    return stateMachine.cancelTransaction(this);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

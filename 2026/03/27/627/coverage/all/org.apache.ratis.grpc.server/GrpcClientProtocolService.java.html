@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcClientProtocolService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.server</a> &gt; <span class="el_source">GrpcClientProtocolService.java</span></div><h1>GrpcClientProtocolService.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.server;
+
+import org.apache.ratis.client.impl.ClientProtoUtils;
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.protocol.*;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.GroupMismatchException;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.proto.RaftProtos.RaftClientReplyProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.proto.grpc.RaftClientProtocolServiceGrpc.RaftClientProtocolServiceImplBase;
+import org.apache.ratis.util.CollectionUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.SlidingWindow;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+class GrpcClientProtocolService extends RaftClientProtocolServiceImplBase {
+<span class="fc" id="L52">  private static final Logger LOG = LoggerFactory.getLogger(GrpcClientProtocolService.class);</span>
+
+  private static class PendingOrderedRequest implements SlidingWindow.ServerSideRequest&lt;RaftClientReply&gt; {
+    private final RaftClientRequest request;
+<span class="fc" id="L56">    private final AtomicReference&lt;RaftClientReply&gt; reply = new AtomicReference&lt;&gt;();</span>
+
+<span class="fc" id="L58">    PendingOrderedRequest(RaftClientRequest request) {</span>
+<span class="fc" id="L59">      this.request = request;</span>
+<span class="fc" id="L60">    }</span>
+
+    @Override
+    public void fail(Throwable t) {
+<span class="fc" id="L64">      final RaftException e = Preconditions.assertInstanceOf(t, RaftException.class);</span>
+<span class="fc" id="L65">      setReply(RaftClientReply.newBuilder()</span>
+<span class="fc" id="L66">          .setRequest(request)</span>
+<span class="fc" id="L67">          .setException(e)</span>
+<span class="fc" id="L68">          .build());</span>
+<span class="fc" id="L69">    }</span>
+
+    @Override
+    public boolean hasReply() {
+<span class="fc bfc" id="L73" title="All 4 branches covered.">      return getReply() != null || this == COMPLETED;</span>
+    }
+
+    @Override
+    public void setReply(RaftClientReply r) {
+<span class="fc" id="L78">      final boolean set = reply.compareAndSet(null, r);</span>
+<span class="pc" id="L79">      Preconditions.assertTrue(set, () -&gt; &quot;Reply is already set: request=&quot; + request + &quot;, reply=&quot; + reply);</span>
+<span class="fc" id="L80">    }</span>
+
+    RaftClientReply getReply() {
+<span class="fc" id="L83">      return reply.get();</span>
+    }
+
+    RaftClientRequest getRequest() {
+<span class="fc" id="L87">      return request;</span>
+    }
+
+    @Override
+    public long getSeqNum() {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">      return request != null? request.getSlidingWindowEntry().getSeqNum(): Long.MAX_VALUE;</span>
+    }
+
+    @Override
+    public boolean isFirstRequest() {
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">      return request != null &amp;&amp; request.getSlidingWindowEntry().getIsFirst();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">      return request != null? getSeqNum() + &quot;:&quot; + reply: &quot;COMPLETED&quot;;</span>
+    }
+  }
+<span class="fc" id="L105">  private static final PendingOrderedRequest COMPLETED = new PendingOrderedRequest(null);</span>
+
+<span class="fc" id="L107">  static class OrderedStreamObservers {</span>
+<span class="fc" id="L108">    private final Map&lt;Integer, OrderedRequestStreamObserver&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+
+    void putNew(OrderedRequestStreamObserver so) {
+<span class="pc" id="L111">      CollectionUtils.putNew(so.getId(), so, map, () -&gt; JavaUtils.getClassSimpleName(getClass()));</span>
+<span class="fc" id="L112">    }</span>
+
+    void removeExisting(OrderedRequestStreamObserver so) {
+<span class="pc" id="L115">      CollectionUtils.removeExisting(so.getId(), so, map, () -&gt; JavaUtils.getClassSimpleName(getClass()));</span>
+<span class="fc" id="L116">    }</span>
+
+    void closeAllExisting(RaftGroupId groupId) {
+      // Iteration not synchronized:
+      // Okay if an existing object is removed by another mean during the iteration since it must be already closed.
+      // Also okay if a new object is added during the iteration since this method closes only the existing objects.
+<span class="fc bfc" id="L122" title="All 2 branches covered.">      for(Iterator&lt;Map.Entry&lt;Integer, OrderedRequestStreamObserver&gt;&gt; i = map.entrySet().iterator(); i.hasNext(); ) {</span>
+<span class="fc" id="L123">        final OrderedRequestStreamObserver so = i.next().getValue();</span>
+<span class="fc" id="L124">        final RaftGroupId gid = so.getGroupId();</span>
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">        if (gid == null || gid.equals(groupId)) {</span>
+<span class="fc" id="L126">          so.close(true);</span>
+<span class="fc" id="L127">          i.remove();</span>
+        }
+<span class="fc" id="L129">      }</span>
+<span class="fc" id="L130">    }</span>
+  }
+
+  private final Supplier&lt;RaftPeerId&gt; idSupplier;
+  private final RaftClientAsynchronousProtocol protocol;
+  private final ExecutorService executor;
+
+<span class="fc" id="L137">  private final OrderedStreamObservers orderedStreamObservers = new OrderedStreamObservers();</span>
+
+  GrpcClientProtocolService(Supplier&lt;RaftPeerId&gt; idSupplier, RaftClientAsynchronousProtocol protocol,
+<span class="fc" id="L140">      ExecutorService executor) {</span>
+<span class="fc" id="L141">    this.idSupplier = idSupplier;</span>
+<span class="fc" id="L142">    this.protocol = protocol;</span>
+<span class="fc" id="L143">    this.executor = executor;</span>
+<span class="fc" id="L144">  }</span>
+
+  RaftPeerId getId() {
+<span class="fc" id="L147">    return idSupplier.get();</span>
+  }
+
+  @Override
+  public StreamObserver&lt;RaftClientRequestProto&gt; ordered(StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="fc" id="L152">    final OrderedRequestStreamObserver so = new OrderedRequestStreamObserver(responseObserver);</span>
+<span class="fc" id="L153">    orderedStreamObservers.putNew(so);</span>
+<span class="fc" id="L154">    return so;</span>
+  }
+
+  void closeAllOrderedRequestStreamObservers(RaftGroupId groupId) {
+<span class="fc" id="L158">    LOG.debug(&quot;{}: closeAllOrderedRequestStreamObservers&quot;, getId());</span>
+<span class="fc" id="L159">    orderedStreamObservers.closeAllExisting(groupId);</span>
+<span class="fc" id="L160">  }</span>
+
+  @Override
+  public StreamObserver&lt;RaftClientRequestProto&gt; unordered(StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {
+<span class="fc" id="L164">    return new UnorderedRequestStreamObserver(responseObserver);</span>
+  }
+
+<span class="fc" id="L167">  private final AtomicInteger streamCount = new AtomicInteger();</span>
+
+  private abstract class RequestStreamObserver implements StreamObserver&lt;RaftClientRequestProto&gt; {
+<span class="fc" id="L170">    private final int id = streamCount.getAndIncrement();</span>
+<span class="fc" id="L171">    private final String name = getId() + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass()) + id;</span>
+    private final StreamObserver&lt;RaftClientReplyProto&gt; responseObserver;
+<span class="fc" id="L173">    private final AtomicBoolean isClosed = new AtomicBoolean();</span>
+
+<span class="fc" id="L175">    RequestStreamObserver(StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {</span>
+<span class="fc" id="L176">      LOG.debug(&quot;new {}&quot;, name);</span>
+<span class="fc" id="L177">      this.responseObserver = responseObserver;</span>
+<span class="fc" id="L178">    }</span>
+
+    int getId() {
+<span class="fc" id="L181">      return id;</span>
+    }
+
+    String getName() {
+<span class="fc" id="L185">      return name;</span>
+    }
+
+    synchronized void responseNext(RaftClientReplyProto reply) {
+<span class="fc" id="L189">      responseObserver.onNext(reply);</span>
+<span class="fc" id="L190">    }</span>
+
+    synchronized void responseCompleted() {
+      try {
+<span class="fc" id="L194">        responseObserver.onCompleted();</span>
+<span class="nc" id="L195">      } catch(Exception e) {</span>
+        // response stream may possibly be already closed/failed so that the exception can be safely ignored.
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L198">          LOG.trace(getName() + &quot;: Failed onCompleted, exception is ignored&quot;, e);</span>
+        }
+<span class="fc" id="L200">      }</span>
+<span class="fc" id="L201">    }</span>
+
+    synchronized void responseError(Throwable t) {
+      try {
+<span class="fc" id="L205">        responseObserver.onError(t);</span>
+<span class="nc" id="L206">      } catch(Exception e) {</span>
+        // response stream may possibly be already closed/failed so that the exception can be safely ignored.
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L209">          LOG.trace(getName() + &quot;: Failed onError, exception is ignored&quot;, e);</span>
+        }
+<span class="fc" id="L211">      }</span>
+<span class="fc" id="L212">    }</span>
+
+
+    boolean setClose() {
+<span class="fc" id="L216">      return isClosed.compareAndSet(false, true);</span>
+    }
+
+    boolean isClosed() {
+<span class="fc" id="L220">      return isClosed.get();</span>
+    }
+
+    CompletableFuture&lt;Void&gt; processClientRequest(RaftClientRequest request, Consumer&lt;RaftClientReply&gt; replyHandler) {
+      try {
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">        final String errMsg = LOG.isDebugEnabled() ? &quot;processClientRequest for &quot; + request : &quot;&quot;;</span>
+<span class="fc" id="L226">        return protocol.submitClientRequestAsync(request</span>
+<span class="fc" id="L227">        ).thenAcceptAsync(replyHandler, executor</span>
+<span class="fc" id="L228">        ).exceptionally(exception -&gt; {</span>
+          // TODO: the exception may be from either raft or state machine.
+          // Currently we skip all the following responses when getting an
+          // exception from the state machine.
+<span class="pc" id="L232">          responseError(exception, () -&gt; errMsg);</span>
+<span class="fc" id="L233">          return null;</span>
+        });
+<span class="nc" id="L235">      } catch (IOException e) {</span>
+<span class="nc" id="L236">        throw new CompletionException(&quot;Failed processClientRequest for &quot; + request + &quot; in &quot; + name, e);</span>
+      }
+    }
+
+    abstract void processClientRequest(RaftClientRequest request);
+
+    @Override
+    public void onNext(RaftClientRequestProto request) {
+      try {
+<span class="fc" id="L245">        final RaftClientRequest r = ClientProtoUtils.toRaftClientRequest(request);</span>
+<span class="fc" id="L246">        processClientRequest(r);</span>
+<span class="nc" id="L247">      } catch (Exception e) {</span>
+<span class="nc" id="L248">        responseError(e, () -&gt; &quot;onNext for &quot; + ClientProtoUtils.toString(request) + &quot; in &quot; + name);</span>
+<span class="fc" id="L249">      }</span>
+<span class="fc" id="L250">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+      // for now we just log a msg
+<span class="fc" id="L255">      GrpcUtil.warn(LOG, () -&gt; name + &quot;: onError&quot;, t);</span>
+<span class="fc" id="L256">    }</span>
+
+
+    boolean responseError(Throwable t, Supplier&lt;String&gt; message) {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">      if (setClose()) {</span>
+<span class="fc" id="L261">        t = JavaUtils.unwrapCompletionException(t);</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L263">          LOG.debug(name + &quot;: Failed &quot; + message.get(), t);</span>
+        }
+<span class="fc" id="L265">        responseError(GrpcUtil.wrapException(t));</span>
+<span class="fc" id="L266">        return true;</span>
+      }
+<span class="fc" id="L268">      return false;</span>
+    }
+  }
+
+  private class UnorderedRequestStreamObserver extends RequestStreamObserver {
+    /** Map: callId -&gt; futures (seqNum is not set for unordered requests) */
+<span class="fc" id="L274">    private final Map&lt;Long, CompletableFuture&lt;Void&gt;&gt; futures = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L276">    UnorderedRequestStreamObserver(StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {</span>
+<span class="fc" id="L277">      super(responseObserver);</span>
+<span class="fc" id="L278">    }</span>
+
+    @Override
+    void processClientRequest(RaftClientRequest request) {
+<span class="fc" id="L282">      final CompletableFuture&lt;Void&gt; f = processClientRequest(request, reply -&gt; {</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        if (!reply.isSuccess()) {</span>
+<span class="fc" id="L284">          LOG.info(&quot;Failed &quot; + request + &quot;, reply=&quot; + reply);</span>
+        }
+<span class="fc" id="L286">        final RaftClientReplyProto proto = ClientProtoUtils.toRaftClientReplyProto(reply);</span>
+<span class="fc" id="L287">        responseNext(proto);</span>
+<span class="fc" id="L288">      });</span>
+<span class="fc" id="L289">      final long callId = request.getCallId();</span>
+<span class="fc" id="L290">      put(callId, f);</span>
+<span class="fc" id="L291">      f.thenAccept(dummy -&gt; remove(callId));</span>
+<span class="fc" id="L292">    }</span>
+
+    private synchronized void put(long callId, CompletableFuture&lt;Void&gt; f) {
+<span class="fc" id="L295">      futures.put(callId, f);</span>
+<span class="fc" id="L296">    }</span>
+    private synchronized void remove(long callId) {
+<span class="fc" id="L298">      futures.remove(callId);</span>
+<span class="fc" id="L299">    }</span>
+
+    private synchronized CompletableFuture&lt;Void&gt; allOfFutures() {
+<span class="fc" id="L302">      return JavaUtils.allOf(futures.values());</span>
+    }
+
+    @Override
+    public void onCompleted() {
+<span class="fc" id="L307">      allOfFutures().thenAccept(dummy -&gt; {</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (setClose()) {</span>
+<span class="fc" id="L309">          LOG.debug(&quot;{}: close&quot;, getName());</span>
+<span class="fc" id="L310">          responseCompleted();</span>
+        }
+<span class="fc" id="L312">      });</span>
+<span class="fc" id="L313">    }</span>
+  }
+
+  private class OrderedRequestStreamObserver extends RequestStreamObserver {
+<span class="fc" id="L317">    private final SlidingWindow.Server&lt;PendingOrderedRequest, RaftClientReply&gt; slidingWindow</span>
+<span class="fc" id="L318">        = new SlidingWindow.Server&lt;&gt;(getName(), COMPLETED);</span>
+    /** The {@link RaftGroupId} for this observer. */
+<span class="fc" id="L320">    private final AtomicReference&lt;RaftGroupId&gt; groupId = new AtomicReference&lt;&gt;();</span>
+
+<span class="fc" id="L322">    OrderedRequestStreamObserver(StreamObserver&lt;RaftClientReplyProto&gt; responseObserver) {</span>
+<span class="fc" id="L323">      super(responseObserver);</span>
+<span class="fc" id="L324">    }</span>
+
+    RaftGroupId getGroupId() {
+<span class="fc" id="L327">      return groupId.get();</span>
+    }
+
+    void processClientRequest(PendingOrderedRequest pending) {
+<span class="fc" id="L331">      final long seq = pending.getSeqNum();</span>
+<span class="fc" id="L332">      processClientRequest(pending.getRequest(),</span>
+<span class="fc" id="L333">          reply -&gt; slidingWindow.receiveReply(seq, reply, this::sendReply));</span>
+<span class="fc" id="L334">    }</span>
+
+    @Override
+    void processClientRequest(RaftClientRequest r) {
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L339">        final AlreadyClosedException exception = new AlreadyClosedException(getName() + &quot;: the stream is closed&quot;);</span>
+<span class="nc" id="L340">        responseError(exception, () -&gt; &quot;processClientRequest (stream already closed) for &quot; + r);</span>
+<span class="nc" id="L341">        return;</span>
+      }
+
+<span class="fc" id="L344">      final RaftGroupId requestGroupId = r.getRaftGroupId();</span>
+      // use the group id in the first request as the group id of this observer
+<span class="fc bfc" id="L346" title="All 2 branches covered.">      final RaftGroupId updated = groupId.updateAndGet(g -&gt; g != null ? g: requestGroupId);</span>
+<span class="fc" id="L347">      final PendingOrderedRequest pending = new PendingOrderedRequest(r);</span>
+
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">      if (!requestGroupId.equals(updated)) {</span>
+<span class="nc" id="L350">        final GroupMismatchException exception = new GroupMismatchException(getId()</span>
+<span class="nc" id="L351">            + &quot;: The group (&quot; + requestGroupId + &quot;) of &quot; + r.getClientId()</span>
+<span class="nc" id="L352">            + &quot; does not match the group (&quot; + updated + &quot;) of the &quot; + JavaUtils.getClassSimpleName(getClass()));</span>
+<span class="nc" id="L353">        responseError(exception, () -&gt; &quot;processClientRequest (Group mismatched) for &quot; + r);</span>
+<span class="nc" id="L354">        return;</span>
+      }
+
+<span class="fc" id="L357">      slidingWindow.receivedRequest(pending, this::processClientRequest);</span>
+<span class="fc" id="L358">    }</span>
+
+    private void sendReply(PendingOrderedRequest ready) {
+<span class="fc" id="L361">      Preconditions.assertTrue(ready.hasReply());</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">      if (ready == COMPLETED) {</span>
+<span class="fc" id="L363">        close(true);</span>
+      } else {
+<span class="fc" id="L365">        LOG.debug(&quot;{}: sendReply seq={}, {}&quot;, getName(), ready.getSeqNum(), ready.getReply());</span>
+<span class="fc" id="L366">        responseNext(ClientProtoUtils.toRaftClientReplyProto(ready.getReply()));</span>
+      }
+<span class="fc" id="L368">    }</span>
+
+    @Override
+    public void onError(Throwable t) {
+      // for now we just log a msg
+<span class="fc" id="L373">      GrpcUtil.warn(LOG, () -&gt; getName() + &quot;: onError&quot;, t);</span>
+<span class="fc" id="L374">      close(false);</span>
+<span class="fc" id="L375">    }</span>
+
+    @Override
+    public void onCompleted() {
+<span class="fc bfc" id="L379" title="All 2 branches covered.">      if (slidingWindow.endOfRequests(this::sendReply)) {</span>
+<span class="fc" id="L380">        close(true);</span>
+      }
+<span class="fc" id="L382">    }</span>
+
+    private void close(boolean complete) {
+<span class="fc bfc" id="L385" title="All 2 branches covered.">      if (setClose()) {</span>
+<span class="fc" id="L386">        LOG.debug(&quot;{}: close&quot;, getName());</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (complete) {</span>
+<span class="fc" id="L388">          responseCompleted();</span>
+        }
+<span class="fc" id="L390">        cleanup();</span>
+      }
+<span class="fc" id="L392">    }</span>
+
+    private void cleanup() {
+<span class="fc" id="L395">      slidingWindow.close();</span>
+<span class="fc" id="L396">      orderedStreamObservers.removeExisting(this);</span>
+<span class="fc" id="L397">    }</span>
+
+    @Override
+    boolean responseError(Throwable t, Supplier&lt;String&gt; message) {
+<span class="fc bfc" id="L401" title="All 2 branches covered.">      if (super.responseError(t, message)) {</span>
+<span class="fc" id="L402">        cleanup();</span>
+<span class="fc" id="L403">        return true;</span>
+      }
+<span class="fc" id="L405">      return false;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

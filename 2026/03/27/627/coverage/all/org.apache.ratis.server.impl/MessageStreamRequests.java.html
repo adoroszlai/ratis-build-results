@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MessageStreamRequests.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">MessageStreamRequests.java</span></div><h1>MessageStreamRequests.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.proto.RaftProtos.MessageStreamRequestTypeProto;
+import org.apache.ratis.protocol.ClientInvocationId;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.exceptions.StreamException;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+class MessageStreamRequests {
+<span class="fc" id="L36">  public static final Logger LOG = LoggerFactory.getLogger(MessageStreamRequests.class);</span>
+
+  private static class PendingStream {
+    private final ClientInvocationId key;
+<span class="fc" id="L40">    private long nextId = -1;</span>
+<span class="fc" id="L41">    private ByteString bytes = ByteString.EMPTY;</span>
+
+<span class="fc" id="L43">    PendingStream(ClientInvocationId key) {</span>
+<span class="fc" id="L44">      this.key = key;</span>
+<span class="fc" id="L45">    }</span>
+
+    synchronized CompletableFuture&lt;ByteString&gt; append(long messageId, Message message) {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">      if (nextId == -1) {</span>
+<span class="fc" id="L49">        nextId = messageId;</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">      } else if (messageId != nextId) {</span>
+<span class="nc" id="L51">        return JavaUtils.completeExceptionally(new StreamException(</span>
+            &quot;Unexpected message id in &quot; + key + &quot;: messageId = &quot; + messageId + &quot; != nextId = &quot; + nextId));
+      }
+<span class="fc" id="L54">      nextId++;</span>
+<span class="fc" id="L55">      bytes = bytes.concat(message.getContent());</span>
+<span class="fc" id="L56">      return CompletableFuture.completedFuture(bytes);</span>
+    }
+
+    synchronized CompletableFuture&lt;ByteString&gt; getBytes(long messageId, Message message) {
+<span class="fc" id="L60">      return append(messageId, message);</span>
+    }
+  }
+
+<span class="fc" id="L64">  static class StreamMap {</span>
+<span class="fc" id="L65">    private final ConcurrentMap&lt;ClientInvocationId, PendingStream&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+
+    PendingStream computeIfAbsent(ClientInvocationId key) {
+<span class="fc" id="L68">      return map.computeIfAbsent(key, PendingStream::new);</span>
+    }
+
+    PendingStream remove(ClientInvocationId key) {
+<span class="fc" id="L72">      return map.remove(key);</span>
+    }
+
+    void clear() {
+<span class="fc" id="L76">      map.clear();</span>
+<span class="fc" id="L77">    }</span>
+  }
+
+  private final String name;
+<span class="fc" id="L81">  private final StreamMap streams = new StreamMap();</span>
+
+<span class="fc" id="L83">  MessageStreamRequests(Object name) {</span>
+<span class="fc" id="L84">    this.name = name + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="fc" id="L85">  }</span>
+
+  CompletableFuture&lt;?&gt; streamAsync(RaftClientRequest request) {
+<span class="fc" id="L88">    final MessageStreamRequestTypeProto stream = request.getType().getMessageStream();</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">    Preconditions.assertTrue(!stream.getEndOfRequest());</span>
+<span class="fc" id="L90">    final ClientInvocationId key = ClientInvocationId.valueOf(request.getClientId(), stream.getStreamId());</span>
+<span class="fc" id="L91">    final PendingStream pending = streams.computeIfAbsent(key);</span>
+<span class="fc" id="L92">    return pending.append(stream.getMessageId(), request.getMessage());</span>
+  }
+
+  CompletableFuture&lt;ByteString&gt; streamEndOfRequestAsync(RaftClientRequest request) {
+<span class="fc" id="L96">    final MessageStreamRequestTypeProto stream = request.getType().getMessageStream();</span>
+<span class="fc" id="L97">    Preconditions.assertTrue(stream.getEndOfRequest());</span>
+<span class="fc" id="L98">    final ClientInvocationId key = ClientInvocationId.valueOf(request.getClientId(), stream.getStreamId());</span>
+
+<span class="fc" id="L100">    final PendingStream pending = streams.remove(key);</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">    if (pending == null) {</span>
+<span class="nc" id="L102">      return JavaUtils.completeExceptionally(new StreamException(name + &quot;: &quot; + key + &quot; not found&quot;));</span>
+    }
+<span class="fc" id="L104">    return pending.getBytes(stream.getMessageId(), request.getMessage());</span>
+  }
+
+  void clear() {
+<span class="fc" id="L108">    streams.clear();</span>
+<span class="fc" id="L109">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

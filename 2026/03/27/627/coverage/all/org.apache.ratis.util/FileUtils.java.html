@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">FileUtils.java</span></div><h1>FileUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * &lt;p&gt;
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * &lt;p&gt;
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NotDirectoryException;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
+public interface FileUtils {
+<span class="fc" id="L53">  Logger LOG = LoggerFactory.getLogger(FileUtils.class);</span>
+
+  int NUM_ATTEMPTS = 5;
+<span class="fc" id="L56">  TimeDuration SLEEP_TIME = TimeDuration.ONE_SECOND;</span>
+
+  static &lt;T&gt; T attempt(CheckedSupplier&lt;T, IOException&gt; op, Supplier&lt;?&gt; name) throws IOException {
+    try {
+<span class="fc" id="L60">      return JavaUtils.attempt(op, NUM_ATTEMPTS, SLEEP_TIME, name, LOG);</span>
+<span class="nc" id="L61">    } catch (InterruptedException e) {</span>
+<span class="nc" id="L62">      Thread.currentThread().interrupt();</span>
+<span class="nc" id="L63">      throw IOUtils.toInterruptedIOException(&quot;Interrupted &quot; + name.get(), e);</span>
+    }
+  }
+
+  /** @return true iff the given dir is an ancestor of the given sub path.  */
+  static boolean isAncestor(File dir, File sub) throws IOException {
+<span class="fc" id="L69">    Objects.requireNonNull(dir, &quot;dir == null&quot;);</span>
+<span class="fc" id="L70">    Objects.requireNonNull(sub, &quot;sub == null&quot;);</span>
+
+<span class="fc" id="L72">    String dirPath = dir.getCanonicalPath();</span>
+<span class="fc" id="L73">    final String subPath = sub.getCanonicalPath();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">    if (dirPath.equals(subPath)) {</span>
+<span class="fc" id="L75">      return true;</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">    } else if (!dirPath.endsWith(File.separator)) {</span>
+<span class="fc" id="L77">      dirPath += File.separator;</span>
+    }
+<span class="fc" id="L79">    LOG.debug(&quot;dirPath: {}&quot;, dirPath);</span>
+<span class="fc" id="L80">    LOG.debug(&quot;subPath: {}&quot;, subPath);</span>
+<span class="fc" id="L81">    return subPath.startsWith(dirPath);</span>
+  }
+
+  /**
+   * Resolve the full path from the given dir and sub,
+   * where dir is supposed to be an ancestor of the resolved path.
+   *
+   * @return the full path
+   * @throws IOException if the dir is not an ancestor of the resolved path.
+   */
+  static File resolveFullPath(File dir, String sub) throws IOException {
+<span class="fc" id="L92">    final File full = new File(dir, sub);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">    if (!isAncestor(dir, full)) {</span>
+<span class="nc" id="L94">      throw new IOException(&quot;The dir is not an ancestor of the full path: dir=&quot; + dir</span>
+          + &quot;, sub=&quot; + sub + &quot;, full=&quot; + full);
+    }
+<span class="fc" id="L97">    return full;</span>
+  }
+
+  static void truncateFile(File f, long target) throws IOException {
+<span class="fc" id="L101">    final long original = f.length();</span>
+<span class="fc" id="L102">    LogUtils.runAndLog(LOG,</span>
+        () -&gt; {
+<span class="fc" id="L104">          try (FileChannel channel = FileChannel.open(f.toPath(), StandardOpenOption.WRITE)) {</span>
+<span class="fc" id="L105">            channel.truncate(target);</span>
+          }
+<span class="fc" id="L107">        },</span>
+<span class="fc" id="L108">        () -&gt; &quot;FileChannel.truncate &quot; + f + &quot; length: &quot; + original + &quot; -&gt; &quot; + target);</span>
+<span class="fc" id="L109">  }</span>
+
+  static InputStream newInputStream(String s, OpenOption... options) throws IOException {
+<span class="nc" id="L112">    return newInputStream(Paths.get(s), options);</span>
+  }
+
+  static InputStream newInputStream(File f, OpenOption... options) throws IOException {
+<span class="fc" id="L116">    return newInputStream(f.toPath(), options);</span>
+  }
+
+  static InputStream newInputStream(Path p, OpenOption... options) throws IOException {
+<span class="fc" id="L120">    return LogUtils.supplyAndLog(LOG,</span>
+<span class="fc" id="L121">        () -&gt; Files.newInputStream(p, options),</span>
+<span class="fc" id="L122">        () -&gt; &quot;Files.newInputStream &quot; + p + &quot; with options &quot; + Arrays.asList(options));</span>
+  }
+
+  static OutputStream newOutputStream(File f, OpenOption... options) throws IOException {
+<span class="fc" id="L126">    return newOutputStream(f.toPath(), options);</span>
+  }
+
+  static OutputStream newOutputStream(Path p, OpenOption... options) throws IOException {
+<span class="fc" id="L130">    return LogUtils.supplyAndLog(LOG,</span>
+<span class="fc" id="L131">        () -&gt; Files.newOutputStream(p, options),</span>
+<span class="fc" id="L132">        () -&gt; &quot;Files.newOutputStream &quot; + p + &quot; with options &quot; + Arrays.asList(options));</span>
+  }
+
+  static OutputStream newOutputStream(FileChannel channel, boolean forceAtClose) {
+<span class="fc" id="L136">    final byte[] single = {0};</span>
+<span class="fc" id="L137">    return new OutputStream() {</span>
+      @Override
+      public void write(int b) throws IOException {
+<span class="nc" id="L140">        single[0] = (byte) b;</span>
+<span class="nc" id="L141">        write(single);</span>
+<span class="nc" id="L142">      }</span>
+
+      @Override
+      public void write(byte[] b, int off, int len) throws IOException {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for(; len &gt; 0; ) {</span>
+<span class="fc" id="L147">          final int written = channel.write(ByteBuffer.wrap(b, off, len));</span>
+<span class="fc" id="L148">          off += written;</span>
+<span class="fc" id="L149">          len -= written;</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">      }</span>
+
+      @Override
+      public void close() throws IOException {
+<span class="fc" id="L155">        try (FileChannel c = channel) {</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">          if (forceAtClose) {</span>
+<span class="fc" id="L157">            c.force(true);</span>
+          }
+        }
+<span class="fc" id="L160">      }</span>
+    };
+  }
+
+  static OutputStream newOutputStreamForceAtClose(Path p, OpenOption... options) throws IOException {
+<span class="fc" id="L165">    return newOutputStream(newFileChannel(p, options), true);</span>
+  }
+
+  static OutputStream newOutputStreamForceAtClose(File f, OpenOption... options) throws IOException {
+<span class="fc" id="L169">    return newOutputStreamForceAtClose(f.toPath(), options);</span>
+  }
+
+  static FileChannel newFileChannel(File f, OpenOption... options) throws IOException {
+<span class="fc" id="L173">    return newFileChannel(f.toPath(), options);</span>
+  }
+
+  static FileChannel newFileChannel(Path p, OpenOption... options) throws IOException {
+<span class="fc" id="L177">    return LogUtils.supplyAndLog(LOG,</span>
+<span class="fc" id="L178">        () -&gt; FileChannel.open(p, options),</span>
+<span class="fc" id="L179">        () -&gt; &quot;FileChannel.open &quot; + p + &quot; with options &quot; + Arrays.asList(options));</span>
+  }
+
+  static void createDirectories(File dir) throws IOException {
+<span class="fc" id="L183">    createDirectories(dir.toPath());</span>
+<span class="fc" id="L184">  }</span>
+
+  static void createDirectories(Path dir) throws IOException {
+<span class="fc" id="L187">    LogUtils.runAndLog(LOG,</span>
+<span class="fc" id="L188">        () -&gt; Files.createDirectories(dir),</span>
+<span class="fc" id="L189">        () -&gt; &quot;Files.createDirectories &quot; + dir);</span>
+<span class="fc" id="L190">  }</span>
+
+  static void createDirectoriesDeleteExistingNonDirectory(File dir) throws IOException {
+<span class="fc" id="L193">    createDirectoriesDeleteExistingNonDirectory(dir.toPath());</span>
+<span class="fc" id="L194">  }</span>
+
+  static void createDirectoriesDeleteExistingNonDirectory(Path dir) throws IOException {
+    try {
+<span class="fc" id="L198">      createDirectories(dir);</span>
+<span class="nc" id="L199">    } catch (FileAlreadyExistsException e) {</span>
+<span class="nc" id="L200">      LOG.warn(&quot;Failed to create directory &quot; + dir</span>
+          + &quot; since it already exists as a non-directory.  Trying to delete it ...&quot;, e);
+<span class="nc" id="L202">      delete(dir);</span>
+<span class="nc" id="L203">      createDirectories(dir);</span>
+<span class="fc" id="L204">    }</span>
+<span class="fc" id="L205">  }</span>
+
+  static void move(File src, File dst, CopyOption... options) throws IOException {
+<span class="fc" id="L208">    move(src.toPath(), dst.toPath(), options);</span>
+<span class="fc" id="L209">  }</span>
+
+  static void move(Path src, Path dst, CopyOption... options) throws IOException {
+<span class="fc" id="L212">    Objects.requireNonNull(options, &quot;options == null&quot;);</span>
+<span class="fc" id="L213">    final List&lt;CopyOption&gt; original = Arrays.asList(options);</span>
+<span class="fc" id="L214">    final boolean atomicMove = original.contains(StandardCopyOption.ATOMIC_MOVE);</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">    if (atomicMove) {</span>
+<span class="nc" id="L216">      LogUtils.runAndLog(LOG,</span>
+<span class="nc" id="L217">          () -&gt; Files.move(src, dst, options),</span>
+<span class="nc" id="L218">          () -&gt; &quot;Files.move &quot; + src + &quot; to &quot; + dst + &quot; with options &quot; + original);</span>
+<span class="nc" id="L219">      return;</span>
+    }
+
+<span class="fc" id="L222">    final CopyOption[] optionsWithAtomicMove = new CopyOption[options.length + 1];</span>
+<span class="fc" id="L223">    optionsWithAtomicMove[0] = StandardCopyOption.ATOMIC_MOVE;</span>
+<span class="fc" id="L224">    System.arraycopy(options, 0, optionsWithAtomicMove, 1, options.length);</span>
+
+<span class="fc bfc" id="L226" title="All 2 branches covered.">    final Supplier&lt;String&gt; suffix = () -&gt; original.isEmpty() ? &quot;&quot; : &quot; with options &quot; + original;</span>
+    try {
+<span class="fc" id="L228">      LogUtils.runAndLog(LOG,</span>
+<span class="fc" id="L229">          () -&gt; Files.move(src, dst, optionsWithAtomicMove),</span>
+<span class="fc" id="L230">          () -&gt; &quot;Atomic Files.move &quot; + src + &quot; to &quot; + dst + suffix.get());</span>
+<span class="nc" id="L231">    } catch (AtomicMoveNotSupportedException e) {</span>
+      // Fallback to non-atomic move.
+<span class="nc" id="L233">      LogUtils.runAndLog(LOG,</span>
+<span class="nc" id="L234">          () -&gt; Files.move(src, dst, options),</span>
+<span class="nc" id="L235">          () -&gt; &quot;Atomic move not supported. Fallback to Files.move &quot; + src + &quot; to &quot; + dst + suffix.get());</span>
+<span class="fc" id="L236">    }</span>
+<span class="fc" id="L237">  }</span>
+
+  /**
+   * Move src to a new path,
+   * where the new path created by appending the given suffix to the src.
+   *
+   * @return the new file if rename succeeded; otherwise, return null.
+   */
+  static File move(File src, String suffix) throws IOException {
+<span class="fc" id="L246">    final File newFile = new File(src.getPath() + suffix);</span>
+<span class="fc" id="L247">    move(src, newFile);</span>
+<span class="fc" id="L248">    return newFile;</span>
+  }
+
+  /** The same as passing f.toPath() to {@link #delete(Path)}. */
+  static Path deleteFile(File f) throws IOException {
+<span class="fc" id="L253">    final Path path = f.toPath();</span>
+<span class="fc" id="L254">    delete(path);</span>
+<span class="fc" id="L255">    return path;</span>
+  }
+
+  /**
+   * Moves the directory. If any file is locked, the exception is caught
+   * and logged and continues to other files.
+   * @param source
+   * @param dest
+   * @throws IOException
+   */
+  static void moveDirectory(Path source, Path dest) throws IOException {
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">    if (LOG.isTraceEnabled()) {</span>
+<span class="fc" id="L267">      LOG.trace(&quot;moveDirectory source: {} dest: {}&quot;, source, dest);</span>
+    }
+<span class="fc" id="L269">    createDirectories(dest);</span>
+<span class="fc" id="L270">    Files.walkFileTree(source, new SimpleFileVisitor&lt;Path&gt;() {</span>
+      @Override
+      public FileVisitResult preVisitDirectory(Path dir,
+          BasicFileAttributes attrs) throws IOException {
+<span class="fc" id="L274">        Path targetPath = dest.resolve(source.relativize(dir));</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (!Files.exists(targetPath)) {</span>
+<span class="fc" id="L276">          createDirectories(targetPath);</span>
+        }
+<span class="fc" id="L278">        return FileVisitResult.CONTINUE;</span>
+      }
+
+      @Override
+      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+        try {
+<span class="fc" id="L284">          move(file, dest.resolve(source.relativize(file)));</span>
+<span class="nc" id="L285">        } catch (IOException e) {</span>
+<span class="nc" id="L286">          LOG.info(&quot;Files.moveDirectory: could not delete {}&quot;,</span>
+<span class="nc" id="L287">              file.getFileName());</span>
+<span class="fc" id="L288">        }</span>
+<span class="fc" id="L289">        return FileVisitResult.CONTINUE;</span>
+      }
+    });
+
+    /* Delete the source since all the files has been moved. */
+<span class="fc" id="L294">    deleteFully(source);</span>
+<span class="fc" id="L295">  }</span>
+
+  /**
+   * The same as passing f.toPath() to {@link #deletePathQuietly(Path)}.
+   *
+   * @param f file to delete
+   * @return true if the file is successfully deleted false otherwise
+   */
+  static boolean deleteFileQuietly(File f) {
+<span class="nc" id="L304">    return deletePathQuietly(f.toPath());</span>
+  }
+
+  /**
+   * Delete the given path quietly.
+   * Only print a debug message in case that there is an exception,
+   *
+   * @param p path to delete
+   * @return true if the path is successfully deleted false otherwise
+   */
+  static boolean deletePathQuietly(Path p) {
+    try {
+<span class="fc" id="L316">      delete(p);</span>
+<span class="fc" id="L317">      return true;</span>
+<span class="nc" id="L318">    } catch (Exception ex) {</span>
+<span class="nc" id="L319">      LOG.debug(&quot;Failed to delete &quot; + p.toAbsolutePath(), ex);</span>
+<span class="nc" id="L320">      return false;</span>
+    }
+  }
+
+  /**
+   * Use {@link Files#delete(Path)} to delete the given path.
+   *
+   * This method may print log messages using {@link #LOG}.
+   */
+  static void delete(Path p) throws IOException {
+<span class="fc" id="L330">    LogUtils.runAndLog(LOG,</span>
+<span class="fc" id="L331">        () -&gt; Files.delete(p),</span>
+<span class="fc" id="L332">        () -&gt; &quot;Files.delete &quot; + p);</span>
+<span class="fc" id="L333">  }</span>
+
+  /**
+   * Use {@link Files#deleteIfExists(Path)} to delete the given path.
+   * This method may print log messages using {@link #LOG}.
+   */
+  static void deleteIfExists(Path p) throws IOException {
+<span class="fc" id="L340">    LogUtils.runAndLog(LOG,</span>
+<span class="fc" id="L341">        () -&gt; Files.deleteIfExists(p),</span>
+<span class="fc" id="L342">        () -&gt; &quot;Files.deleteIfExists &quot; + p);</span>
+<span class="fc" id="L343">  }</span>
+
+  /**
+   * Use {@link Files#deleteIfExists(Path)} to delete the given path.
+   * This method may print log messages using {@link #LOG}.
+   */
+  static void deleteIfExists(File f) throws IOException {
+<span class="fc" id="L350">    deleteIfExists(f.toPath());</span>
+<span class="fc" id="L351">  }</span>
+
+  /** The same as passing f.toPath() to {@link #deleteFully(Path)}. */
+  static void deleteFully(File f) throws IOException {
+<span class="fc" id="L355">    LOG.trace(&quot;deleteFully {}&quot;, f);</span>
+<span class="fc" id="L356">    deleteFully(f.toPath());</span>
+<span class="fc" id="L357">  }</span>
+
+  /**
+   * Delete fully the given path.
+   * (1) If it is a file, the file will be deleted.
+   * (2) If it is a directory, the directory and all its contents will be recursively deleted.
+   *     If an exception is thrown, the directory may possibly be partially deleted.*
+   * (3) If it is a symlink, the symlink will be deleted but the symlink target will not be deleted.
+   */
+  static void deleteFully(Path p) throws IOException {
+<span class="fc bfc" id="L367" title="All 2 branches covered.">    if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {</span>
+<span class="fc" id="L368">      LOG.trace(&quot;deleteFully: {} does not exist.&quot;, p);</span>
+<span class="fc" id="L369">      return;</span>
+    }
+<span class="fc" id="L371">    Files.walkFileTree(p, new SimpleFileVisitor&lt;Path&gt;() {</span>
+      @Override
+      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+<span class="fc" id="L374">        delete(file);</span>
+<span class="fc" id="L375">        return FileVisitResult.CONTINUE;</span>
+      }
+
+      @Override
+      public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">        if (e != null) {</span>
+          // directory iteration failed
+<span class="nc" id="L382">          throw e;</span>
+        }
+<span class="fc" id="L384">        delete(dir);</span>
+<span class="fc" id="L385">        return FileVisitResult.CONTINUE;</span>
+      }
+    });
+<span class="fc" id="L388">  }</span>
+
+  static void listDir(File dir, Consumer&lt;Object&gt; out, BiConsumer&lt;String, Throwable&gt; err) {
+<span class="fc" id="L391">    listDir(dir.toPath(), out, err);</span>
+<span class="fc" id="L392">  }</span>
+
+  static void listDir(Path dir, Consumer&lt;Object&gt; out, BiConsumer&lt;String, Throwable&gt; err) {
+    try {
+<span class="fc" id="L396">      listDir(dir, out);</span>
+<span class="nc" id="L397">    } catch (IOException e) {</span>
+<span class="nc" id="L398">      err.accept(&quot;Failed to listDir: &quot; + dir, e);</span>
+<span class="fc" id="L399">    }</span>
+<span class="fc" id="L400">  }</span>
+
+  static void listDir(Path dir, Consumer&lt;Object&gt; out) throws IOException {
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">    if (!Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS)) {</span>
+<span class="nc" id="L404">      throw new NotDirectoryException( &quot;Failed to listDir: &quot; + dir + &quot; is not a directory.&quot;);</span>
+    }
+
+<span class="fc" id="L407">    try(Stream&lt;Path&gt; s = Files.list(dir)) {</span>
+<span class="fc" id="L408">      s.forEach(out);</span>
+    }
+<span class="fc" id="L410">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

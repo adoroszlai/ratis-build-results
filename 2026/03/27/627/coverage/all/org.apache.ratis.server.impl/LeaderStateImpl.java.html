@@ -1,0 +1,1332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LeaderStateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">LeaderStateImpl.java</span></div><h1>LeaderStateImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos;
+import org.apache.ratis.proto.RaftProtos.AppendEntriesRequestProto;
+import org.apache.ratis.proto.RaftProtos.CommitInfoProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto.LogEntryBodyCase;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.proto.RaftProtos.RoleInfoProto;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.SetConfigurationRequest;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.protocol.exceptions.LeaderNotReadyException;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.exceptions.NotReplicatedException;
+import org.apache.ratis.protocol.exceptions.ReadIndexException;
+import org.apache.ratis.protocol.exceptions.ReconfigurationTimeoutException;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.impl.ReadIndexHeartbeats.AppendEntriesListener;
+import org.apache.ratis.server.leader.FollowerInfo;
+import org.apache.ratis.server.leader.LeaderState;
+import org.apache.ratis.server.leader.LogAppender;
+import org.apache.ratis.server.metrics.LogAppenderMetrics;
+import org.apache.ratis.server.metrics.RaftServerMetricsImpl;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogEntryHeader;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.statemachine.TransactionContext;
+import org.apache.ratis.util.CodeInjectionForTesting;
+import org.apache.ratis.util.CollectionUtils;
+import org.apache.ratis.util.Daemon;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.Timestamp;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
+import java.util.function.Predicate;
+import java.util.function.ToLongFunction;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+import static org.apache.ratis.server.RaftServer.Division.LOG;
+import static org.apache.ratis.server.RaftServerConfigKeys.Write.FOLLOWER_GAP_RATIO_MAX_KEY;
+
+/**
+ * States for leader only. It contains three different types of processors:
+ * 1. RPC senders: each thread is appending log to a follower
+ * 2. EventProcessor: a single thread updating the raft server's state based on
+ *                    status of log appending response
+ * 3. PendingRequestHandler: a handler sending back responses to clients when
+ *                           corresponding log entries are committed
+ */
+class LeaderStateImpl implements LeaderState {
+<span class="fc" id="L102">  public static final String APPEND_PLACEHOLDER = JavaUtils.getClassSimpleName(LeaderState.class) + &quot;.placeholder&quot;;</span>
+
+<span class="fc" id="L104">  private enum BootStrapProgress {</span>
+<span class="fc" id="L105">    NOPROGRESS, PROGRESSING, CAUGHTUP</span>
+  }
+
+  static class StateUpdateEvent {
+<span class="fc" id="L109">    private enum Type {</span>
+<span class="fc" id="L110">      STEP_DOWN, UPDATE_COMMIT, CHECK_STAGING</span>
+    }
+
+    private final Type type;
+    private final Runnable handler;
+
+<span class="fc" id="L116">    StateUpdateEvent(Type type, Runnable handler) {</span>
+<span class="fc" id="L117">      this.type = type;</span>
+<span class="fc" id="L118">      this.handler = handler;</span>
+<span class="fc" id="L119">    }</span>
+
+    void execute() {
+<span class="fc" id="L122">      handler.run();</span>
+<span class="fc" id="L123">    }</span>
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">      if (obj == this) {</span>
+<span class="fc" id="L128">        return true;</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">      } else if (!(obj instanceof StateUpdateEvent)) {</span>
+<span class="nc" id="L130">        return false;</span>
+      }
+<span class="fc" id="L132">      final StateUpdateEvent that = (StateUpdateEvent)obj;</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">      return this.type == that.type;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L138">      return type.hashCode();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L143">      return type.name();</span>
+    }
+  }
+
+<span class="fc" id="L147">  private class EventQueue {</span>
+<span class="fc" id="L148">    private final String name = ServerStringUtils.generateUnifiedName(server.getMemberId(), getClass());</span>
+<span class="fc" id="L149">    private final BlockingQueue&lt;StateUpdateEvent&gt; queue = new ArrayBlockingQueue&lt;&gt;(</span>
+<span class="fc" id="L150">        StateUpdateEvent.Type.values().length);;</span>
+
+    // submit can be invoked by different threads -- need to be synchronized
+    synchronized void submit(StateUpdateEvent event) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">      if (queue.contains(event)) { // avoid duplicated events</span>
+<span class="fc" id="L155">        return;</span>
+      }
+      try {
+<span class="fc" id="L158">        queue.put(event);</span>
+<span class="fc" id="L159">      } catch (InterruptedException e) {</span>
+<span class="fc" id="L160">        LOG.info(&quot;{}: Interrupted when submitting {} &quot;, this, event);</span>
+<span class="fc" id="L161">        Thread.currentThread().interrupt();</span>
+<span class="fc" id="L162">      }</span>
+<span class="fc" id="L163">    }</span>
+
+    // poll is invoked only by the EventProcessor thread -- synchronized is not needed
+    StateUpdateEvent poll() {
+      try {
+<span class="fc" id="L168">        return queue.poll(server.getMaxTimeoutMs(), TimeUnit.MILLISECONDS);</span>
+<span class="nc" id="L169">      } catch (InterruptedException ie) {</span>
+<span class="nc" id="L170">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L171">        String s = this + &quot;: poll() is interrupted&quot;;</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (isStopped.get()) {</span>
+<span class="nc" id="L173">          LOG.info(s + &quot; gracefully&quot;);</span>
+<span class="nc" id="L174">          return null;</span>
+        } else {
+<span class="nc" id="L176">          throw new IllegalStateException(s + &quot; UNEXPECTEDLY&quot;, ie);</span>
+        }
+      }
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L183">      return name;</span>
+    }
+  }
+
+  /**
+   * Use {@link CopyOnWriteArrayList} to implement a thread-safe list.
+   * Since each mutation induces a copy of the list, only bulk operations
+   * (addAll and removeAll) are supported.
+   */
+  static class SenderList implements Iterable&lt;LogAppender&gt; {
+    private final List&lt;LogAppender&gt; senders;
+
+<span class="fc" id="L195">    SenderList() {</span>
+<span class="fc" id="L196">      this.senders = new CopyOnWriteArrayList&lt;&gt;();</span>
+<span class="fc" id="L197">    }</span>
+
+    @Override
+    public Iterator&lt;LogAppender&gt; iterator() {
+<span class="fc" id="L201">      return senders.iterator();</span>
+    }
+
+    void addAll(Collection&lt;LogAppender&gt; newSenders) {
+<span class="fc bfc" id="L205" title="All 2 branches covered.">      if (newSenders.isEmpty()) {</span>
+<span class="fc" id="L206">        return;</span>
+      }
+
+<span class="fc" id="L209">      Preconditions.assertUnique(</span>
+<span class="fc" id="L210">          CollectionUtils.as(senders, LogAppender::getFollowerId),</span>
+<span class="fc" id="L211">          CollectionUtils.as(newSenders, LogAppender::getFollowerId));</span>
+
+<span class="fc" id="L213">      final boolean changed = senders.addAll(newSenders);</span>
+<span class="fc" id="L214">      Preconditions.assertTrue(changed);</span>
+<span class="fc" id="L215">    }</span>
+
+    boolean removeAll(Collection&lt;LogAppender&gt; c) {
+<span class="fc" id="L218">      return senders.removeAll(c);</span>
+    }
+
+    CompletableFuture&lt;Void&gt; stopAll() {
+<span class="fc" id="L222">      return CompletableFuture.allOf(senders.stream().</span>
+<span class="fc" id="L223">              map(LogAppender::stopAsync).toArray(CompletableFuture[]::new));</span>
+    }
+  }
+
+  /** For caching {@link FollowerInfo}s.  This class is immutable. */
+  static class CurrentOldFollowerInfos {
+    private final RaftConfigurationImpl conf;
+    private final List&lt;FollowerInfo&gt; current;
+    private final List&lt;FollowerInfo&gt; old;
+
+<span class="fc" id="L233">    CurrentOldFollowerInfos(RaftConfigurationImpl conf, List&lt;FollowerInfo&gt; current, List&lt;FollowerInfo&gt; old) {</span>
+      // set null when the sizes are not the same so that it will update next time.
+<span class="fc bfc" id="L235" title="All 4 branches covered.">      this.conf = isSameSize(current, conf.getConf()) &amp;&amp; isSameSize(old, conf.getOldConf())? conf: null;</span>
+<span class="fc" id="L236">      this.current = Collections.unmodifiableList(current);</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">      this.old = old == null? null: Collections.unmodifiableList(old);</span>
+<span class="fc" id="L238">    }</span>
+
+    RaftConfigurationImpl getConf() {
+<span class="fc" id="L241">      return conf;</span>
+    }
+
+    List&lt;FollowerInfo&gt; getCurrent() {
+<span class="fc" id="L245">      return current;</span>
+    }
+
+    List&lt;FollowerInfo&gt; getOld() {
+<span class="fc" id="L249">      return old;</span>
+    }
+  }
+
+  static boolean isSameSize(List&lt;FollowerInfo&gt; infos, PeerConfiguration conf) {
+<span class="pc bpc" id="L254" title="1 of 6 branches missed.">    return conf == null? infos == null: conf.size() == infos.size();</span>
+  }
+
+  /** Use == to compare if the confs are the same object. */
+  static boolean isSameConf(CurrentOldFollowerInfos cached, RaftConfigurationImpl conf) {
+<span class="fc bfc" id="L259" title="All 4 branches covered.">    return cached != null &amp;&amp; cached.getConf() == conf;</span>
+  }
+
+<span class="fc" id="L262">  static class FollowerInfoMap {</span>
+<span class="fc" id="L263">    private final Map&lt;RaftPeerId, FollowerInfo&gt; map = new ConcurrentHashMap&lt;&gt;();</span>
+    @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+    private volatile CurrentOldFollowerInfos followerInfos;
+
+    void put(RaftPeerId id, FollowerInfo info) {
+<span class="fc" id="L268">      map.put(id, info);</span>
+<span class="fc" id="L269">    }</span>
+
+    CurrentOldFollowerInfos getFollowerInfos(RaftConfigurationImpl conf) {
+<span class="fc" id="L272">      final CurrentOldFollowerInfos cached = followerInfos;</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">      if (isSameConf(cached, conf)) {</span>
+<span class="fc" id="L274">        return cached;</span>
+      }
+
+<span class="fc" id="L277">      return update(conf);</span>
+    }
+
+    synchronized CurrentOldFollowerInfos update(RaftConfigurationImpl conf) {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">      if (!isSameConf(followerInfos, conf)) { // compare again synchronized</span>
+<span class="fc" id="L282">        followerInfos = new CurrentOldFollowerInfos(conf, getFollowerInfos(conf.getConf()),</span>
+<span class="fc" id="L283">            Optional.ofNullable(conf.getOldConf()).map(this::getFollowerInfos).orElse(null));</span>
+      }
+<span class="fc" id="L285">      return followerInfos;</span>
+    }
+
+    private List&lt;FollowerInfo&gt; getFollowerInfos(PeerConfiguration peers) {
+<span class="fc" id="L289">      return peers.streamPeerIds().map(map::get).filter(Objects::nonNull).collect(Collectors.toList());</span>
+    }
+  }
+
+<span class="fc" id="L293">  private class StartupLogEntry {</span>
+    /** The log index at leader startup. */
+<span class="fc" id="L295">    private final long startIndex = appendConfiguration(RaftConfigurationImpl.newBuilder()</span>
+<span class="fc" id="L296">        .setConf(server.getRaftConf().getConf())</span>
+<span class="fc" id="L297">        .setLogEntryIndex(raftLog.getNextIndex())</span>
+<span class="fc" id="L298">        .build());</span>
+    /** This future will be completed after the log entry is applied. */
+<span class="fc" id="L300">    private final CompletableFuture&lt;Long&gt; appliedIndexFuture = new CompletableFuture&lt;&gt;();</span>
+
+    CompletableFuture&lt;Long&gt; getAppliedIndexFuture() {
+<span class="fc" id="L303">      return appliedIndexFuture;</span>
+    }
+
+    boolean checkStartIndex(LogEntryProto logEntry) {
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">      final boolean completed = logEntry.getIndex() == startIndex &amp;&amp; appliedIndexFuture.complete(startIndex);</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">      if (completed) {</span>
+<span class="fc" id="L309">        LOG.info(&quot;Leader {} is ready since appliedIndex == startIndex == {}&quot;, LeaderStateImpl.this, startIndex);</span>
+      }
+<span class="fc" id="L311">      return completed;</span>
+    }
+
+    boolean isApplied() {
+<span class="fc" id="L315">      return JavaUtils.isCompletedNormally(appliedIndexFuture);</span>
+    }
+  }
+
+<span class="fc" id="L319">  private final StateUpdateEvent updateCommitEvent =</span>
+      new StateUpdateEvent(StateUpdateEvent.Type.UPDATE_COMMIT, this::updateCommit);
+<span class="fc" id="L321">  private final StateUpdateEvent checkStagingEvent =</span>
+      new StateUpdateEvent(StateUpdateEvent.Type.CHECK_STAGING, this::checkStaging);
+
+  private final String name;
+  private final RaftServerImpl server;
+  private final RaftLog raftLog;
+  private final long currentTerm;
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile ConfigurationStagingState stagingState;
+
+<span class="fc" id="L331">  private final FollowerInfoMap followerInfoMap = new FollowerInfoMap();</span>
+
+  /**
+   * The list of threads appending entries to followers.
+   * The list is protected by the RaftServer's lock.
+   */
+  private final SenderList senders;
+  private final EventQueue eventQueue;
+  private final EventProcessor processor;
+  private final PendingRequests pendingRequests;
+  private final WatchRequests watchRequests;
+  private final MessageStreamRequests messageStreamRequests;
+
+<span class="fc" id="L344">  private final MemoizedSupplier&lt;StartupLogEntry&gt; startupLogEntry = MemoizedSupplier.valueOf(StartupLogEntry::new);</span>
+<span class="fc" id="L345">  private final AtomicBoolean isStopped = new AtomicBoolean();</span>
+
+  private final boolean logMetadataEnabled;
+  private final int stagingCatchupGap;
+  private final TimeDuration stagingTimeout;
+  private final RaftServerMetricsImpl raftServerMetrics;
+  private final LogAppenderMetrics logAppenderMetrics;
+  private final long followerMaxGapThreshold;
+  private final PendingStepDown pendingStepDown;
+
+  private final ReadIndexHeartbeats readIndexHeartbeats;
+  private final boolean readIndexAppliedIndexEnabled;
+  private final boolean leaderHeartbeatCheckEnabled;
+  private final LeaderLease lease;
+
+<span class="fc" id="L360">  LeaderStateImpl(RaftServerImpl server) {</span>
+<span class="fc" id="L361">    this.name = ServerStringUtils.generateUnifiedName(server.getMemberId(), getClass());</span>
+<span class="fc" id="L362">    this.server = server;</span>
+
+<span class="fc" id="L364">    final RaftProperties properties = server.getRaftServer().getProperties();</span>
+<span class="fc" id="L365">    stagingCatchupGap = RaftServerConfigKeys.stagingCatchupGap(properties);</span>
+<span class="fc" id="L366">    stagingTimeout = RaftServerConfigKeys.stagingTimeout(properties);</span>
+
+<span class="fc" id="L368">    final ServerState state = server.getState();</span>
+<span class="fc" id="L369">    this.raftLog = state.getLog();</span>
+<span class="fc" id="L370">    this.currentTerm = state.getCurrentTerm();</span>
+
+<span class="fc" id="L372">    this.eventQueue = new EventQueue();</span>
+<span class="fc" id="L373">    processor = new EventProcessor(this.name, server);</span>
+<span class="fc" id="L374">    raftServerMetrics = server.getRaftServerMetrics();</span>
+<span class="fc" id="L375">    logAppenderMetrics = new LogAppenderMetrics(server.getMemberId());</span>
+<span class="fc" id="L376">    this.pendingRequests = new PendingRequests(server.getMemberId(), properties, raftServerMetrics);</span>
+<span class="fc" id="L377">    this.watchRequests = new WatchRequests(server.getMemberId(), properties, raftServerMetrics);</span>
+<span class="fc" id="L378">    this.messageStreamRequests = new MessageStreamRequests(server.getMemberId());</span>
+<span class="fc" id="L379">    this.pendingStepDown = new PendingStepDown(this);</span>
+<span class="fc" id="L380">    this.readIndexHeartbeats = new ReadIndexHeartbeats();</span>
+<span class="fc" id="L381">    this.lease = new LeaderLease(properties);</span>
+<span class="fc" id="L382">    this.logMetadataEnabled = RaftServerConfigKeys.Log.logMetadataEnabled(properties);</span>
+<span class="fc" id="L383">    long maxPendingRequests = RaftServerConfigKeys.Write.elementLimit(properties);</span>
+<span class="fc" id="L384">    double followerGapRatioMax = RaftServerConfigKeys.Write.followerGapRatioMax(properties);</span>
+
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">    if (followerGapRatioMax == -1) {</span>
+<span class="fc" id="L387">      this.followerMaxGapThreshold = -1;</span>
+<span class="nc bnc" id="L388" title="All 4 branches missed.">    } else if (followerGapRatioMax &gt; 1f || followerGapRatioMax &lt;= 0f) {</span>
+<span class="nc" id="L389">      throw new IllegalArgumentException(FOLLOWER_GAP_RATIO_MAX_KEY +</span>
+          &quot;s value must between [1, 0) to enable the feature&quot;);
+    } else {
+<span class="nc" id="L392">      this.followerMaxGapThreshold = (long) (followerGapRatioMax * maxPendingRequests);</span>
+    }
+<span class="fc" id="L394">    this.readIndexAppliedIndexEnabled = RaftServerConfigKeys.Read.ReadIndex</span>
+<span class="fc" id="L395">        .appliedIndexEnabled(properties);</span>
+<span class="fc" id="L396">    this.leaderHeartbeatCheckEnabled = RaftServerConfigKeys.Read</span>
+<span class="fc" id="L397">        .leaderHeartbeatCheckEnabled(properties);</span>
+
+<span class="fc" id="L399">    final RaftConfigurationImpl conf = state.getRaftConf();</span>
+<span class="fc" id="L400">    Collection&lt;RaftPeer&gt; others = conf.getOtherPeers(server.getId());</span>
+
+<span class="fc" id="L402">    final long nextIndex = raftLog.getNextIndex();</span>
+<span class="fc" id="L403">    senders = new SenderList();</span>
+<span class="fc" id="L404">    addSenders(others, nextIndex, true);</span>
+
+<span class="fc" id="L406">    final Collection&lt;RaftPeer&gt; listeners = conf.getAllPeers(RaftPeerRole.LISTENER);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">    if (!listeners.isEmpty()) {</span>
+<span class="fc" id="L408">      addSenders(listeners, nextIndex, true);</span>
+    }
+<span class="fc" id="L410">  }</span>
+
+  void start() {
+    // In the beginning of the new term, replicate a conf entry in order
+    // to finally commit entries in the previous term.
+    // Also this message can help identify the last committed index and the conf.
+<span class="fc" id="L416">    CodeInjectionForTesting.execute(APPEND_PLACEHOLDER,</span>
+<span class="fc" id="L417">        server.getId().toString(), null);</span>
+    // Initialize startup log entry and append it to the RaftLog
+<span class="fc" id="L419">    startupLogEntry.get();</span>
+<span class="fc" id="L420">    processor.start();</span>
+<span class="fc" id="L421">    senders.forEach(LogAppender::start);</span>
+<span class="fc" id="L422">  }</span>
+
+  boolean isReady() {
+<span class="fc bfc" id="L425" title="All 4 branches covered.">    return startupLogEntry.isInitialized() &amp;&amp; startupLogEntry.get().isApplied();</span>
+  }
+
+  void checkReady(LogEntryProto entry) {
+<span class="fc bfc" id="L429" title="All 4 branches covered.">    if (entry.getTerm() == server.getState().getCurrentTerm() &amp;&amp; startupLogEntry.get().checkStartIndex(entry)) {</span>
+<span class="fc" id="L430">      server.getStateMachine().leaderEvent().notifyLeaderReady();</span>
+    }
+<span class="fc" id="L432">  }</span>
+
+  CompletableFuture&lt;Void&gt; stop() {
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">    if (!isStopped.compareAndSet(false, true)) {</span>
+<span class="nc" id="L436">      LOG.info(&quot;{} is already stopped&quot;, this);</span>
+<span class="nc" id="L437">      return CompletableFuture.completedFuture(null);</span>
+    }
+    // do not interrupt event processor since it may be in the middle of logSync
+<span class="fc" id="L440">    final CompletableFuture&lt;Void&gt; f = senders.stopAll();</span>
+<span class="fc" id="L441">    final NotLeaderException nle = server.generateNotLeaderException();</span>
+<span class="fc" id="L442">    final Collection&lt;CommitInfoProto&gt; commitInfos = server.getCommitInfos();</span>
+    try {
+<span class="fc" id="L444">      final Collection&lt;TransactionContext&gt; transactions = pendingRequests.sendNotLeaderResponses(nle, commitInfos);</span>
+<span class="fc" id="L445">      server.getStateMachine().leaderEvent().notifyNotLeader(transactions);</span>
+<span class="fc" id="L446">      watchRequests.failWatches(nle);</span>
+<span class="nc" id="L447">    } catch (IOException e) {</span>
+<span class="nc" id="L448">      LOG.warn(&quot;{}: Caught exception in sendNotLeaderResponses&quot;, this, e);</span>
+<span class="fc" id="L449">    }</span>
+<span class="fc" id="L450">    messageStreamRequests.clear();</span>
+<span class="fc" id="L451">    readIndexHeartbeats.failListeners(nle);</span>
+<span class="fc" id="L452">    lease.getAndSetEnabled(false);</span>
+<span class="fc" id="L453">    startupLogEntry.get().getAppliedIndexFuture().completeExceptionally(</span>
+        new ReadIndexException(&quot;failed to obtain read index since: &quot;, nle));
+<span class="fc" id="L455">    server.getServerRpc().notifyNotLeader(server.getMemberId().getGroupId());</span>
+<span class="fc" id="L456">    logAppenderMetrics.unregister();</span>
+<span class="fc" id="L457">    raftServerMetrics.unregister();</span>
+<span class="fc" id="L458">    pendingRequests.close();</span>
+<span class="fc" id="L459">    watchRequests.close();</span>
+<span class="fc" id="L460">    return f;</span>
+  }
+
+  void notifySenders() {
+<span class="fc" id="L464">    senders.forEach(LogAppender::notifyLogAppender);</span>
+<span class="fc" id="L465">  }</span>
+
+  boolean inStagingState() {
+<span class="fc bfc" id="L468" title="All 2 branches covered.">    return stagingState != null;</span>
+  }
+
+  long getCurrentTerm() {
+<span class="fc" id="L472">    Preconditions.assertSame(currentTerm, server.getState().getCurrentTerm(), &quot;currentTerm&quot;);</span>
+<span class="fc" id="L473">    return currentTerm;</span>
+  }
+
+  @Override
+  public boolean onFollowerTerm(FollowerInfo follower, long followerTerm) {
+<span class="pc bpc" id="L478" title="2 of 4 branches missed.">    if (isCaughtUp(follower) &amp;&amp; followerTerm &gt; getCurrentTerm()) {</span>
+<span class="fc" id="L479">      submitStepDownEvent(followerTerm, StepDownReason.HIGHER_TERM);</span>
+<span class="fc" id="L480">      return true;</span>
+    }
+<span class="nc" id="L482">    return false;</span>
+  }
+
+  /**
+   * Start bootstrapping new peers
+   */
+  PendingRequest startSetConfiguration(SetConfigurationRequest request, List&lt;RaftPeer&gt; peersInNewConf) {
+<span class="fc" id="L489">    LOG.info(&quot;{}: startSetConfiguration {}&quot;, this, request);</span>
+<span class="pc" id="L490">    Preconditions.assertTrue(isRunning(), () -&gt; this + &quot; is not running.&quot;);</span>
+<span class="pc bpc" id="L491" title="1 of 2 branches missed.">    Preconditions.assertTrue(!inStagingState(), () -&gt; this + &quot; is already in staging state &quot; + stagingState);</span>
+
+<span class="fc" id="L493">    final List&lt;RaftPeer&gt; listenersInNewConf = request.getArguments().getPeersInNewConf(RaftPeerRole.LISTENER);</span>
+<span class="fc" id="L494">    final Collection&lt;RaftPeer&gt; peersToBootStrap = server.getRaftConf().filterNotContainedInConf(peersInNewConf);</span>
+<span class="fc" id="L495">    final Collection&lt;RaftPeer&gt; listenersToBootStrap= server.getRaftConf().filterNotContainedInConf(listenersInNewConf);</span>
+
+    // add the request to the pending queue
+<span class="fc" id="L498">    final PendingRequest pending = pendingRequests.addConfRequest(request);</span>
+
+<span class="fc" id="L500">    ConfigurationStagingState configurationStagingState = new ConfigurationStagingState(</span>
+        peersToBootStrap, listenersToBootStrap, new PeerConfiguration(peersInNewConf, listenersInNewConf));
+<span class="fc" id="L502">    Collection&lt;RaftPeer&gt; newPeers = configurationStagingState.getNewPeers();</span>
+<span class="fc" id="L503">    Collection&lt;RaftPeer&gt; newListeners = configurationStagingState.getNewListeners();</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">    Collection&lt;RaftPeer&gt; allNew = newListeners.isEmpty()</span>
+<span class="fc" id="L505">        ? newPeers</span>
+<span class="pc bpc" id="L506" title="1 of 2 branches missed.">        : newPeers.isEmpty()</span>
+<span class="fc" id="L507">            ? newListeners</span>
+<span class="nc" id="L508">            : Stream.concat(newPeers.stream(), newListeners.stream())</span>
+<span class="pc" id="L509">                .collect(Collectors.toList());</span>
+
+<span class="fc bfc" id="L511" title="All 2 branches covered.">    if (allNew.isEmpty()) {</span>
+<span class="fc" id="L512">      applyOldNewConf(configurationStagingState);</span>
+    } else {
+      // update the LeaderState's sender list
+<span class="fc" id="L515">      Collection&lt;LogAppender&gt; newAppenders = addSenders(allNew);</span>
+
+      // set the staging state
+<span class="fc" id="L518">      stagingState = configurationStagingState;</span>
+
+<span class="fc" id="L520">      newAppenders.forEach(LogAppender::start);</span>
+    }
+
+<span class="fc" id="L523">    return pending;</span>
+  }
+
+  PendingRequests.Permit tryAcquirePendingRequest(Message message) {
+<span class="fc" id="L527">    return pendingRequests.tryAcquire(message);</span>
+  }
+
+  PendingRequest addPendingRequest(PendingRequests.Permit permit, RaftClientRequest request, TransactionContext entry) {
+<span class="fc bfc" id="L531" title="All 2 branches covered.">    if (LOG.isDebugEnabled()) {</span>
+<span class="fc" id="L532">      LOG.debug(&quot;{}: addPendingRequest at {}, entry={}&quot;, this, request,</span>
+<span class="fc" id="L533">          LogProtoUtils.toLogEntryString(entry.getLogEntry()));</span>
+    }
+<span class="fc" id="L535">    return pendingRequests.add(permit, request, entry);</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; streamAsync(RaftClientRequest request) {
+<span class="fc" id="L539">    return messageStreamRequests.streamAsync(request)</span>
+<span class="fc" id="L540">        .thenApply(dummy -&gt; server.newSuccessReply(request))</span>
+<span class="pc" id="L541">        .exceptionally(e -&gt; exception2RaftClientReply(request, e));</span>
+  }
+
+  CompletableFuture&lt;RaftClientRequest&gt; streamEndOfRequestAsync(RaftClientRequest request) {
+<span class="fc" id="L545">    return messageStreamRequests.streamEndOfRequestAsync(request)</span>
+<span class="fc" id="L546">        .thenApply(bytes -&gt; RaftClientRequest.toWriteRequest(request, Message.valueOf(bytes)));</span>
+  }
+
+  CompletableFuture&lt;RaftClientReply&gt; addWatchRequest(RaftClientRequest request) {
+<span class="fc" id="L550">    LOG.debug(&quot;{}: addWatchRequest {}&quot;, this, request);</span>
+<span class="fc" id="L551">    return watchRequests.add(request)</span>
+<span class="fc" id="L552">        .thenApply(logIndex -&gt; server.newSuccessReply(request, logIndex))</span>
+<span class="fc" id="L553">        .exceptionally(e -&gt; exception2RaftClientReply(request, e));</span>
+  }
+
+  private RaftClientReply exception2RaftClientReply(RaftClientRequest request, Throwable e) {
+<span class="fc" id="L557">    e = JavaUtils.unwrapCompletionException(e);</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">    if (e instanceof NotReplicatedException) {</span>
+<span class="fc" id="L559">      final NotReplicatedException nre = (NotReplicatedException)e;</span>
+<span class="fc" id="L560">      return server.newReplyBuilder(request)</span>
+<span class="fc" id="L561">          .setException(nre)</span>
+<span class="fc" id="L562">          .setLogIndex(nre.getLogIndex())</span>
+<span class="fc" id="L563">          .build();</span>
+<span class="fc bfc" id="L564" title="All 2 branches covered.">    } else if (e instanceof NotLeaderException) {</span>
+<span class="fc" id="L565">      return server.newExceptionReply(request, (NotLeaderException)e);</span>
+<span class="pc bpc" id="L566" title="1 of 2 branches missed.">    } else if (e instanceof LeaderNotReadyException) {</span>
+<span class="nc" id="L567">      return server.newExceptionReply(request, (LeaderNotReadyException)e);</span>
+    } else {
+<span class="fc" id="L569">      throw new CompletionException(e);</span>
+    }
+  }
+
+  @Override
+  public void onFollowerCommitIndex(FollowerInfo follower, long commitIndex) {
+<span class="fc bfc" id="L575" title="All 2 branches covered.">    if (follower.updateCommitIndex(commitIndex)) {</span>
+<span class="fc" id="L576">      commitIndexChanged();</span>
+    }
+<span class="fc" id="L578">  }</span>
+
+  private void commitIndexChanged() {
+<span class="fc" id="L581">    getMajorityMin(FollowerInfo::getCommitIndex, raftLog::getLastCommittedIndex).ifPresent(m -&gt; {</span>
+      // Normally, leader commit index is always ahead of followers.
+      // However, after a leader change, the new leader commit index may
+      // be behind some followers in the beginning.
+<span class="fc" id="L585">      watchRequests.update(ReplicationLevel.ALL_COMMITTED, m.min);</span>
+<span class="fc" id="L586">      watchRequests.update(ReplicationLevel.MAJORITY_COMMITTED, m.majority);</span>
+<span class="fc" id="L587">      watchRequests.update(ReplicationLevel.MAJORITY, m.max);</span>
+<span class="fc" id="L588">    });</span>
+<span class="fc" id="L589">    notifySenders();</span>
+<span class="fc" id="L590">  }</span>
+
+  private void applyOldNewConf(ConfigurationStagingState stage) {
+<span class="fc" id="L593">    final ServerState state = server.getState();</span>
+<span class="fc" id="L594">    final RaftConfigurationImpl current = state.getRaftConf();</span>
+<span class="fc" id="L595">    final long nextIndex = state.getLog().getNextIndex();</span>
+<span class="fc" id="L596">    final RaftConfigurationImpl oldNewConf = stage.generateOldNewConf(current, nextIndex);</span>
+    // apply the (old, new) configuration to log, and use it as the current conf
+<span class="fc" id="L598">    appendConfiguration(oldNewConf);</span>
+
+<span class="fc" id="L600">    notifySenders();</span>
+<span class="fc" id="L601">  }</span>
+
+  private long appendConfiguration(RaftConfigurationImpl conf) {
+<span class="fc" id="L604">    final long logIndex = raftLog.append(getCurrentTerm(), conf);</span>
+<span class="fc" id="L605">    Preconditions.assertSame(conf.getLogEntryIndex(), logIndex, &quot;confLogIndex&quot;);</span>
+<span class="fc" id="L606">    server.getState().setRaftConf(conf);</span>
+<span class="fc" id="L607">    return logIndex;</span>
+  }
+
+  void updateFollowerCommitInfos(CommitInfoCache cache, List&lt;CommitInfoProto&gt; protos) {
+<span class="fc bfc" id="L611" title="All 2 branches covered.">    for (LogAppender sender : senders) {</span>
+<span class="fc" id="L612">      FollowerInfo info = sender.getFollower();</span>
+<span class="fc" id="L613">      protos.add(cache.update(info.getPeer(), info.getCommitIndex()));</span>
+<span class="fc" id="L614">    }</span>
+<span class="fc" id="L615">  }</span>
+
+  @Override
+  public AppendEntriesRequestProto newAppendEntriesRequestProto(FollowerInfo follower,
+      List&lt;LogEntryProto&gt; entries, TermIndex previous, long callId) {
+<span class="fc bfc" id="L620" title="All 2 branches covered.">    final boolean initializing = !isCaughtUp(follower);</span>
+<span class="fc" id="L621">    final RaftPeerId targetId = follower.getId();</span>
+<span class="fc" id="L622">    return ServerProtoUtils.toAppendEntriesRequestProto(server.getMemberId(), targetId, getCurrentTerm(), entries,</span>
+<span class="fc" id="L623">        ServerImplUtils.effectiveCommitIndex(raftLog.getLastCommittedIndex(), previous, entries.size()),</span>
+<span class="fc" id="L624">        initializing, previous, server.getCommitInfos(), callId);</span>
+  }
+
+  /**
+   * Update sender list for setConfiguration request
+   */
+  private void addAndStartSenders(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="fc" id="L631">    addSenders(newPeers).forEach(LogAppender::start);</span>
+<span class="fc" id="L632">  }</span>
+
+  private Collection&lt;LogAppender&gt; addSenders(Collection&lt;RaftPeer&gt; newPeers) {
+<span class="pc bpc" id="L635" title="1 of 2 branches missed.">    return !newPeers.isEmpty()</span>
+<span class="fc" id="L636">        ? addSenders(newPeers, RaftLog.LEAST_VALID_LOG_INDEX, false)</span>
+<span class="nc" id="L637">        : Collections.emptyList();</span>
+  }
+
+  private RaftPeer getPeer(RaftPeerId id) {
+<span class="fc" id="L641">    return server.getRaftConf().getPeer(id, RaftPeerRole.FOLLOWER, RaftPeerRole.LISTENER);</span>
+  }
+
+  private LogAppender newLogAppender(FollowerInfo f) {
+<span class="fc" id="L645">    return server.getRaftServer().getFactory().newLogAppender(server, this, f);</span>
+  }
+
+  private Collection&lt;LogAppender&gt; addSenders(Collection&lt;RaftPeer&gt; newPeers, long nextIndex, boolean caughtUp) {
+<span class="fc" id="L649">    final Timestamp t = Timestamp.currentTime().addTimeMs(-server.getMaxTimeoutMs());</span>
+<span class="fc" id="L650">    final List&lt;LogAppender&gt; newAppenders = newPeers.stream().map(peer -&gt; {</span>
+<span class="fc" id="L651">      final FollowerInfo f = new FollowerInfoImpl(server.getMemberId(), peer, this::getPeer, t, nextIndex, caughtUp);</span>
+<span class="fc" id="L652">      followerInfoMap.put(peer.getId(), f);</span>
+<span class="fc" id="L653">      raftServerMetrics.addFollower(peer.getId());</span>
+<span class="fc" id="L654">      logAppenderMetrics.addFollowerGauges(peer.getId(), f::getNextIndex, f::getMatchIndex, f::getLastRpcTime);</span>
+<span class="fc" id="L655">      return newLogAppender(f);</span>
+<span class="fc" id="L656">    }).collect(Collectors.toList());</span>
+<span class="fc" id="L657">    senders.addAll(newAppenders);</span>
+<span class="fc" id="L658">    return newAppenders;</span>
+  }
+
+  private void stopAndRemoveSenders(Predicate&lt;LogAppender&gt; predicate) {
+<span class="fc" id="L662">    stopAndRemoveSenders(getLogAppenders().filter(predicate).collect(Collectors.toList()));</span>
+<span class="fc" id="L663">  }</span>
+
+  private void stopAndRemoveSenders(Collection&lt;LogAppender&gt; toStop) {
+<span class="fc" id="L666">    toStop.forEach(LogAppender::stopAsync);</span>
+<span class="fc" id="L667">    senders.removeAll(toStop);</span>
+<span class="fc" id="L668">  }</span>
+
+  boolean isRunning() {
+<span class="fc bfc" id="L671" title="All 2 branches covered.">    if (isStopped.get()) {</span>
+<span class="fc" id="L672">      return false;</span>
+    }
+<span class="fc" id="L674">    final LeaderStateImpl current = server.getRole().getLeaderState().orElse(null);</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">    return this == current;</span>
+  }
+
+  @Override
+  public void restart(LogAppender sender) {
+<span class="pc bpc" id="L680" title="1 of 2 branches missed.">    if (!isRunning()) {</span>
+<span class="nc" id="L681">      LOG.warn(&quot;Failed to restart {}: {} is not running&quot;, sender, this);</span>
+<span class="nc" id="L682">      return;</span>
+    }
+
+<span class="fc" id="L685">    final FollowerInfo info = sender.getFollower();</span>
+<span class="fc" id="L686">    LOG.info(&quot;{}: Restarting {} for {}&quot;, this, JavaUtils.getClassSimpleName(sender.getClass()), info.getName());</span>
+<span class="fc" id="L687">    stopAndRemoveSenders(Collections.singleton(sender));</span>
+
+<span class="fc" id="L689">    Optional.ofNullable(getPeer(info.getId()))</span>
+<span class="fc" id="L690">        .ifPresent(peer -&gt; addAndStartSenders(Collections.singleton(peer)));</span>
+<span class="fc" id="L691">  }</span>
+
+  /**
+   * Update the RpcSender list based on the current configuration
+   */
+  private void updateSenders(RaftConfigurationImpl conf) {
+<span class="pc bpc" id="L697" title="2 of 4 branches missed.">    Preconditions.assertTrue(conf.isStable() &amp;&amp; !inStagingState());</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">    stopAndRemoveSenders(s -&gt; !conf.containsInConf(s.getFollowerId(), RaftPeerRole.FOLLOWER, RaftPeerRole.LISTENER));</span>
+<span class="fc" id="L699">  }</span>
+
+  void submitStepDownEvent(StepDownReason reason) {
+<span class="fc" id="L702">    submitStepDownEvent(currentTerm, reason);</span>
+<span class="fc" id="L703">  }</span>
+
+  void submitStepDownEvent(long term, StepDownReason reason) {
+<span class="fc" id="L706">    eventQueue.submit(new StateUpdateEvent(StateUpdateEvent.Type.STEP_DOWN, () -&gt; stepDown(term, reason)));</span>
+<span class="fc" id="L707">  }</span>
+
+  private void stepDown(long term, StepDownReason reason) {
+    try {
+<span class="fc" id="L711">      lease.getAndSetEnabled(false);</span>
+<span class="fc" id="L712">      server.changeToFollowerAndPersistMetadata(term, false, reason)</span>
+<span class="fc" id="L713">          .get(5, TimeUnit.SECONDS);</span>
+<span class="fc" id="L714">      pendingStepDown.complete(server::newSuccessReply);</span>
+<span class="nc" id="L715">    } catch(Exception e) {</span>
+<span class="nc" id="L716">      pendingStepDown.completeExceptionally(e);</span>
+<span class="nc" id="L717">      final String s = this + &quot;: Failed to step down for term &quot; + term;</span>
+<span class="nc" id="L718">      LOG.warn(s, e);</span>
+      // the failure should happen while changing the state to follower
+      // thus the in-memory state should have been updated
+<span class="nc bnc" id="L721" title="All 2 branches missed.">      if (!isStopped.get()) {</span>
+<span class="nc" id="L722">        throw new IllegalStateException(s + &quot; and running == true&quot;, e);</span>
+      }
+<span class="fc" id="L724">    }</span>
+<span class="fc" id="L725">  }</span>
+
+  CompletableFuture&lt;RaftClientReply&gt; submitStepDownRequestAsync(TransferLeadershipRequest request) {
+<span class="fc" id="L728">    return pendingStepDown.submitAsync(request);</span>
+  }
+
+  private static LogAppender chooseUpToDateFollower(List&lt;LogAppender&gt; followers, TermIndex leaderLastEntry) {
+<span class="fc bfc" id="L732" title="All 2 branches covered.">    for(LogAppender f : followers) {</span>
+<span class="fc bfc" id="L733" title="All 2 branches covered.">      if (TransferLeadership.isFollowerUpToDate(f.getFollower(), leaderLastEntry)</span>
+          == TransferLeadership.Result.SUCCESS) {
+<span class="fc" id="L735">        return f;</span>
+      }
+<span class="fc" id="L737">    }</span>
+<span class="fc" id="L738">    return null;</span>
+  }
+
+  private void prepare() {
+<span class="fc" id="L742">    synchronized (server) {</span>
+<span class="pc bpc" id="L743" title="1 of 2 branches missed.">      if (isRunning()) {</span>
+<span class="fc" id="L744">        final ServerState state = server.getState();</span>
+<span class="pc bpc" id="L745" title="1 of 4 branches missed.">        if (state.getRaftConf().isTransitional() &amp;&amp; state.isConfCommitted()) {</span>
+          // the configuration is in transitional state, and has been committed
+          // so it is time to generate and replicate (new) conf.
+<span class="nc" id="L748">          replicateNewConf();</span>
+        }
+      }
+<span class="fc" id="L751">    }</span>
+<span class="fc" id="L752">  }</span>
+
+  /**
+   * The processor thread takes the responsibility to update the raft server's
+   * state, such as changing to follower, or updating the committed index.
+   */
+  private class EventProcessor extends Daemon {
+<span class="fc" id="L759">    public EventProcessor(String name, RaftServerImpl server) {</span>
+<span class="fc" id="L760">      super(Daemon.newBuilder()</span>
+<span class="fc" id="L761">          .setName(name).setThreadGroup(server.getThreadGroup()));</span>
+<span class="fc" id="L762">    }</span>
+    @Override
+    public void run() {
+      // apply an empty message; check if necessary to replicate (new) conf
+<span class="fc" id="L766">      prepare();</span>
+
+<span class="fc bfc" id="L768" title="All 2 branches covered.">      while (isRunning()) {</span>
+<span class="fc" id="L769">        final StateUpdateEvent event = eventQueue.poll();</span>
+<span class="fc" id="L770">        synchronized(server) {</span>
+<span class="fc bfc" id="L771" title="All 2 branches covered.">          if (isRunning()) {</span>
+<span class="fc bfc" id="L772" title="All 2 branches covered.">            if (event != null) {</span>
+<span class="fc" id="L773">              event.execute();</span>
+<span class="fc bfc" id="L774" title="All 2 branches covered.">            } else if (inStagingState()) {</span>
+<span class="fc" id="L775">              checkStaging();</span>
+<span class="fc bfc" id="L776" title="All 2 branches covered.">            } else if (checkLeadership()) {</span>
+<span class="fc" id="L777">              checkPeersForYieldingLeader();</span>
+            }
+          }
+<span class="fc" id="L780">        }</span>
+<span class="fc" id="L781">      }</span>
+<span class="fc" id="L782">    }</span>
+  }
+
+  /**
+   * So far we use a simple implementation for catchup checking:
+   * 1. If the latest rpc time of the remote peer is before 3 * max_timeout,
+   *    the peer made no progress for that long. We should fail the whole
+   *    setConfiguration request.
+   * 2. If the peer's matching index is just behind for a small gap, and the
+   *    peer was updated recently (within max_timeout), declare the peer as
+   *    caught-up.
+   * 3. Otherwise the peer is making progressing. Keep waiting.
+   */
+  private BootStrapProgress checkProgress(FollowerInfo follower, long committed) {
+<span class="pc bpc" id="L796" title="1 of 2 branches missed.">    Preconditions.assertTrue(!isCaughtUp(follower));</span>
+<span class="fc" id="L797">    final Timestamp progressTime = Timestamp.currentTime().addTimeMs(-server.getMaxTimeoutMs());</span>
+<span class="fc" id="L798">    final Timestamp timeoutTime = Timestamp.currentTime().addTimeMs(-stagingTimeout.toLong(TimeUnit.MILLISECONDS));</span>
+<span class="fc bfc" id="L799" title="All 2 branches covered.">    if (follower.getLastRpcResponseTime().compareTo(timeoutTime) &lt; 0) {</span>
+<span class="fc" id="L800">      LOG.debug(&quot;{} detects a follower {} timeout ({}ms) for bootstrapping&quot;, this, follower,</span>
+<span class="fc" id="L801">          follower.getLastRpcResponseTime().elapsedTimeMs());</span>
+<span class="fc" id="L802">      return BootStrapProgress.NOPROGRESS;</span>
+<span class="fc bfc" id="L803" title="All 2 branches covered.">    } else if (follower.getMatchIndex() + stagingCatchupGap &gt; committed</span>
+<span class="fc bfc" id="L804" title="All 2 branches covered.">        &amp;&amp; follower.getMatchIndex() &gt;= server.getRaftConf().getLogEntryIndex()</span>
+<span class="pc bpc" id="L805" title="1 of 2 branches missed.">        &amp;&amp; follower.getLastRpcResponseTime().compareTo(progressTime) &gt; 0</span>
+<span class="pc bpc" id="L806" title="1 of 2 branches missed.">        &amp;&amp; follower.hasAttemptedToInstallSnapshot()) {</span>
+<span class="fc" id="L807">      return BootStrapProgress.CAUGHTUP;</span>
+    } else {
+<span class="fc" id="L809">      return BootStrapProgress.PROGRESSING;</span>
+    }
+  }
+
+  @Override
+  public void onFollowerSuccessAppendEntries(FollowerInfo follower) {
+<span class="fc bfc" id="L815" title="All 2 branches covered.">    if (isCaughtUp(follower)) {</span>
+<span class="fc" id="L816">      submitUpdateCommitEvent();</span>
+    } else {
+<span class="fc" id="L818">      eventQueue.submit(checkStagingEvent);</span>
+    }
+<span class="fc" id="L820">    server.getTransferLeadership().onFollowerAppendEntriesReply(follower);</span>
+<span class="fc" id="L821">  }</span>
+
+  @Override
+  public boolean isFollowerBootstrapping(FollowerInfo follower) {
+    // It is better to check caught up than staging state
+    // since a follower may have already caught up but still in the staging state.
+<span class="fc bfc" id="L827" title="All 2 branches covered.">    return !isCaughtUp(follower);</span>
+  }
+
+  private void checkStaging() {
+<span class="fc bfc" id="L831" title="All 2 branches covered.">    if (!inStagingState()) {</span>
+      // it is possible that the bootstrapping is done. Then, fallback to UPDATE_COMMIT
+<span class="fc" id="L833">      updateCommitEvent.execute();</span>
+    } else {
+<span class="fc" id="L835">      final long commitIndex = server.getState().getLog().getLastCommittedIndex();</span>
+      // check progress for the new followers
+<span class="fc" id="L837">      final List&lt;FollowerInfoImpl&gt; laggingFollowers = getLogAppenders()</span>
+<span class="fc" id="L838">          .map(LogAppender::getFollower)</span>
+<span class="fc bfc" id="L839" title="All 2 branches covered.">          .filter(follower -&gt; !isCaughtUp(follower))</span>
+<span class="fc" id="L840">          .map(FollowerInfoImpl.class::cast)</span>
+<span class="fc" id="L841">          .collect(Collectors.toList());</span>
+<span class="fc" id="L842">      final EnumSet&lt;BootStrapProgress&gt; reports = laggingFollowers.stream()</span>
+<span class="fc" id="L843">          .map(follower -&gt; checkProgress(follower, commitIndex))</span>
+<span class="fc" id="L844">          .collect(Collectors.toCollection(() -&gt; EnumSet.noneOf(BootStrapProgress.class)));</span>
+<span class="fc bfc" id="L845" title="All 2 branches covered.">      if (reports.contains(BootStrapProgress.NOPROGRESS)) {</span>
+<span class="fc" id="L846">        stagingState.fail(BootStrapProgress.NOPROGRESS);</span>
+<span class="fc bfc" id="L847" title="All 2 branches covered.">      } else if (!reports.contains(BootStrapProgress.PROGRESSING)) {</span>
+        // all caught up!
+<span class="fc" id="L849">        applyOldNewConf(stagingState);</span>
+<span class="fc" id="L850">        this.stagingState = null;</span>
+<span class="fc" id="L851">        laggingFollowers.stream()</span>
+<span class="fc" id="L852">            .filter(f -&gt; server.getRaftConf().containsInConf(f.getId()))</span>
+<span class="fc" id="L853">            .forEach(FollowerInfoImpl::catchUp);</span>
+      }
+    }
+<span class="fc" id="L856">  }</span>
+
+  boolean isBootStrappingPeer(RaftPeerId peerId) {
+<span class="fc" id="L859">    final Optional&lt;LogAppender&gt; info = getLogAppender(peerId);</span>
+<span class="pc bpc" id="L860" title="1 of 2 branches missed.">    if (info.isPresent()) {</span>
+<span class="nc bnc" id="L861" title="All 2 branches missed.">      return !isCaughtUp(info.get().getFollower());</span>
+    }
+<span class="fc" id="L863">    final ConfigurationStagingState staging = stagingState;</span>
+<span class="pc bpc" id="L864" title="3 of 4 branches missed.">    return staging != null &amp;&amp; staging.contains(peerId);</span>
+  }
+
+  void submitUpdateCommitEvent() {
+<span class="fc" id="L868">    eventQueue.submit(updateCommitEvent);</span>
+<span class="fc" id="L869">  }</span>
+
+  static class MinMajorityMax {
+    private final long min;
+    private final long majority;
+    private final long max;
+
+<span class="fc" id="L876">    MinMajorityMax(long min, long majority, long max) {</span>
+<span class="fc" id="L877">      this.min = min;</span>
+<span class="fc" id="L878">      this.majority = majority;</span>
+<span class="fc" id="L879">      this.max = max;</span>
+<span class="fc" id="L880">    }</span>
+
+    MinMajorityMax combine(MinMajorityMax that) {
+<span class="fc" id="L883">      return new MinMajorityMax(</span>
+<span class="fc" id="L884">          Math.min(this.min, that.min),</span>
+<span class="fc" id="L885">          Math.min(this.majority, that.majority),</span>
+<span class="fc" id="L886">          Math.min(this.max, that.max));</span>
+    }
+
+    static MinMajorityMax valueOf(long[] sorted) {
+<span class="nc" id="L890">      return new MinMajorityMax(sorted[0], getMajority(sorted), getMax(sorted));</span>
+    }
+
+    static MinMajorityMax valueOf(long[] sorted, long gapThreshold) {
+<span class="fc" id="L894">      long majority = getMajority(sorted);</span>
+<span class="fc" id="L895">      long min = sorted[0];</span>
+<span class="pc bpc" id="L896" title="3 of 4 branches missed.">      if (gapThreshold != -1 &amp;&amp; (majority - min) &gt; gapThreshold) {</span>
+        // The the gap between majority and min(the slow follower) is greater than gapThreshold,
+        // set the majority to min, which will skip one round of lastCommittedIndex update in updateCommit().
+<span class="nc" id="L899">        majority = min;</span>
+      }
+<span class="fc" id="L901">      return new MinMajorityMax(min, majority, getMax(sorted));</span>
+    }
+
+    static long getMajority(long[] sorted) {
+<span class="fc" id="L905">      return sorted[(sorted.length - 1) / 2];</span>
+    }
+
+    static long getMax(long[] sorted) {
+<span class="fc" id="L909">      return sorted[sorted.length - 1];</span>
+    }
+  }
+
+  private void updateCommit() {
+<span class="fc" id="L914">    getMajorityMin(FollowerInfo::getMatchIndex, raftLog::getFlushIndex,</span>
+        followerMaxGapThreshold)
+<span class="fc" id="L916">    .ifPresent(m -&gt; updateCommit(m.majority, m.min));</span>
+<span class="fc" id="L917">  }</span>
+
+  private Optional&lt;MinMajorityMax&gt; getMajorityMin(ToLongFunction&lt;FollowerInfo&gt; followerIndex, LongSupplier logIndex) {
+<span class="fc" id="L920">    return getMajorityMin(followerIndex, logIndex, -1);</span>
+  }
+
+  private Optional&lt;MinMajorityMax&gt; getMajorityMin(ToLongFunction&lt;FollowerInfo&gt; followerIndex,
+      LongSupplier logIndex, long gapThreshold) {
+<span class="fc" id="L925">    final RaftPeerId selfId = server.getId();</span>
+<span class="fc" id="L926">    final RaftConfigurationImpl conf = server.getRaftConf();</span>
+
+<span class="fc" id="L928">    final CurrentOldFollowerInfos infos = followerInfoMap.getFollowerInfos(conf);</span>
+<span class="fc" id="L929">    final List&lt;FollowerInfo&gt; followers = infos.getCurrent();</span>
+<span class="fc" id="L930">    final boolean includeSelf = conf.containsInConf(selfId);</span>
+<span class="pc bpc" id="L931" title="1 of 4 branches missed.">    if (followers.isEmpty() &amp;&amp; !includeSelf) {</span>
+<span class="nc" id="L932">      return Optional.empty();</span>
+    }
+
+<span class="fc" id="L935">    final long[] indicesInNewConf = getSorted(followers, includeSelf, followerIndex, logIndex);</span>
+<span class="fc" id="L936">    final MinMajorityMax newConf = MinMajorityMax.valueOf(indicesInNewConf, gapThreshold);</span>
+
+<span class="fc bfc" id="L938" title="All 2 branches covered.">    if (!conf.isTransitional()) {</span>
+<span class="fc" id="L939">      return Optional.of(newConf);</span>
+    } else { // configuration is in transitional state
+<span class="fc" id="L941">      final List&lt;FollowerInfo&gt; oldFollowers = infos.getOld();</span>
+<span class="fc" id="L942">      final boolean includeSelfInOldConf = conf.containsInOldConf(selfId);</span>
+<span class="pc bpc" id="L943" title="1 of 4 branches missed.">      if (oldFollowers.isEmpty() &amp;&amp; !includeSelfInOldConf) {</span>
+<span class="nc" id="L944">        return Optional.empty();</span>
+      }
+
+<span class="fc" id="L947">      final long[] indicesInOldConf = getSorted(oldFollowers, includeSelfInOldConf, followerIndex, logIndex);</span>
+<span class="fc" id="L948">      final MinMajorityMax oldConf = MinMajorityMax.valueOf(indicesInOldConf, gapThreshold);</span>
+<span class="fc" id="L949">      return Optional.of(newConf.combine(oldConf));</span>
+    }
+  }
+
+  private boolean hasMajority(Predicate&lt;RaftPeerId&gt; isAcked) {
+<span class="fc" id="L954">    final RaftPeerId selfId = server.getId();</span>
+<span class="fc" id="L955">    return server.getRaftConf().hasMajority(isAcked, selfId);</span>
+  }
+
+  private void updateCommit(LogEntryHeader[] entriesToCommit) {
+<span class="fc" id="L959">    final long newCommitIndex = raftLog.getLastCommittedIndex();</span>
+<span class="fc" id="L960">    long lastCommitIndex = RaftLog.INVALID_LOG_INDEX;</span>
+
+<span class="fc" id="L962">    boolean hasConfiguration = false;</span>
+<span class="fc bfc" id="L963" title="All 2 branches covered.">    for (LogEntryHeader entry : entriesToCommit) {</span>
+<span class="fc bfc" id="L964" title="All 2 branches covered.">      if (entry.getIndex() &gt; newCommitIndex) {</span>
+<span class="fc" id="L965">        break;</span>
+      }
+<span class="fc bfc" id="L967" title="All 2 branches covered.">      hasConfiguration |= entry.getLogEntryBodyCase() == LogEntryBodyCase.CONFIGURATIONENTRY;</span>
+<span class="fc" id="L968">      raftLog.getRaftLogMetrics().onLogEntryCommitted(entry);</span>
+<span class="fc bfc" id="L969" title="All 2 branches covered.">      if (entry.getLogEntryBodyCase() != LogEntryBodyCase.METADATAENTRY) {</span>
+<span class="fc" id="L970">        lastCommitIndex = entry.getIndex();</span>
+      }
+    }
+<span class="fc bfc" id="L973" title="All 4 branches covered.">    if (logMetadataEnabled &amp;&amp; lastCommitIndex != RaftLog.INVALID_LOG_INDEX) {</span>
+<span class="fc" id="L974">      logMetadata(lastCommitIndex);</span>
+    }
+<span class="fc" id="L976">    commitIndexChanged();</span>
+<span class="fc bfc" id="L977" title="All 2 branches covered.">    if (hasConfiguration) {</span>
+<span class="fc" id="L978">      checkAndUpdateConfiguration();</span>
+    }
+<span class="fc" id="L980">  }</span>
+
+  private void updateCommit(long majority, long min) {
+<span class="fc" id="L983">    final long oldLastCommitted = raftLog.getLastCommittedIndex();</span>
+<span class="fc bfc" id="L984" title="All 2 branches covered.">    if (majority &gt; oldLastCommitted) {</span>
+      // Get the headers before updating commit index since the log can be purged after a snapshot
+<span class="fc" id="L986">      final LogEntryHeader[] entriesToCommit = raftLog.getEntries(oldLastCommitted + 1, majority + 1);</span>
+
+<span class="fc bfc" id="L988" title="All 2 branches covered.">      if (server.getState().updateCommitIndex(majority, currentTerm, true)) {</span>
+<span class="fc" id="L989">        updateCommit(entriesToCommit);</span>
+      }
+    }
+<span class="fc" id="L992">    watchRequests.update(ReplicationLevel.ALL, min);</span>
+<span class="fc" id="L993">  }</span>
+
+  private void logMetadata(long commitIndex) {
+<span class="fc bfc" id="L996" title="All 2 branches covered.">    if (raftLog.appendMetadata(currentTerm, commitIndex) != RaftLog.INVALID_LOG_INDEX) {</span>
+<span class="fc" id="L997">      notifySenders();</span>
+    }
+<span class="fc" id="L999">  }</span>
+
+  private void checkAndUpdateConfiguration() {
+<span class="fc" id="L1002">    final RaftConfigurationImpl conf = server.getRaftConf();</span>
+<span class="fc bfc" id="L1003" title="All 2 branches covered.">    if (conf.isTransitional()) {</span>
+<span class="fc" id="L1004">      replicateNewConf();</span>
+    } else { // the (new) log entry has been committed
+<span class="fc" id="L1006">      pendingRequests.replySetConfiguration(server::newSuccessReply);</span>
+      // if the leader is not included in the current configuration, step down
+<span class="fc bfc" id="L1008" title="All 2 branches covered.">      if (!conf.containsInConf(server.getId(), RaftPeerRole.FOLLOWER, RaftPeerRole.LISTENER)) {</span>
+<span class="fc" id="L1009">        lease.getAndSetEnabled(false);</span>
+<span class="fc" id="L1010">        LOG.info(&quot;{} is not included in the new configuration {}. Will shutdown server...&quot;, this, conf);</span>
+        try {
+          // leave some time for all RPC senders to send out new conf entry
+<span class="fc" id="L1013">          server.properties().minRpcTimeout().sleep();</span>
+<span class="nc" id="L1014">        } catch (InterruptedException ignored) {</span>
+<span class="nc" id="L1015">          Thread.currentThread().interrupt();</span>
+<span class="fc" id="L1016">        }</span>
+        // the pending request handler will send NotLeaderException for
+        // pending client requests when it stops
+<span class="fc" id="L1019">        server.close();</span>
+      }
+    }
+<span class="fc" id="L1022">  }</span>
+
+  /**
+   * when the (old, new) log entry has been committed, should replicate (new):
+   * 1) append (new) to log
+   * 2) update conf to (new)
+   * 3) update RpcSenders list
+   * 4) start replicating the log entry
+   */
+  private void replicateNewConf() {
+<span class="fc" id="L1032">    final RaftConfigurationImpl conf = server.getRaftConf();</span>
+<span class="fc" id="L1033">    final RaftConfigurationImpl newConf = RaftConfigurationImpl.newBuilder()</span>
+<span class="fc" id="L1034">        .setConf(conf)</span>
+<span class="fc" id="L1035">        .setLogEntryIndex(raftLog.getNextIndex())</span>
+<span class="fc" id="L1036">        .build();</span>
+    // stop the LogAppender if the corresponding follower and listener is no longer in the conf
+<span class="fc" id="L1038">    updateSenders(newConf);</span>
+<span class="fc" id="L1039">    appendConfiguration(newConf);</span>
+<span class="fc" id="L1040">    notifySenders();</span>
+<span class="fc" id="L1041">  }</span>
+
+  private long[] getSorted(List&lt;FollowerInfo&gt; followerInfos, boolean includeSelf,
+      ToLongFunction&lt;FollowerInfo&gt; getFollowerIndex, LongSupplier getLogIndex) {
+<span class="fc bfc" id="L1045" title="All 2 branches covered.">    final int length = includeSelf ? followerInfos.size() + 1 : followerInfos.size();</span>
+<span class="pc bpc" id="L1046" title="1 of 2 branches missed.">    if (length == 0) {</span>
+<span class="nc" id="L1047">      throw new IllegalArgumentException(&quot;followerInfos is empty and includeSelf == &quot; + includeSelf);</span>
+    }
+
+<span class="fc" id="L1050">    final long[] indices = new long[length];</span>
+<span class="fc bfc" id="L1051" title="All 2 branches covered.">    for (int i = 0; i &lt; followerInfos.size(); i++) {</span>
+<span class="fc" id="L1052">      indices[i] = getFollowerIndex.applyAsLong(followerInfos.get(i));</span>
+    }
+
+<span class="fc bfc" id="L1055" title="All 2 branches covered.">    if (includeSelf) {</span>
+      // note that we also need to wait for the local disk I/O
+<span class="fc" id="L1057">      indices[length - 1] = getLogIndex.getAsLong();</span>
+    }
+
+<span class="fc" id="L1060">    Arrays.sort(indices);</span>
+<span class="fc" id="L1061">    return indices;</span>
+  }
+
+  private void checkPeersForYieldingLeader() {
+<span class="fc" id="L1065">    final RaftConfigurationImpl conf = server.getRaftConf();</span>
+<span class="fc" id="L1066">    final RaftPeer leader = conf.getPeer(server.getId());</span>
+<span class="pc bpc" id="L1067" title="1 of 2 branches missed.">    if (leader == null) {</span>
+<span class="nc" id="L1068">      LOG.error(&quot;{} the leader {} is not in the conf {}&quot;, this, server.getId(), conf);</span>
+<span class="nc" id="L1069">      return;</span>
+    }
+<span class="fc" id="L1071">    final int leaderPriority = leader.getPriority();</span>
+
+<span class="fc" id="L1073">    final List&lt;LogAppender&gt; highestPriorityInfos = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1074">    int highestPriority = Integer.MIN_VALUE;</span>
+<span class="fc bfc" id="L1075" title="All 2 branches covered.">    for (LogAppender logAppender : senders) {</span>
+<span class="fc" id="L1076">      final RaftPeer follower = conf.getPeer(logAppender.getFollowerId());</span>
+<span class="fc bfc" id="L1077" title="All 2 branches covered.">      if (follower == null) {</span>
+<span class="fc" id="L1078">        continue;</span>
+      }
+<span class="fc" id="L1080">      final int followerPriority = follower.getPriority();</span>
+<span class="pc bpc" id="L1081" title="1 of 4 branches missed.">      if (followerPriority &gt; leaderPriority &amp;&amp; followerPriority &gt;= highestPriority) {</span>
+<span class="pc bpc" id="L1082" title="1 of 2 branches missed.">        if (followerPriority &gt; highestPriority) {</span>
+<span class="fc" id="L1083">          highestPriority = followerPriority;</span>
+<span class="fc" id="L1084">          highestPriorityInfos.clear();</span>
+        }
+<span class="fc" id="L1086">        highestPriorityInfos.add(logAppender);</span>
+      }
+<span class="fc" id="L1088">    }</span>
+<span class="fc" id="L1089">    final TermIndex leaderLastEntry = server.getState().getLastEntry();</span>
+<span class="fc" id="L1090">    final LogAppender appender = chooseUpToDateFollower(highestPriorityInfos, leaderLastEntry);</span>
+<span class="fc bfc" id="L1091" title="All 2 branches covered.">    if (appender != null) {</span>
+<span class="fc" id="L1092">      server.getTransferLeadership().start(appender);</span>
+    }
+<span class="fc" id="L1094">  }</span>
+
+  /**
+   * See the thesis section 6.2: A leader in Raft steps down
+   * if an election timeout elapses without a successful
+   * round of heartbeats to a majority of its cluster.
+   */
+
+  public boolean checkLeadership() {
+<span class="pc bpc" id="L1103" title="2 of 4 branches missed.">    if (!server.getRole().getLeaderState().filter(leader -&gt; leader == this).isPresent()) {</span>
+<span class="nc" id="L1104">      return false;</span>
+    }
+    // The initial value of lastRpcResponseTime in FollowerInfo is set by
+    // LeaderState::addSenders(), which is fake and used to trigger an
+    // immediate round of AppendEntries request. Since candidates collect
+    // votes from majority before becoming leader, without seeing higher term,
+    // ideally, A leader is legal for election timeout if become leader soon.
+<span class="fc bfc" id="L1111" title="All 2 branches covered.">    if (server.getRole().getRoleElapsedTimeMs() &lt; server.getMaxTimeoutMs()) {</span>
+<span class="fc" id="L1112">      return true;</span>
+    }
+
+<span class="fc" id="L1115">    final List&lt;RaftPeerId&gt; activePeers = getLogAppenders()</span>
+<span class="fc" id="L1116">        .filter(sender -&gt; sender.getFollower()</span>
+<span class="fc" id="L1117">                                .getLastRpcResponseTime()</span>
+<span class="fc bfc" id="L1118" title="All 2 branches covered.">                                .elapsedTimeMs() &lt;= server.getMaxTimeoutMs())</span>
+<span class="fc" id="L1119">        .map(LogAppender::getFollowerId)</span>
+<span class="fc" id="L1120">        .collect(Collectors.toList());</span>
+
+<span class="fc" id="L1122">    final RaftConfigurationImpl conf = server.getRaftConf();</span>
+
+<span class="fc bfc" id="L1124" title="All 2 branches covered.">    if (conf.hasMajority(activePeers, server.getId())) {</span>
+      // leadership check passed
+<span class="fc" id="L1126">      return true;</span>
+    }
+
+<span class="fc" id="L1129">    LOG.warn(this + &quot;: Lost leadership on term: &quot; + currentTerm</span>
+<span class="fc" id="L1130">        + &quot;. Election timeout: &quot; + server.getMaxTimeoutMs() + &quot;ms&quot;</span>
+<span class="fc" id="L1131">        + &quot;. In charge for: &quot; + server.getRole().getRoleElapsedTimeMs() + &quot;ms&quot;</span>
+        + &quot;. Conf: &quot; + conf);
+<span class="fc" id="L1133">    getLogAppenders().map(LogAppender::getFollower).forEach(f -&gt; LOG.warn(&quot;Follower {}&quot;, f));</span>
+
+    // step down as follower
+<span class="fc" id="L1136">    stepDown(currentTerm, StepDownReason.LOST_MAJORITY_HEARTBEATS);</span>
+<span class="fc" id="L1137">    return false;</span>
+  }
+
+  /**
+   * Obtain the current readIndex for read only requests. See Raft paper section 6.4.
+   * 1. Leader makes sure at least one log from current term is committed.
+   * 2. Leader record last committed index or applied index (depending on configuration) as readIndex.
+   * 3. Leader broadcast heartbeats to followers and waits for acknowledgements.
+   * 4. If majority respond success, returns readIndex.
+   * @return current readIndex.
+   */
+  CompletableFuture&lt;Long&gt; getReadIndex(Long readAfterWriteConsistentIndex) {
+<span class="fc bfc" id="L1149" title="All 2 branches covered.">    final long index = readIndexAppliedIndexEnabled ?</span>
+<span class="fc" id="L1150">        server.getState().getLastAppliedIndex() : server.getRaftLog().getLastCommittedIndex();</span>
+    final long readIndex;
+<span class="fc bfc" id="L1152" title="All 4 branches covered.">    if (readAfterWriteConsistentIndex != null &amp;&amp; readAfterWriteConsistentIndex &gt; index) {</span>
+<span class="fc" id="L1153">      readIndex = readAfterWriteConsistentIndex;</span>
+    } else {
+<span class="fc" id="L1155">      readIndex = index;</span>
+    }
+<span class="fc" id="L1157">    LOG.debug(&quot;readIndex={} ({}Index={}, readAfterWriteConsistentIndex={})&quot;,</span>
+<span class="fc bfc" id="L1158" title="All 2 branches covered.">        readIndex, readIndexAppliedIndexEnabled ? &quot;applied&quot; : &quot;commit&quot;,</span>
+<span class="fc" id="L1159">        index, readAfterWriteConsistentIndex);</span>
+
+    // if group contains only one member, fast path
+<span class="fc bfc" id="L1162" title="All 2 branches covered.">    if (server.getRaftConf().isSingleton()) {</span>
+<span class="fc" id="L1163">      return CompletableFuture.completedFuture(readIndex);</span>
+    }
+
+    // leader has not committed any entries in this term
+<span class="pc bpc" id="L1167" title="1 of 2 branches missed.">    if (!isReady()) {</span>
+<span class="nc" id="L1168">      return startupLogEntry.get().getAppliedIndexFuture();</span>
+    }
+
+    // if lease is enabled, check lease first
+    // if we allow leader to skip the leadership check heartbeat, we can return immediately
+<span class="pc bpc" id="L1173" title="1 of 4 branches missed.">    if (!leaderHeartbeatCheckEnabled || hasLease()) {</span>
+<span class="fc" id="L1174">      return CompletableFuture.completedFuture(readIndex);</span>
+    }
+
+    // send heartbeats and wait for majority acknowledgments
+<span class="fc" id="L1178">    final AppendEntriesListener listener = readIndexHeartbeats.addAppendEntriesListener(</span>
+<span class="fc" id="L1179">        readIndex, i -&gt; new AppendEntriesListener(i, senders));</span>
+
+    // the readIndex is already acknowledged before
+<span class="fc bfc" id="L1182" title="All 2 branches covered.">    if (listener == null) {</span>
+<span class="fc" id="L1183">      return CompletableFuture.completedFuture(readIndex);</span>
+    }
+
+<span class="fc" id="L1186">    return listener.getFuture();</span>
+  }
+
+  @Override
+  public void onAppendEntriesReply(LogAppender appender, RaftProtos.AppendEntriesReplyProto reply) {
+<span class="fc" id="L1191">    readIndexHeartbeats.onAppendEntriesReply(appender, reply, this::hasMajority);</span>
+<span class="fc" id="L1192">  }</span>
+
+  boolean getAndSetLeaseEnabled(boolean newValue) {
+<span class="fc" id="L1195">    return lease.getAndSetEnabled(newValue);</span>
+  }
+
+  boolean hasLease() {
+<span class="fc bfc" id="L1199" title="All 2 branches covered.">    if (!lease.isEnabled()) {</span>
+<span class="fc" id="L1200">      return false;</span>
+    }
+
+<span class="fc bfc" id="L1203" title="All 2 branches covered.">    if (checkLeaderLease()) {</span>
+<span class="fc" id="L1204">      return true;</span>
+    }
+
+    // try extending the leader lease
+<span class="fc" id="L1208">    final RaftConfigurationImpl conf = server.getRaftConf();</span>
+<span class="fc" id="L1209">    final CurrentOldFollowerInfos info = followerInfoMap.getFollowerInfos(conf);</span>
+<span class="fc" id="L1210">    lease.extend(info.getCurrent(), info.getOld(), peers -&gt; conf.hasMajority(peers, server.getId()));</span>
+
+<span class="fc" id="L1212">    return checkLeaderLease();</span>
+  }
+
+  private boolean checkLeaderLease() {
+<span class="pc bpc" id="L1216" title="2 of 4 branches missed.">    return isRunning() &amp;&amp; isReady()</span>
+<span class="pc bpc" id="L1217" title="1 of 4 branches missed.">        &amp;&amp; (server.getRaftConf().isSingleton() || lease.isValid());</span>
+  }
+
+  void replyPendingRequest(TermIndex termIndex, RaftClientReply reply) {
+<span class="fc" id="L1221">    pendingRequests.replyPendingRequest(termIndex, reply);</span>
+<span class="fc" id="L1222">  }</span>
+
+  TransactionContext getTransactionContext(TermIndex termIndex) {
+<span class="fc" id="L1225">    return pendingRequests.getTransactionContext(termIndex);</span>
+  }
+
+  long[] getFollowerNextIndices() {
+<span class="fc" id="L1229">    return getLogAppenders().mapToLong(s -&gt; s.getFollower().getNextIndex()).toArray();</span>
+  }
+
+  long[] getFollowerMatchIndices() {
+<span class="nc" id="L1233">    return getLogAppenders().mapToLong(s -&gt; s.getFollower().getMatchIndex()).toArray();</span>
+  }
+
+  static Map&lt;RaftPeerId, RaftPeer&gt; newMap(Collection&lt;RaftPeer&gt; peers, String str) {
+<span class="pc" id="L1237">    Objects.requireNonNull(peers, () -&gt; str + &quot; == null&quot;);</span>
+<span class="fc" id="L1238">    final Map&lt;RaftPeerId, RaftPeer&gt; map = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L1239" title="All 2 branches covered.">    for(RaftPeer p : peers) {</span>
+<span class="fc" id="L1240">      map.put(p.getId(), p);</span>
+<span class="fc" id="L1241">    }</span>
+<span class="fc" id="L1242">    return Collections.unmodifiableMap(map);</span>
+  }
+
+  private class ConfigurationStagingState {
+<span class="fc" id="L1246">    private final String name = ServerStringUtils.generateUnifiedName(server.getMemberId(), getClass());</span>
+    private final Map&lt;RaftPeerId, RaftPeer&gt; newPeers;
+    private final Map&lt;RaftPeerId, RaftPeer&gt; newListeners;
+    private final PeerConfiguration newConf;
+
+    ConfigurationStagingState(Collection&lt;RaftPeer&gt; newPeers, Collection&lt;RaftPeer&gt; newListeners,
+<span class="fc" id="L1252">        PeerConfiguration newConf) {</span>
+<span class="fc" id="L1253">      this.newPeers = newMap(newPeers, &quot;peer&quot;);</span>
+<span class="fc" id="L1254">      this.newListeners = newMap(newListeners, &quot;listeners&quot;);</span>
+<span class="fc" id="L1255">      this.newConf = newConf;</span>
+<span class="fc" id="L1256">    }</span>
+
+    RaftConfigurationImpl generateOldNewConf(RaftConfigurationImpl current, long logIndex) {
+<span class="fc" id="L1259">      return RaftConfigurationImpl.newBuilder()</span>
+<span class="fc" id="L1260">          .setConf(newConf)</span>
+<span class="fc" id="L1261">          .setOldConf(current)</span>
+<span class="fc" id="L1262">          .setLogEntryIndex(logIndex)</span>
+<span class="fc" id="L1263">          .build();</span>
+    }
+
+    Collection&lt;RaftPeer&gt; getNewPeers() {
+<span class="fc" id="L1267">      return newPeers.values();</span>
+    }
+
+    Collection&lt;RaftPeer&gt; getNewListeners() {
+<span class="fc" id="L1271">      return newListeners.values();</span>
+    }
+
+    boolean contains(RaftPeerId peerId) {
+<span class="nc bnc" id="L1275" title="All 4 branches missed.">      return newPeers.containsKey(peerId) || newListeners.containsKey(peerId);</span>
+    }
+
+    void fail(BootStrapProgress progress) {
+<span class="fc" id="L1279">      final String message = this + &quot;: Fail to set configuration &quot; + newConf + &quot; due to &quot; + progress;</span>
+<span class="fc" id="L1280">      LOG.debug(message);</span>
+<span class="fc bfc" id="L1281" title="All 2 branches covered.">      stopAndRemoveSenders(s -&gt; !isCaughtUp(s.getFollower()));</span>
+
+<span class="fc" id="L1283">      stagingState = null;</span>
+      // send back failure response to client's request
+<span class="fc" id="L1285">      pendingRequests.failSetConfiguration(new ReconfigurationTimeoutException(message));</span>
+<span class="fc" id="L1286">    }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L1290">      return name;</span>
+    }
+  }
+
+  /**
+   * @return the RaftPeer (address and id) information of the followers.
+   */
+  Stream&lt;RaftPeer&gt; getFollowers() {
+<span class="nc" id="L1298">    return getLogAppenders()</span>
+<span class="nc" id="L1299">        .map(sender -&gt; sender.getFollower().getPeer())</span>
+<span class="nc" id="L1300">        .filter(peer -&gt; server.getRaftConf().containsInConf(peer.getId()));</span>
+  }
+
+  Stream&lt;LogAppender&gt; getLogAppenders() {
+<span class="fc" id="L1304">    return StreamSupport.stream(senders.spliterator(), false);</span>
+  }
+
+  Optional&lt;LogAppender&gt; getLogAppender(RaftPeerId id) {
+<span class="fc" id="L1308">    return getLogAppenders().filter(a -&gt; a.getFollowerId().equals(id)).findAny();</span>
+  }
+
+  private static boolean isCaughtUp(FollowerInfo follower) {
+<span class="fc" id="L1312">    return ((FollowerInfoImpl)follower).isCaughtUp();</span>
+  }
+
+  @Override
+  public void checkHealth(FollowerInfo follower) {
+<span class="fc" id="L1317">    final TimeDuration elapsedTime = follower.getLastRpcResponseTime().elapsedTime();</span>
+<span class="pc bpc" id="L1318" title="1 of 2 branches missed.">    if (elapsedTime.compareTo(server.properties().rpcSlownessTimeout()) &gt; 0) {</span>
+<span class="nc" id="L1319">      final RoleInfoProto leaderInfo = server.getInfo().getRoleInfoProto();</span>
+<span class="nc" id="L1320">      server.getStateMachine().leaderEvent().notifyFollowerSlowness(leaderInfo);</span>
+<span class="nc" id="L1321">      server.getStateMachine().leaderEvent().notifyFollowerSlowness(leaderInfo, follower.getPeer());</span>
+    }
+<span class="fc" id="L1323">    final RaftPeerId followerId = follower.getId();</span>
+<span class="fc" id="L1324">    raftServerMetrics.recordFollowerHeartbeatElapsedTime(followerId, elapsedTime.toLong(TimeUnit.NANOSECONDS));</span>
+<span class="fc" id="L1325">  }</span>
+
+  @Override
+  public String toString() {
+<span class="fc" id="L1329">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

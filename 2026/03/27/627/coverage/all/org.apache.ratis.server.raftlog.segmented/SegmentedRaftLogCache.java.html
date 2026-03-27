@@ -1,0 +1,765 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SegmentedRaftLogCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">SegmentedRaftLogCache.java</span></div><h1>SegmentedRaftLogCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.metrics.SegmentedRaftLogMetrics;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogEntryHeader;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLog;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.server.raftlog.segmented.CacheInvalidationPolicy.CacheInvalidationPolicyDefault;
+import org.apache.ratis.server.raftlog.segmented.LogSegment.LogRecord;
+import org.apache.ratis.util.AutoCloseableLock;
+import org.apache.ratis.util.AutoCloseableReadWriteLock;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.SizeInBytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+
+/**
+ * In-memory RaftLog Cache. Currently we provide a simple implementation that
+ * caches all the segments in the memory. The cache is not thread-safe and
+ * requires external lock protection.
+ */
+public class SegmentedRaftLogCache {
+<span class="fc" id="L59">  public static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogCache.class);</span>
+
+  static final class SegmentFileInfo {
+<span class="fc" id="L62">    static final SegmentFileInfo[] EMPTY_ARRAY = {};</span>
+<span class="fc" id="L63">    static final Comparator&lt;SegmentFileInfo&gt; REVERSED_ORDER = Comparator.comparingLong(SegmentFileInfo::getStartIndex)</span>
+<span class="fc" id="L64">        .thenComparingLong(SegmentFileInfo::getEndIndex)</span>
+<span class="fc" id="L65">        .reversed();</span>
+
+    static SegmentFileInfo[] toSortedArray(List&lt;SegmentFileInfo&gt; list) {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">      if (list == null) {</span>
+<span class="nc" id="L69">        return EMPTY_ARRAY;</span>
+      }
+<span class="fc" id="L71">      final SegmentFileInfo[] array = list.toArray(EMPTY_ARRAY);</span>
+<span class="fc" id="L72">      Arrays.sort(array, REVERSED_ORDER);</span>
+<span class="fc" id="L73">      return array;</span>
+    }
+
+    static SegmentFileInfo newClosedSegmentFileInfo(LogSegment ls) {
+<span class="fc" id="L77">      Objects.requireNonNull(ls, &quot;ls == null&quot;);</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">      Preconditions.assertTrue(!ls.isOpen(), () -&gt; ls + &quot; is OPEN&quot;);</span>
+<span class="fc" id="L79">      return new SegmentFileInfo(ls.getStartIndex(), ls.getEndIndex(), ls.isOpen(), 0, 0);</span>
+    }
+
+    private final long startIndex; // start index of the segment
+    private final long endIndex; // original end index
+    private final boolean isOpen;
+    private final long targetLength; // position for truncation
+    private final long newEndIndex; // new end index after the truncation
+
+    public long getStartIndex() {
+<span class="fc" id="L89">      return startIndex;</span>
+    }
+
+    public long getEndIndex() {
+<span class="fc" id="L93">      return endIndex;</span>
+    }
+
+    public boolean isOpen() {
+<span class="fc" id="L97">      return isOpen;</span>
+    }
+
+    public long getTargetLength() {
+<span class="fc" id="L101">      return targetLength;</span>
+    }
+
+    public long getNewEndIndex() {
+<span class="fc" id="L105">      return newEndIndex;</span>
+    }
+
+<span class="fc" id="L108">    private SegmentFileInfo(long start, long end, boolean isOpen, long targetLength, long newEndIndex) {</span>
+<span class="fc" id="L109">      this.startIndex = start;</span>
+<span class="fc" id="L110">      this.endIndex = end;</span>
+<span class="fc" id="L111">      this.isOpen = isOpen;</span>
+<span class="fc" id="L112">      this.targetLength = targetLength;</span>
+<span class="fc" id="L113">      this.newEndIndex = newEndIndex;</span>
+<span class="fc" id="L114">    }</span>
+
+    File getFile(RaftStorage storage) {
+<span class="fc" id="L117">      return LogSegmentStartEnd.valueOf(startIndex, endIndex, isOpen).getFile(storage);</span>
+    }
+
+    File getNewFile(RaftStorage storage) {
+<span class="fc" id="L121">      return LogSegmentStartEnd.valueOf(startIndex, newEndIndex, false).getFile(storage);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L126">      return &quot;(&quot; + startIndex + &quot;, &quot; + endIndex</span>
+          + &quot;) isOpen? &quot; + isOpen + &quot;, length=&quot; + targetLength
+          + &quot;, newEndIndex=&quot; + newEndIndex;
+    }
+  }
+
+  static class TruncationSegments {
+    private final String reason;
+    private final SegmentFileInfo toTruncate; // name of the file to be truncated
+    private final SegmentFileInfo[] toDelete; // names of the files to be deleted
+
+    String getReason() {
+<span class="fc" id="L138">      return reason;</span>
+    }
+
+    public SegmentFileInfo getToTruncate() {
+<span class="fc" id="L142">      return toTruncate;</span>
+    }
+
+    public SegmentFileInfo[] getToDelete() {
+<span class="fc" id="L146">      return toDelete;</span>
+    }
+
+<span class="fc" id="L149">    TruncationSegments(String reason, SegmentFileInfo toTruncate, List&lt;SegmentFileInfo&gt; toDelete) {</span>
+<span class="fc" id="L150">      this.reason = reason;</span>
+<span class="fc" id="L151">      this.toTruncate = toTruncate;</span>
+<span class="fc" id="L152">      this.toDelete = SegmentFileInfo.toSortedArray(toDelete);</span>
+<span class="fc" id="L153">    }</span>
+
+    long maxEndIndex() {
+<span class="fc" id="L156">      long max = Long.MIN_VALUE;</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">      if (toTruncate != null) {</span>
+<span class="nc" id="L158">        max = toTruncate.endIndex;</span>
+      }
+<span class="fc bfc" id="L160" title="All 2 branches covered.">      for(SegmentFileInfo d : toDelete) {</span>
+<span class="fc" id="L161">        max = Math.max(max, d.endIndex);</span>
+      }
+<span class="fc" id="L163">      return max;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L168">      return reason</span>
+          + &quot;\n  toTruncate: &quot; + toTruncate
+<span class="fc" id="L170">          + &quot;\n    toDelete: &quot; + Arrays.toString(toDelete);</span>
+    }
+  }
+
+  private static class CacheInfo {
+    static CacheInfo get(List&lt;LogSegment&gt; list) {
+<span class="fc" id="L176">      long size = 0L;</span>
+<span class="fc" id="L177">      long count = 0L;</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">      for (LogSegment segment: list) {</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (segment.hasCache()) {</span>
+<span class="fc" id="L180">          count++;</span>
+<span class="fc" id="L181">          size += segment.getTotalCacheSize();</span>
+        }
+<span class="fc" id="L183">      }</span>
+<span class="fc" id="L184">      return new CacheInfo(size, count);</span>
+    }
+
+    /** Total cache size in bytes. */
+    private final long size;
+    /** The number of cached segments. */
+    private final long count;
+
+<span class="fc" id="L192">    CacheInfo(long size, long count) {</span>
+<span class="fc" id="L193">      this.size = size;</span>
+<span class="fc" id="L194">      this.count = count;</span>
+<span class="fc" id="L195">    }</span>
+
+    public long getSize() {
+<span class="fc" id="L198">      return size;</span>
+    }
+
+    public long getCount() {
+<span class="fc" id="L202">      return count;</span>
+    }
+  }
+
+  static class LogSegmentList {
+    private final Object name;
+<span class="fc" id="L208">    private final List&lt;LogSegment&gt; segments = new CopyOnWriteArrayList&lt;&gt;();</span>
+    private final AutoCloseableReadWriteLock lock;
+    private long sizeInBytes;
+
+<span class="fc" id="L212">    LogSegmentList(Object name) {</span>
+<span class="fc" id="L213">      this.name = name;</span>
+<span class="fc" id="L214">      this.lock = new AutoCloseableReadWriteLock(name);</span>
+<span class="fc" id="L215">      this.sizeInBytes = 0;</span>
+<span class="fc" id="L216">    }</span>
+
+    AutoCloseableLock readLock() {
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">      final StackTraceElement caller = LOG.isTraceEnabled()? JavaUtils.getCallerStackTraceElement(): null;</span>
+<span class="fc" id="L220">      return lock.readLock(caller, LOG::trace);</span>
+    }
+
+    AutoCloseableLock writeLock() {
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">      final StackTraceElement caller = LOG.isTraceEnabled()? JavaUtils.getCallerStackTraceElement(): null;</span>
+<span class="fc" id="L225">      return lock.writeLock(caller, LOG::trace);</span>
+    }
+
+    boolean isEmpty() {
+<span class="fc" id="L229">      return segments.isEmpty();</span>
+    }
+
+    int size() {
+<span class="fc" id="L233">      return segments.size();</span>
+    }
+
+    long getTotalFileSize() {
+<span class="fc" id="L237">      return sizeInBytes;</span>
+    }
+
+    CacheInfo getCacheInfo() {
+<span class="fc" id="L241">      return CacheInfo.get(segments);</span>
+    }
+
+    long countCached() {
+<span class="fc" id="L245">      return segments.stream().filter(LogSegment::hasCache).count();</span>
+    }
+
+    LogSegment getLast() {
+<span class="fc" id="L249">      try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        return segments.isEmpty()? null: segments.get(segments.size() - 1);</span>
+      }
+    }
+
+    LogSegment get(int i) {
+<span class="fc" id="L255">      return segments.get(i);</span>
+    }
+
+    int binarySearch(long index) {
+<span class="fc" id="L259">      try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="fc" id="L260">        return Collections.binarySearch(segments, index, LogSegment.SEGMENT_TO_INDEX_COMPARATOR);</span>
+      }
+    }
+
+    LogSegment search(long index) {
+<span class="fc" id="L265">      try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="fc" id="L266">        final int i = Collections.binarySearch(segments, index, LogSegment.SEGMENT_TO_INDEX_COMPARATOR);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        return i &lt; 0? null: segments.get(i);</span>
+      }
+    }
+
+    LogEntryHeader[] getTermIndex(long startIndex, long realEnd, LogSegment openSegment) {
+<span class="fc" id="L272">      final LogEntryHeader[] entries = new LogEntryHeader[Math.toIntExact(realEnd - startIndex)];</span>
+      final int searchIndex;
+<span class="fc" id="L274">      long index = startIndex;</span>
+
+<span class="fc" id="L276">      try(AutoCloseableLock readLock = readLock()) {</span>
+<span class="fc" id="L277">        searchIndex = Collections.binarySearch(segments, startIndex, LogSegment.SEGMENT_TO_INDEX_COMPARATOR);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (searchIndex &gt;= 0) {</span>
+<span class="fc bfc" id="L279" title="All 4 branches covered.">          for(int i = searchIndex; i &lt; segments.size() &amp;&amp; index &lt; realEnd; i++) {</span>
+<span class="fc" id="L280">            final LogSegment s = segments.get(i);</span>
+<span class="fc" id="L281">            final int numberFromSegment = Math.toIntExact(Math.min(realEnd - index, s.getEndIndex() - index + 1));</span>
+<span class="fc" id="L282">            getFromSegment(s, index, entries, Math.toIntExact(index - startIndex), numberFromSegment);</span>
+<span class="fc" id="L283">            index += numberFromSegment;</span>
+          }
+        }
+      }
+
+      // openSegment is read outside the lock.
+<span class="fc bfc" id="L289" title="All 2 branches covered.">      if (searchIndex &lt; 0) {</span>
+<span class="fc" id="L290">        getFromSegment(openSegment, startIndex, entries, 0, entries.length);</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">      } else if (index &lt; realEnd) {</span>
+<span class="fc" id="L292">        getFromSegment(openSegment, index, entries,</span>
+<span class="fc" id="L293">            Math.toIntExact(index - startIndex), Math.toIntExact(realEnd - index));</span>
+      }
+<span class="fc" id="L295">      return entries;</span>
+    }
+
+    boolean add(LogSegment logSegment) {
+<span class="fc" id="L299">      try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="fc" id="L300">        sizeInBytes += logSegment.getTotalFileSize();</span>
+<span class="fc" id="L301">        return segments.add(logSegment);</span>
+      }
+    }
+
+    void clear() {
+<span class="fc" id="L306">      try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="fc" id="L307">        segments.forEach(LogSegment::clear);</span>
+<span class="fc" id="L308">        segments.clear();</span>
+<span class="fc" id="L309">        sizeInBytes = 0;</span>
+      }
+<span class="fc" id="L311">    }</span>
+
+    TruncationSegments truncate(long index, LogSegment openSegment, Runnable clearOpenSegment) {
+<span class="fc" id="L314">      final String reason = &quot;truncate(&quot; + index + &quot;)&quot;;</span>
+<span class="fc" id="L315">      try(AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="fc" id="L316">        final int segmentIndex = binarySearch(index);</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (segmentIndex == -segments.size() - 1) {</span>
+<span class="pc bpc" id="L318" title="2 of 4 branches missed.">          if (openSegment != null &amp;&amp; openSegment.getEndIndex() &gt;= index) {</span>
+<span class="fc" id="L319">            final long oldEnd = openSegment.getEndIndex();</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">            if (index == openSegment.getStartIndex()) {</span>
+              // the open segment should be deleted
+<span class="fc" id="L322">              final SegmentFileInfo deleted = deleteOpenSegment(openSegment, clearOpenSegment);</span>
+<span class="fc" id="L323">              return new TruncationSegments(reason, null, Collections.singletonList(deleted));</span>
+            } else {
+<span class="fc" id="L325">              openSegment.truncate(index);</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">              Preconditions.assertTrue(!openSegment.isOpen(),</span>
+<span class="nc" id="L327">                  () -&gt; &quot;Illegal state: &quot; + openSegment + &quot; remains open after truncate.&quot;);</span>
+<span class="fc" id="L328">              final SegmentFileInfo info = new SegmentFileInfo(openSegment.getStartIndex(),</span>
+<span class="fc" id="L329">                  oldEnd, true, openSegment.getTotalFileSize(), openSegment.getEndIndex());</span>
+<span class="fc" id="L330">              segments.add(openSegment);</span>
+<span class="fc" id="L331">              sizeInBytes += openSegment.getTotalFileSize();</span>
+<span class="fc" id="L332">              clearOpenSegment.run();</span>
+<span class="fc" id="L333">              return new TruncationSegments(reason, info, Collections.emptyList());</span>
+            }
+          }
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        } else if (segmentIndex &gt;= 0) {</span>
+<span class="fc" id="L337">          final LogSegment ts = segments.get(segmentIndex);</span>
+<span class="fc" id="L338">          final long oldEnd = ts.getEndIndex();</span>
+<span class="fc" id="L339">          final List&lt;SegmentFileInfo&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L340">          sizeInBytes -= ts.getTotalFileSize();</span>
+<span class="fc" id="L341">          ts.truncate(index);</span>
+<span class="fc" id="L342">          sizeInBytes += ts.getTotalFileSize();</span>
+<span class="fc" id="L343">          final int size = segments.size();</span>
+<span class="fc" id="L344">          for(int i = size - 1;</span>
+<span class="fc bfc" id="L345" title="All 4 branches covered.">              i &gt;= (ts.numOfEntries() == 0? segmentIndex: segmentIndex + 1);</span>
+<span class="fc" id="L346">              i--) {</span>
+<span class="fc" id="L347">            LogSegment s = segments.remove(i);</span>
+<span class="fc" id="L348">            sizeInBytes -= s.getTotalFileSize();</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            final long endOfS = i == segmentIndex? oldEnd: s.getEndIndex();</span>
+<span class="fc" id="L350">            s.clear();</span>
+<span class="fc" id="L351">            list.add(new SegmentFileInfo(s.getStartIndex(), endOfS, false, 0, s.getEndIndex()));</span>
+          }
+<span class="fc bfc" id="L353" title="All 2 branches covered.">          if (openSegment != null) {</span>
+<span class="fc" id="L354">            list.add(deleteOpenSegment(openSegment, clearOpenSegment));</span>
+          }
+<span class="fc bfc" id="L356" title="All 2 branches covered.">          SegmentFileInfo t = ts.numOfEntries() == 0? null:</span>
+<span class="fc" id="L357">              new SegmentFileInfo(ts.getStartIndex(), oldEnd, false, ts.getTotalFileSize(), ts.getEndIndex());</span>
+<span class="fc" id="L358">          return new TruncationSegments(reason, t, list);</span>
+        }
+<span class="nc" id="L360">        return null;</span>
+<span class="pc bpc" id="L361" title="3 of 6 branches missed.">      }</span>
+    }
+
+    TruncationSegments purge(long index) {
+<span class="fc" id="L365">      try (AutoCloseableLock writeLock = writeLock()) {</span>
+<span class="fc" id="L366">        int segmentIndex = binarySearch(index);</span>
+<span class="fc" id="L367">        List&lt;SegmentFileInfo&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        if (segmentIndex == -1) {</span>
+          // nothing to purge
+<span class="fc" id="L370">          return null;</span>
+        }
+
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        if (segmentIndex == -segments.size() - 1) {</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">          for (LogSegment ls : segments) {</span>
+<span class="fc" id="L375">            list.add(SegmentFileInfo.newClosedSegmentFileInfo(ls));</span>
+<span class="fc" id="L376">          }</span>
+<span class="fc" id="L377">          segments.clear();</span>
+<span class="fc" id="L378">          sizeInBytes = 0;</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        } else if (segmentIndex &gt;= 0) {</span>
+          // we start to purge the closedSegments which do not overlap with index.
+<span class="fc" id="L381">          LogSegment overlappedSegment = segments.get(segmentIndex);</span>
+          // if a segment's end index matches the passed in index, it is OK
+          // to purge that.
+<span class="fc bfc" id="L384" title="All 2 branches covered.">          int startIndex = (overlappedSegment.getEndIndex() == index) ?</span>
+<span class="fc" id="L385">              segmentIndex : segmentIndex - 1;</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">          for (int i = 0; i &lt;= startIndex; i++) {</span>
+<span class="fc" id="L387">            LogSegment segment = segments.remove(0); // must remove the first segment to avoid gaps.</span>
+<span class="fc" id="L388">            sizeInBytes -= segment.getTotalFileSize();</span>
+<span class="fc" id="L389">            list.add(SegmentFileInfo.newClosedSegmentFileInfo(segment));</span>
+          }
+<span class="fc" id="L391">        } else {</span>
+<span class="nc" id="L392">          throw new IllegalStateException(&quot;Unexpected gap in segments: binarySearch(&quot; + index + &quot;) returns &quot;</span>
+                  + segmentIndex + &quot;, segments=&quot; + segments);
+        }
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">        return list.isEmpty() ? null : new TruncationSegments(&quot;purge(&quot; + index + &quot;)&quot;, null, list);</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">      }</span>
+    }
+
+    static SegmentFileInfo deleteOpenSegment(LogSegment openSegment, Runnable clearOpenSegment) {
+<span class="fc" id="L400">      final long oldEnd = openSegment.getEndIndex();</span>
+<span class="fc" id="L401">      openSegment.clear();</span>
+<span class="fc" id="L402">      final SegmentFileInfo info = new SegmentFileInfo(openSegment.getStartIndex(), oldEnd, true,</span>
+<span class="fc" id="L403">          0, openSegment.getEndIndex());</span>
+<span class="fc" id="L404">      clearOpenSegment.run();</span>
+<span class="fc" id="L405">      return info;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L410">      return name + &quot;:&quot; + segments;</span>
+    }
+  }
+
+  private final String name;
+  @SuppressWarnings({&quot;squid:S3077&quot;}) // Suppress volatile for generic type
+  private volatile LogSegment openSegment;
+  private final LogSegmentList closedSegments;
+  private final RaftStorage storage;
+  private final SizeInBytes maxOpSize;
+  private final SegmentedRaftLogMetrics raftLogMetrics;
+
+  private final int maxCachedSegments;
+<span class="fc" id="L423">  private final CacheInvalidationPolicy evictionPolicy = new CacheInvalidationPolicyDefault();</span>
+  private final long maxSegmentCacheSize;
+
+  SegmentedRaftLogCache(Object name, RaftStorage storage, RaftProperties properties,
+<span class="fc" id="L427">      SegmentedRaftLogMetrics raftLogMetrics) {</span>
+<span class="fc" id="L428">    this.name = name + &quot;-&quot; + JavaUtils.getClassSimpleName(getClass());</span>
+<span class="fc" id="L429">    this.closedSegments = new LogSegmentList(name);</span>
+<span class="fc" id="L430">    this.storage = storage;</span>
+<span class="fc" id="L431">    this.raftLogMetrics = raftLogMetrics;</span>
+<span class="fc" id="L432">    this.raftLogMetrics.addClosedSegmentsNum(this::getCachedSegmentNum);</span>
+<span class="fc" id="L433">    this.raftLogMetrics.addClosedSegmentsSizeInBytes(this::getClosedSegmentsSizeInBytes);</span>
+<span class="fc" id="L434">    this.raftLogMetrics.addOpenSegmentSizeInBytes(this::getOpenSegmentSizeInBytes);</span>
+<span class="fc" id="L435">    this.maxCachedSegments = RaftServerConfigKeys.Log.segmentCacheNumMax(properties);</span>
+<span class="fc" id="L436">    this.maxSegmentCacheSize = RaftServerConfigKeys.Log.segmentCacheSizeMax(properties).getSize();</span>
+<span class="fc" id="L437">    this.maxOpSize = RaftServerConfigKeys.Log.Appender.bufferByteLimit(properties);</span>
+<span class="fc" id="L438">  }</span>
+
+  int getMaxCachedSegments() {
+<span class="fc" id="L441">    return maxCachedSegments;</span>
+  }
+
+  void loadSegment(LogSegmentPath pi, boolean keepEntryInCache,
+      Consumer&lt;LogEntryProto&gt; logConsumer) throws IOException {
+<span class="fc" id="L446">    final LogSegment logSegment = LogSegment.loadSegment(storage, pi.getPath().toFile(), pi.getStartEnd(),</span>
+        maxOpSize, keepEntryInCache, logConsumer, raftLogMetrics);
+<span class="fc bfc" id="L448" title="All 2 branches covered.">    if (logSegment != null) {</span>
+<span class="fc" id="L449">      addSegment(logSegment);</span>
+    }
+<span class="fc" id="L451">  }</span>
+
+  long getCachedSegmentNum() {
+<span class="fc" id="L454">    return closedSegments.countCached();</span>
+  }
+
+  long getClosedSegmentsSizeInBytes() {
+<span class="fc" id="L458">    return closedSegments.getTotalFileSize();</span>
+  }
+
+  long getOpenSegmentSizeInBytes() {
+<span class="fc bfc" id="L462" title="All 2 branches covered.">    return openSegment == null ? 0 : openSegment.getTotalFileSize();</span>
+  }
+
+  boolean shouldEvict() {
+<span class="fc" id="L466">    final CacheInfo closedSegmentsCacheInfo = closedSegments.getCacheInfo();</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">    if (closedSegmentsCacheInfo.getCount() &gt; maxCachedSegments) {</span>
+<span class="fc" id="L468">      return true;</span>
+    }
+
+<span class="fc" id="L471">    final long size = closedSegmentsCacheInfo.getSize()</span>
+<span class="fc" id="L472">        + Optional.ofNullable(openSegment).map(LogSegment::getTotalCacheSize).orElse(0L);</span>
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">    return size &gt; maxSegmentCacheSize;</span>
+  }
+
+  void evictCache(long[] followerIndices, long safeEvictIndex, long lastAppliedIndex) {
+<span class="fc" id="L477">    List&lt;LogSegment&gt; toEvict = evictionPolicy.evict(followerIndices,</span>
+        safeEvictIndex, lastAppliedIndex, closedSegments, maxCachedSegments);
+<span class="fc bfc" id="L479" title="All 2 branches covered.">    for (LogSegment s : toEvict) {</span>
+<span class="fc" id="L480">      s.evictCache();</span>
+<span class="fc" id="L481">    }</span>
+<span class="fc" id="L482">  }</span>
+
+
+  private void validateAdding(LogSegment segment) {
+<span class="fc" id="L486">    final LogSegment lastClosed = closedSegments.getLast();</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">    if (lastClosed != null) {</span>
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">      Preconditions.assertTrue(!lastClosed.isOpen(),</span>
+<span class="nc" id="L489">          () -&gt; &quot;Unexpected log segment state: the log segment &quot; + lastClosed</span>
+              + &quot; is open but it is not the last segment. The next log segment is &quot; + segment);
+<span class="fc bfc" id="L491" title="All 2 branches covered.">      Preconditions.assertTrue(lastClosed.getEndIndex() + 1 == segment.getStartIndex(),</span>
+<span class="fc" id="L492">          () -&gt; &quot;Found a gap between logs: the last log segment &quot; + lastClosed + &quot; ended at &quot; + lastClosed.getEndIndex()</span>
+<span class="fc" id="L493">              + &quot; but the next log segment &quot; + segment + &quot; started at &quot; + segment.getStartIndex());</span>
+    }
+<span class="fc" id="L495">  }</span>
+
+  void addSegment(LogSegment segment) {
+<span class="fc" id="L498">    validateAdding(segment);</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">    if (segment.isOpen()) {</span>
+<span class="fc" id="L500">      setOpenSegment(segment);</span>
+    } else {
+<span class="fc" id="L502">      closedSegments.add(segment);</span>
+    }
+<span class="fc" id="L504">  }</span>
+
+  void addOpenSegment(long startIndex) {
+<span class="fc" id="L507">    setOpenSegment(LogSegment.newOpenSegment(storage, startIndex, maxOpSize, raftLogMetrics));</span>
+<span class="fc" id="L508">  }</span>
+
+  private void setOpenSegment(LogSegment openSegment) {
+<span class="fc" id="L511">    LOG.trace(&quot;{}: setOpenSegment to {}&quot;, name, openSegment);</span>
+<span class="fc" id="L512">    Preconditions.assertNull(this.openSegment, &quot;this.openSegment&quot;);</span>
+<span class="fc" id="L513">    this.openSegment = Objects.requireNonNull(openSegment);</span>
+<span class="fc" id="L514">  }</span>
+
+  private void clearOpenSegment() {
+<span class="fc" id="L517">    LOG.trace(&quot;{}: clearOpenSegment {}&quot;, name, openSegment);</span>
+<span class="fc" id="L518">    Objects.requireNonNull(openSegment);</span>
+<span class="fc" id="L519">    this.openSegment = null;</span>
+<span class="fc" id="L520">  }</span>
+
+  LogSegment getOpenSegment() {
+<span class="fc" id="L523">    return openSegment;</span>
+  }
+
+  /**
+   * finalize the current open segment, and start a new open segment
+   */
+  void rollOpenSegment(boolean createNewOpen) {
+<span class="pc bpc" id="L530" title="2 of 4 branches missed.">    Preconditions.assertTrue(openSegment != null &amp;&amp; openSegment.numOfEntries() &gt; 0,</span>
+<span class="nc" id="L531">        () -&gt; &quot;The number of entries of &quot; + openSegment + &quot; is &quot; + openSegment.numOfEntries());</span>
+<span class="fc" id="L532">    final long nextIndex = openSegment.getEndIndex() + 1;</span>
+<span class="fc" id="L533">    openSegment.close();</span>
+<span class="fc" id="L534">    closedSegments.add(openSegment);</span>
+<span class="fc" id="L535">    clearOpenSegment();</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">    if (createNewOpen) {</span>
+<span class="fc" id="L537">      addOpenSegment(nextIndex);</span>
+    }
+<span class="fc" id="L539">  }</span>
+
+  LogSegment getSegment(long index) {
+<span class="fc" id="L542">    final LogSegment open = this.openSegment;</span>
+<span class="fc bfc" id="L543" title="All 4 branches covered.">    if (open != null &amp;&amp; index &gt;= open.getStartIndex()) {</span>
+<span class="fc" id="L544">      return open;</span>
+    } else {
+<span class="fc" id="L546">      return closedSegments.search(index);</span>
+    }
+  }
+
+  TermIndex getTermIndex(long index) {
+<span class="fc" id="L551">    LogSegment segment = getSegment(index);</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">    if (segment == null) {</span>
+<span class="fc" id="L553">      return null;</span>
+    }
+<span class="fc" id="L555">    final LogRecord record = segment.getLogRecord(index);</span>
+<span class="fc bfc" id="L556" title="All 2 branches covered.">    return record != null ? record.getTermIndex() : null;</span>
+  }
+
+  /**
+   * @param startIndex inclusive
+   * @param endIndex exclusive
+   */
+  LogEntryHeader[] getTermIndices(final long startIndex, final long endIndex) {
+<span class="pc bpc" id="L564" title="2 of 4 branches missed.">    if (startIndex &lt; 0 || startIndex &lt; getStartIndex()) {</span>
+<span class="nc" id="L565">      throw new IndexOutOfBoundsException(&quot;startIndex = &quot; + startIndex</span>
+<span class="nc" id="L566">          + &quot;, log cache starts from index &quot; + getStartIndex());</span>
+    }
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">    if (startIndex &gt; endIndex) {</span>
+<span class="nc" id="L569">      throw new IndexOutOfBoundsException(&quot;startIndex(&quot; + startIndex</span>
+          + &quot;) &gt; endIndex(&quot; + endIndex + &quot;)&quot;);
+    }
+<span class="fc" id="L572">    final long realEnd = Math.min(getEndIndex() + 1, endIndex);</span>
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">    if (startIndex &gt;= realEnd) {</span>
+<span class="nc" id="L574">      return LogEntryHeader.EMPTY_ARRAY;</span>
+    }
+<span class="fc" id="L576">    return closedSegments.getTermIndex(startIndex, realEnd, openSegment);</span>
+  }
+
+  private static void getFromSegment(LogSegment segment, long startIndex,
+      LogEntryHeader[] entries, int offset, int size) {
+<span class="fc" id="L581">    long endIndex = segment.getEndIndex();</span>
+<span class="fc" id="L582">    endIndex = Math.min(endIndex, startIndex + size - 1);</span>
+<span class="fc" id="L583">    int index = offset;</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">    for (long i = startIndex; i &lt;= endIndex; i++) {</span>
+<span class="fc" id="L585">      entries[index++] = Optional.ofNullable(segment.getLogRecord(i)).map(LogRecord::getLogEntryHeader).orElse(null);</span>
+    }
+<span class="fc" id="L587">  }</span>
+
+  long getStartIndex() {
+<span class="fc" id="L590">    try (AutoCloseableLock readLock = closedSegments.readLock()) {</span>
+<span class="fc bfc" id="L591" title="All 2 branches covered.">      if (closedSegments.isEmpty()) {</span>
+<span class="fc" id="L592">        return Optional.ofNullable(openSegment).map(LogSegment::getStartIndex).orElse(RaftLog.INVALID_LOG_INDEX);</span>
+      } else {
+<span class="fc" id="L594">        return closedSegments.get(0).getStartIndex();</span>
+      }
+<span class="pc bpc" id="L596" title="1 of 2 branches missed.">    }</span>
+  }
+
+  long getEndIndex() {
+<span class="fc" id="L600">    try (AutoCloseableLock readLock = closedSegments.readLock()) {</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">      return openSegment != null ? openSegment.getEndIndex() :</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">          (closedSegments.isEmpty() ?</span>
+<span class="fc" id="L603">              RaftLog.INVALID_LOG_INDEX:</span>
+<span class="fc" id="L604">              closedSegments.get(closedSegments.size() - 1).getEndIndex());</span>
+    }
+  }
+
+  long getLastIndexInClosedSegments() {
+<span class="fc" id="L609">    try (AutoCloseableLock readLock = closedSegments.readLock()) {</span>
+<span class="fc bfc" id="L610" title="All 2 branches covered.">      return (closedSegments.isEmpty() ? RaftLog.INVALID_LOG_INDEX :</span>
+<span class="fc" id="L611">          closedSegments.get(closedSegments.size() - 1).getEndIndex());</span>
+    }
+  }
+
+  TermIndex getLastTermIndex() {
+<span class="fc" id="L616">    try (AutoCloseableLock readLock = closedSegments.readLock()) {</span>
+<span class="fc" id="L617">      LogSegment tmpSegment = openSegment;</span>
+<span class="pc bpc" id="L618" title="1 of 4 branches missed.">      return (tmpSegment != null &amp;&amp; tmpSegment.getLastTermIndex() != null) ?</span>
+<span class="fc" id="L619">          tmpSegment.getLastTermIndex() :</span>
+<span class="fc bfc" id="L620" title="All 2 branches covered.">          (closedSegments.isEmpty() ? null :</span>
+<span class="fc" id="L621">              closedSegments.get(closedSegments.size() - 1).getLastTermIndex());</span>
+    }
+  }
+
+  void appendEntry(LogEntryProto entry, LogSegment.Op op) {
+    // SegmentedRaftLog does the segment creation/rolling work. Here we just
+    // simply append the entry into the open segment.
+<span class="fc" id="L628">    Objects.requireNonNull(openSegment, &quot;openSegment == null&quot;);</span>
+<span class="fc" id="L629">    openSegment.appendToOpenSegment(entry, op);</span>
+<span class="fc" id="L630">  }</span>
+
+  /**
+   * truncate log entries starting from the given index (inclusive)
+   */
+  TruncationSegments truncate(long index) {
+<span class="fc" id="L636">    return closedSegments.truncate(index, openSegment, this::clearOpenSegment);</span>
+  }
+
+  TruncationSegments purge(long index) {
+<span class="fc" id="L640">    return closedSegments.purge(index);</span>
+  }
+
+  Iterator&lt;TermIndex&gt; iterator(long startIndex) {
+<span class="fc" id="L644">    return new EntryIterator(startIndex);</span>
+  }
+
+  static class TruncateIndices {
+    private final int arrayIndex;
+    private final long truncateIndex;
+
+<span class="fc" id="L651">    TruncateIndices(int arrayIndex, long truncateIndex) {</span>
+<span class="fc" id="L652">      this.arrayIndex = arrayIndex;</span>
+<span class="fc" id="L653">      this.truncateIndex = truncateIndex;</span>
+<span class="fc" id="L654">    }</span>
+
+    int getArrayIndex() {
+<span class="fc" id="L657">      return arrayIndex;</span>
+    }
+
+    long getTruncateIndex() {
+<span class="fc" id="L661">      return truncateIndex;</span>
+    }
+  }
+
+  TruncateIndices computeTruncateIndices(Consumer&lt;TermIndex&gt; failClientRequest, List&lt;LogEntryProto&gt; entries) {
+<span class="fc" id="L666">    int arrayIndex = 0;</span>
+<span class="fc" id="L667">    long truncateIndex = -1;</span>
+
+<span class="fc" id="L669">    try(AutoCloseableLock readLock = closedSegments.readLock()) {</span>
+<span class="fc" id="L670">      final Iterator&lt;TermIndex&gt; i = iterator(entries.get(0).getIndex());</span>
+<span class="pc bpc" id="L671" title="1 of 4 branches missed.">      for(; i.hasNext() &amp;&amp; arrayIndex &lt; entries.size(); arrayIndex++) {</span>
+<span class="fc" id="L672">        final TermIndex storedEntry = i.next();</span>
+<span class="fc" id="L673">        LogEntryProto logEntryProto = entries.get(arrayIndex);</span>
+<span class="pc bpc" id="L674" title="1 of 2 branches missed.">        Preconditions.assertTrue(storedEntry.getIndex() == logEntryProto.getIndex(),</span>
+            &quot;The stored entry's index %s is not consistent with the received entries[%s]'s index %s&quot;,
+<span class="fc" id="L676">            storedEntry.getIndex(), arrayIndex, logEntryProto.getIndex());</span>
+
+<span class="fc bfc" id="L678" title="All 2 branches covered.">        if (storedEntry.getTerm() != logEntryProto.getTerm()) {</span>
+          // we should truncate from the storedEntry's arrayIndex
+<span class="fc" id="L680">          truncateIndex = storedEntry.getIndex();</span>
+<span class="pc bpc" id="L681" title="1 of 2 branches missed.">          if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L682">            LOG.trace(&quot;{}: truncate to {}, arrayIndex={}, ti={}, storedEntry={}, entries={}&quot;,</span>
+<span class="nc" id="L683">                name, truncateIndex, arrayIndex,</span>
+<span class="nc" id="L684">                TermIndex.valueOf(logEntryProto), storedEntry,</span>
+<span class="nc" id="L685">                LogProtoUtils.toLogEntriesString(entries));</span>
+          }
+
+          // fail all requests starting at truncateIndex
+<span class="fc" id="L689">          failClientRequest.accept(storedEntry);</span>
+<span class="fc bfc" id="L690" title="All 2 branches covered.">          for(; i.hasNext(); ) {</span>
+<span class="fc" id="L691">            failClientRequest.accept(i.next());</span>
+          }
+          break;
+        }
+      }
+    }
+<span class="fc" id="L697">    return new TruncateIndices(arrayIndex, truncateIndex);</span>
+  }
+
+  private class EntryIterator implements Iterator&lt;TermIndex&gt; {
+    private long nextIndex;
+    private LogSegment currentSegment;
+    private int segmentIndex;
+
+<span class="fc" id="L705">    EntryIterator(long start) {</span>
+<span class="fc" id="L706">      this.nextIndex = start;</span>
+<span class="fc" id="L707">      segmentIndex = closedSegments.binarySearch(nextIndex);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">      if (segmentIndex &gt;= 0) {</span>
+<span class="fc" id="L709">        currentSegment = closedSegments.get(segmentIndex);</span>
+      } else {
+<span class="fc" id="L711">        segmentIndex = -segmentIndex - 1;</span>
+<span class="pc bpc" id="L712" title="1 of 2 branches missed.">        if (segmentIndex == closedSegments.size()) {</span>
+<span class="fc" id="L713">          currentSegment = openSegment;</span>
+        } else {
+          // the start index is smaller than the first closed segment's start
+          // index. We no longer keep the log entry (because of the snapshot) or
+          // the start index is invalid.
+<span class="nc bnc" id="L718" title="All 2 branches missed.">          Preconditions.assertTrue(segmentIndex == 0,</span>
+<span class="nc" id="L719">              () -&gt; &quot;segmentIndex is expected to be 0 but segmentIndex = &quot; + segmentIndex);</span>
+<span class="nc" id="L720">          throw new IndexOutOfBoundsException();</span>
+        }
+      }
+<span class="fc" id="L723">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="fc bfc" id="L727" title="All 2 branches covered.">      return currentSegment != null &amp;&amp;</span>
+<span class="fc bfc" id="L728" title="All 2 branches covered.">          currentSegment.getLogRecord(nextIndex) != null;</span>
+    }
+
+    @Override
+    public TermIndex next() {
+      LogRecord record;
+<span class="pc bpc" id="L734" title="1 of 2 branches missed.">      if (currentSegment == null ||</span>
+<span class="pc bpc" id="L735" title="1 of 2 branches missed.">          (record = currentSegment.getLogRecord(nextIndex)) == null) {</span>
+<span class="nc" id="L736">        throw new NoSuchElementException();</span>
+      }
+<span class="fc bfc" id="L738" title="All 2 branches covered.">      if (++nextIndex &gt; currentSegment.getEndIndex()) {</span>
+<span class="fc bfc" id="L739" title="All 2 branches covered.">        if (currentSegment != openSegment) {</span>
+<span class="fc" id="L740">          segmentIndex++;</span>
+<span class="fc bfc" id="L741" title="All 2 branches covered.">          currentSegment = segmentIndex == closedSegments.size() ?</span>
+<span class="fc" id="L742">              openSegment : closedSegments.get(segmentIndex);</span>
+        }
+      }
+<span class="fc" id="L745">      return record.getTermIndex();</span>
+    }
+  }
+
+  int getNumOfSegments() {
+<span class="fc bfc" id="L750" title="All 2 branches covered.">    return closedSegments.size() + (openSegment == null ? 0 : 1);</span>
+  }
+
+  boolean isEmpty() {
+<span class="fc bfc" id="L754" title="All 4 branches covered.">    return closedSegments.isEmpty() &amp;&amp; openSegment == null;</span>
+  }
+
+  void close() {
+<span class="fc bfc" id="L758" title="All 2 branches covered.">    if (openSegment != null) {</span>
+<span class="fc" id="L759">      openSegment.clear();</span>
+<span class="fc" id="L760">      clearOpenSegment();</span>
+    }
+<span class="fc" id="L762">    closedSegments.clear();</span>
+<span class="fc" id="L763">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

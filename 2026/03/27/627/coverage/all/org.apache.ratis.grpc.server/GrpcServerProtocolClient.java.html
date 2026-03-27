@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcServerProtocolClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc.server</a> &gt; <span class="el_source">GrpcServerProtocolClient.java</span></div><h1>GrpcServerProtocolClient.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc.server;
+
+import org.apache.ratis.grpc.GrpcUtil;
+import org.apache.ratis.grpc.util.StreamObserverWithTimeout;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.server.util.ServerStringUtils;
+import org.apache.ratis.thirdparty.io.grpc.ManagedChannel;
+import org.apache.ratis.thirdparty.io.grpc.netty.NegotiationType;
+import org.apache.ratis.thirdparty.io.grpc.netty.NettyChannelBuilder;
+import org.apache.ratis.thirdparty.io.grpc.stub.CallStreamObserver;
+import org.apache.ratis.thirdparty.io.grpc.stub.StreamObserver;
+import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.proto.grpc.RaftServerProtocolServiceGrpc;
+import org.apache.ratis.proto.grpc.RaftServerProtocolServiceGrpc.RaftServerProtocolServiceBlockingStub;
+import org.apache.ratis.proto.grpc.RaftServerProtocolServiceGrpc.RaftServerProtocolServiceStub;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+
+/**
+ * This is a RaftClient implementation that supports streaming data to the raft
+ * ring. The stream implementation utilizes gRPC.
+ */
+class GrpcServerProtocolClient implements Closeable {
+  // Common channel
+  private final ManagedChannel channel;
+  private final GrpcStubPool&lt;RaftServerProtocolServiceStub&gt; pool;
+  // Channel and stub for heartbeat
+  private ManagedChannel hbChannel;
+  private RaftServerProtocolServiceStub hbAsyncStub;
+  private final RaftServerProtocolServiceStub asyncStub;
+  private final RaftServerProtocolServiceBlockingStub blockingStub;
+  private final boolean useSeparateHBChannel;
+
+  private final TimeDuration requestTimeoutDuration;
+<span class="fc" id="L57">  private static final Logger LOG = LoggerFactory.getLogger(GrpcServerProtocolClient.class);</span>
+  //visible for using in log / error messages AND to use in instrumented tests
+  private final RaftPeerId raftPeerId;
+
+  GrpcServerProtocolClient(RaftPeer target, int connections, int flowControlWindow,
+<span class="fc" id="L62">      TimeDuration requestTimeout, SslContext sslContext, boolean separateHBChannel) {</span>
+<span class="fc" id="L63">    raftPeerId = target.getId();</span>
+<span class="fc" id="L64">    LOG.info(&quot;Build channel for {}&quot;, target);</span>
+<span class="fc" id="L65">    useSeparateHBChannel = separateHBChannel;</span>
+<span class="fc" id="L66">    channel = buildChannel(target, flowControlWindow, sslContext);</span>
+<span class="fc" id="L67">    blockingStub = RaftServerProtocolServiceGrpc.newBlockingStub(channel);</span>
+<span class="fc" id="L68">    asyncStub = RaftServerProtocolServiceGrpc.newStub(channel);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">    if (useSeparateHBChannel) {</span>
+<span class="fc" id="L70">      hbChannel = buildChannel(target, flowControlWindow, sslContext);</span>
+<span class="fc" id="L71">      hbAsyncStub = RaftServerProtocolServiceGrpc.newStub(hbChannel);</span>
+    }
+<span class="fc" id="L73">    requestTimeoutDuration = requestTimeout;</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">    this.pool = connections == 1? null : newGrpcStubPool(target.getAddress(), sslContext, connections);</span>
+<span class="fc" id="L75">  }</span>
+
+  GrpcStubPool&lt;RaftServerProtocolServiceStub&gt; newGrpcStubPool(String address, SslContext sslContext, int connections) {
+<span class="nc" id="L78">    return new GrpcStubPool&lt;&gt;(connections, address, sslContext, RaftServerProtocolServiceGrpc::newStub, 16);</span>
+  }
+
+  private ManagedChannel buildChannel(RaftPeer target, int flowControlWindow, SslContext sslContext) {
+<span class="fc" id="L82">    NettyChannelBuilder channelBuilder =</span>
+<span class="fc" id="L83">        NettyChannelBuilder.forTarget(target.getAddress());</span>
+    // ignore any http proxy for grpc
+<span class="fc" id="L85">    channelBuilder.proxyDetector(uri -&gt; null);</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">    if (sslContext != null) {</span>
+<span class="fc" id="L88">      channelBuilder.useTransportSecurity().sslContext(sslContext);</span>
+    } else {
+<span class="fc" id="L90">      channelBuilder.negotiationType(NegotiationType.PLAINTEXT);</span>
+    }
+<span class="fc" id="L92">    channelBuilder.disableRetry();</span>
+<span class="fc" id="L93">    return channelBuilder.flowControlWindow(flowControlWindow).build();</span>
+  }
+
+  @Override
+  public void close() {
+<span class="fc" id="L98">    LOG.info(&quot;{} Close channels&quot;, raftPeerId);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">    if (useSeparateHBChannel) {</span>
+<span class="fc" id="L100">      GrpcUtil.shutdownManagedChannel(hbChannel);</span>
+    }
+<span class="fc" id="L102">    GrpcUtil.shutdownManagedChannel(channel);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">    if (pool != null) {</span>
+<span class="nc" id="L104">      pool.close();</span>
+    }
+<span class="fc" id="L106">  }</span>
+
+  public RequestVoteReplyProto requestVote(RequestVoteRequestProto request) {
+    // the StatusRuntimeException will be handled by the caller
+<span class="fc" id="L110">    RequestVoteReplyProto r =</span>
+<span class="fc" id="L111">        blockingStub.withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="fc" id="L112">            .requestVote(request);</span>
+<span class="fc" id="L113">    return r;</span>
+  }
+
+  public StartLeaderElectionReplyProto startLeaderElection(StartLeaderElectionRequestProto request) {
+<span class="fc" id="L117">    StartLeaderElectionReplyProto r =</span>
+<span class="fc" id="L118">        blockingStub.withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="fc" id="L119">            .startLeaderElection(request);</span>
+<span class="fc" id="L120">    return r;</span>
+  }
+
+  void readIndex(ReadIndexRequestProto request, StreamObserver&lt;ReadIndexReplyProto&gt; s) {
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">    if (pool == null) {</span>
+<span class="fc" id="L125">      asyncStub.withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="fc" id="L126">          .readIndex(request, s);</span>
+    } else {
+      GrpcStubPool.Stub&lt;RaftServerProtocolServiceStub&gt; p;
+      try {
+<span class="nc" id="L130">        p = pool.acquire();</span>
+<span class="nc" id="L131">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L132">        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L133">        s.onError(e);</span>
+<span class="nc" id="L134">        return;</span>
+<span class="nc" id="L135">      }</span>
+<span class="nc" id="L136">      p.getStub().withDeadlineAfter(requestTimeoutDuration.getDuration(), requestTimeoutDuration.getUnit())</span>
+<span class="nc" id="L137">          .readIndex(request, new StreamObserver&lt;ReadIndexReplyProto&gt;() {</span>
+            @Override
+            public void onNext(ReadIndexReplyProto v) {
+<span class="nc" id="L140">              s.onNext(v);</span>
+<span class="nc" id="L141">            }</span>
+
+            @Override
+            public void onError(Throwable t) {
+              try {
+<span class="nc" id="L146">                s.onError(t);</span>
+              } finally {
+<span class="nc" id="L148">                p.release();</span>
+              }
+<span class="nc" id="L150">            }</span>
+
+            @Override
+            public void onCompleted() {
+              try {
+<span class="nc" id="L155">                s.onCompleted();</span>
+              } finally {
+<span class="nc" id="L157">                p.release();</span>
+              }
+<span class="nc" id="L159">            }</span>
+          });
+    }
+<span class="fc" id="L162">  }</span>
+
+  CallStreamObserver&lt;AppendEntriesRequestProto&gt; appendEntries(
+      StreamObserver&lt;AppendEntriesReplyProto&gt; responseHandler, boolean isHeartbeat) {
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">    if (isHeartbeat &amp;&amp; useSeparateHBChannel) {</span>
+<span class="fc" id="L167">      return (CallStreamObserver&lt;AppendEntriesRequestProto&gt;) hbAsyncStub.appendEntries(responseHandler);</span>
+    } else {
+<span class="fc" id="L169">      return (CallStreamObserver&lt;AppendEntriesRequestProto&gt;) asyncStub.appendEntries(responseHandler);</span>
+    }
+  }
+
+  StreamObserver&lt;InstallSnapshotRequestProto&gt; installSnapshot(
+      String name, TimeDuration timeout, int limit, StreamObserver&lt;InstallSnapshotReplyProto&gt; responseHandler) {
+<span class="fc" id="L175">    return StreamObserverWithTimeout.newInstance(name, ServerStringUtils::toInstallSnapshotRequestString,</span>
+<span class="fc" id="L176">        () -&gt; timeout, limit, i -&gt; asyncStub.withInterceptors(i).installSnapshot(responseHandler));</span>
+  }
+
+  // short-circuit the backoff timer and make them reconnect immediately.
+  public void resetConnectBackoff() {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">    if (useSeparateHBChannel) {</span>
+<span class="fc" id="L182">      hbChannel.resetConnectBackoff();</span>
+    }
+<span class="fc" id="L184">    channel.resetConnectBackoff();</span>
+<span class="fc" id="L185">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParseRatisLog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.tools</a> &gt; <span class="el_source">ParseRatisLog.java</span></div><h1>ParseRatisLog.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.tools;
+
+import org.apache.ratis.proto.RaftProtos.StateMachineLogEntryProto;
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.segmented.LogSegmentPath;
+import org.apache.ratis.server.raftlog.segmented.LogSegment;
+import org.apache.ratis.util.SizeInBytes;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.function.Function;
+
+public final class ParseRatisLog {
+
+  private final File file;
+  private final Function&lt;StateMachineLogEntryProto, String&gt; smLogToString;
+  private final SizeInBytes maxOpSize;
+
+  private long numConfEntries;
+  private long numMetadataEntries;
+  private long numStateMachineEntries;
+  private long numInvalidEntries;
+
+<span class="fc" id="L44">  private ParseRatisLog(File f , Function&lt;StateMachineLogEntryProto, String&gt; smLogToString, SizeInBytes maxOpSize) {</span>
+<span class="fc" id="L45">    this.file = f;</span>
+<span class="fc" id="L46">    this.smLogToString = smLogToString;</span>
+<span class="fc" id="L47">    this.maxOpSize = maxOpSize;</span>
+<span class="fc" id="L48">    this.numConfEntries = 0;</span>
+<span class="fc" id="L49">    this.numMetadataEntries = 0;</span>
+<span class="fc" id="L50">    this.numStateMachineEntries = 0;</span>
+<span class="fc" id="L51">    this.numInvalidEntries = 0;</span>
+<span class="fc" id="L52">  }</span>
+
+  public void dumpSegmentFile() throws IOException {
+<span class="fc" id="L55">    final LogSegmentPath pi = LogSegmentPath.matchLogSegment(file.toPath());</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">    if (pi == null) {</span>
+<span class="nc" id="L57">      System.out.println(&quot;Invalid segment file&quot;);</span>
+<span class="nc" id="L58">      return;</span>
+    }
+
+<span class="fc" id="L61">    System.out.println(&quot;Processing Raft Log file: &quot; + file.getAbsolutePath() + &quot; size:&quot; + file.length());</span>
+<span class="fc" id="L62">    final int entryCount = LogSegment.readSegmentFile(file, pi.getStartEnd(), maxOpSize,</span>
+        RaftServerConfigKeys.Log.CorruptionPolicy.EXCEPTION, null, this::processLogEntry);
+<span class="fc" id="L64">    System.out.println(&quot;Num Total Entries: &quot; + entryCount);</span>
+<span class="fc" id="L65">    System.out.println(&quot;Num Conf Entries: &quot; + numConfEntries);</span>
+<span class="fc" id="L66">    System.out.println(&quot;Num Metadata Entries: &quot; + numMetadataEntries);</span>
+<span class="fc" id="L67">    System.out.println(&quot;Num StateMachineEntries Entries: &quot; + numStateMachineEntries);</span>
+<span class="fc" id="L68">    System.out.println(&quot;Num Invalid Entries: &quot; + numInvalidEntries);</span>
+<span class="fc" id="L69">  }</span>
+
+
+  private void processLogEntry(LogEntryProto proto) {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">    if (proto.hasConfigurationEntry()) {</span>
+<span class="fc" id="L74">      numConfEntries++;</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">    } else if (proto.hasMetadataEntry()) {</span>
+<span class="nc" id="L76">      numMetadataEntries++;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    } else if (proto.hasStateMachineLogEntry()) {</span>
+<span class="nc" id="L78">      numStateMachineEntries++;</span>
+    } else {
+<span class="nc" id="L80">      System.out.println(&quot;Found invalid entry&quot; + proto.toString());</span>
+<span class="nc" id="L81">      numInvalidEntries++;</span>
+    }
+
+<span class="fc" id="L84">    String str = LogProtoUtils.toLogEntryString(proto, smLogToString);</span>
+<span class="fc" id="L85">    System.out.println(str);</span>
+<span class="fc" id="L86">  }</span>
+
+<span class="fc" id="L88">  public static class Builder {</span>
+<span class="fc" id="L89">    private File file = null;</span>
+<span class="fc" id="L90">    private Function&lt;StateMachineLogEntryProto, String&gt; smLogToString = null;</span>
+<span class="fc" id="L91">    private SizeInBytes maxOpSize = SizeInBytes.valueOf(&quot;32MB&quot;);</span>
+
+    public Builder setMaxOpSize(SizeInBytes maxOpSize) {
+<span class="nc" id="L94">      this.maxOpSize = maxOpSize;</span>
+<span class="nc" id="L95">      return this;</span>
+    }
+
+    public Builder setSegmentFile(File segmentFile) {
+<span class="fc" id="L99">      this.file = segmentFile;</span>
+<span class="fc" id="L100">      return this;</span>
+    }
+
+    public Builder setSMLogToString(Function&lt;StateMachineLogEntryProto, String&gt; smLogToStr) {
+<span class="nc" id="L104">      this.smLogToString = smLogToStr;</span>
+<span class="nc" id="L105">      return this;</span>
+    }
+
+    public ParseRatisLog build() {
+<span class="fc" id="L109">      return new ParseRatisLog(file, smLogToString, maxOpSize);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

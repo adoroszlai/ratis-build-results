@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc</a> &gt; <span class="el_source">GrpcFactory.java</span></div><h1>GrpcFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc;
+
+import org.apache.ratis.client.ClientFactory;
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.grpc.client.GrpcClientRpc;
+import org.apache.ratis.grpc.server.GrpcLogAppender;
+import org.apache.ratis.grpc.server.GrpcServices;
+import org.apache.ratis.grpc.server.GrpcServicesImpl;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.rpc.SupportedRpcType;
+import org.apache.ratis.server.RaftServer;
+import org.apache.ratis.server.leader.LogAppender;
+import org.apache.ratis.server.ServerFactory;
+import org.apache.ratis.server.leader.FollowerInfo;
+import org.apache.ratis.server.leader.LeaderState;
+import org.apache.ratis.thirdparty.io.netty.buffer.PooledByteBufAllocator;
+import org.apache.ratis.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+public class GrpcFactory implements ServerFactory, ClientFactory {
+
+<span class="fc" id="L47">  public static final Logger LOG = LoggerFactory.getLogger(GrpcFactory.class);</span>
+
+  static final String USE_CACHE_FOR_ALL_THREADS_NAME = &quot;useCacheForAllThreads&quot;;
+  static final String USE_CACHE_FOR_ALL_THREADS_KEY = &quot;org.apache.ratis.thirdparty.io.netty.allocator.&quot;
+      + USE_CACHE_FOR_ALL_THREADS_NAME;
+  static {
+    // see org.apache.ratis.thirdparty.io.netty.buffer.PooledByteBufAllocator.DEFAULT_USE_CACHE_FOR_ALL_THREADS
+<span class="fc" id="L54">    final String value = JavaUtils.getSystemProperty(USE_CACHE_FOR_ALL_THREADS_KEY);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">    if (value == null) {</span>
+      // Set the property to false, when it is not set.
+<span class="fc" id="L57">      JavaUtils.setSystemProperty(USE_CACHE_FOR_ALL_THREADS_KEY, Boolean.FALSE.toString());</span>
+    }
+  }
+
+  static boolean checkPooledByteBufAllocatorUseCacheForAllThreads(Consumer&lt;String&gt; log) {
+<span class="fc" id="L62">    final boolean value = PooledByteBufAllocator.defaultUseCacheForAllThreads();</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">    if (value) {</span>
+<span class="nc" id="L64">      log.accept(&quot;PERFORMANCE WARNING: &quot; + USE_CACHE_FOR_ALL_THREADS_NAME + &quot; is &quot; + true</span>
+          + &quot; that may cause Netty to create a lot garbage objects and, as a result, trigger GC.\n&quot;
+          + &quot;\tIt is recommended to disable &quot; + USE_CACHE_FOR_ALL_THREADS_NAME
+          + &quot; by setting -D&quot; + USE_CACHE_FOR_ALL_THREADS_KEY + &quot;=&quot; + false + &quot; in command line.&quot;);
+    }
+<span class="fc" id="L69">    return value;</span>
+  }
+
+<span class="fc" id="L72">  static final BiFunction&lt;GrpcTlsConfig, SslContext, SslContext&gt; BUILD_SSL_CONTEXT_FOR_SERVER</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">      = (tlsConf, defaultContext) -&gt; tlsConf == null ? defaultContext : GrpcUtil.buildSslContextForServer(tlsConf);</span>
+
+<span class="fc" id="L75">  static final BiFunction&lt;GrpcTlsConfig, SslContext, SslContext&gt; BUILD_SSL_CONTEXT_FOR_CLIENT</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">      = (tlsConf, defaultContext) -&gt; tlsConf == null ? defaultContext : GrpcUtil.buildSslContextForClient(tlsConf);</span>
+
+  static final class SslContexts {
+    private final SslContext adminSslContext;
+    private final SslContext clientSslContext;
+    private final SslContext serverSslContext;
+
+    private SslContexts(GrpcTlsConfig tlsConfig, GrpcTlsConfig adminTlsConfig,
+        GrpcTlsConfig clientTlsConfig, GrpcTlsConfig serverTlsConfig,
+<span class="fc" id="L85">        BiFunction&lt;GrpcTlsConfig, SslContext, SslContext&gt; buildMethod) {</span>
+<span class="fc" id="L86">      final SslContext defaultSslContext = buildMethod.apply(tlsConfig, null);</span>
+<span class="fc" id="L87">      this.adminSslContext = buildMethod.apply(adminTlsConfig, defaultSslContext);</span>
+<span class="fc" id="L88">      this.clientSslContext = buildMethod.apply(clientTlsConfig, defaultSslContext);</span>
+<span class="fc" id="L89">      this.serverSslContext = buildMethod.apply(serverTlsConfig, defaultSslContext);</span>
+<span class="fc" id="L90">    }</span>
+  }
+
+  private final GrpcServices.Customizer servicesCustomizer;
+
+  private final Supplier&lt;SslContexts&gt; forServerSupplier;
+  private final Supplier&lt;SslContexts&gt; forClientSupplier;
+
+  public GrpcFactory(Parameters parameters) {
+<span class="fc" id="L99">    this(GrpcConfigKeys.Server.servicesCustomizer(parameters),</span>
+<span class="fc" id="L100">        GrpcConfigKeys.TLS.conf(parameters),</span>
+<span class="fc" id="L101">        GrpcConfigKeys.Admin.tlsConf(parameters),</span>
+<span class="fc" id="L102">        GrpcConfigKeys.Client.tlsConf(parameters),</span>
+<span class="fc" id="L103">        GrpcConfigKeys.Server.tlsConf(parameters)</span>
+    );
+<span class="fc" id="L105">  }</span>
+
+  private GrpcFactory(GrpcServices.Customizer servicesCustomizer,
+      GrpcTlsConfig tlsConfig, GrpcTlsConfig adminTlsConfig,
+<span class="fc" id="L109">      GrpcTlsConfig clientTlsConfig, GrpcTlsConfig serverTlsConfig) {</span>
+<span class="fc" id="L110">    this.servicesCustomizer = servicesCustomizer;</span>
+
+<span class="fc" id="L112">    this.forServerSupplier = MemoizedSupplier.valueOf(() -&gt; new SslContexts(</span>
+        tlsConfig, adminTlsConfig, clientTlsConfig, serverTlsConfig, BUILD_SSL_CONTEXT_FOR_SERVER));
+<span class="fc" id="L114">    this.forClientSupplier = MemoizedSupplier.valueOf(() -&gt; new SslContexts(</span>
+        tlsConfig, adminTlsConfig, clientTlsConfig, serverTlsConfig, BUILD_SSL_CONTEXT_FOR_CLIENT));
+<span class="fc" id="L116">  }</span>
+
+  @Override
+  public SupportedRpcType getRpcType() {
+<span class="nc" id="L120">    return SupportedRpcType.GRPC;</span>
+  }
+
+  @Override
+  public LogAppender newLogAppender(RaftServer.Division server, LeaderState state, FollowerInfo f) {
+<span class="fc" id="L125">    return new GrpcLogAppender(server, state, f);</span>
+  }
+
+  @Override
+  public GrpcServices newRaftServerRpc(RaftServer server) {
+<span class="fc" id="L130">    checkPooledByteBufAllocatorUseCacheForAllThreads(LOG::info);</span>
+
+<span class="fc" id="L132">    final SslContexts forServer = forServerSupplier.get();</span>
+<span class="fc" id="L133">    final SslContexts forClient = forClientSupplier.get();</span>
+<span class="fc" id="L134">    return GrpcServicesImpl.newBuilder()</span>
+<span class="fc" id="L135">        .setServer(server)</span>
+<span class="fc" id="L136">        .setCustomizer(servicesCustomizer)</span>
+<span class="fc" id="L137">        .setAdminSslContext(forServer.adminSslContext)</span>
+<span class="fc" id="L138">        .setServerSslContextForServer(forServer.serverSslContext)</span>
+<span class="fc" id="L139">        .setServerSslContextForClient(forClient.serverSslContext)</span>
+<span class="fc" id="L140">        .setClientSslContext(forServer.clientSslContext)</span>
+<span class="fc" id="L141">        .build();</span>
+  }
+
+  @Override
+  public GrpcClientRpc newRaftClientRpc(ClientId clientId, RaftProperties properties) {
+<span class="fc" id="L146">    checkPooledByteBufAllocatorUseCacheForAllThreads(LOG::debug);</span>
+
+<span class="fc" id="L148">    final SslContexts forClient = forClientSupplier.get();</span>
+<span class="fc" id="L149">    return new GrpcClientRpc(clientId, properties, forClient.adminSslContext, forClient.clientSslContext);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

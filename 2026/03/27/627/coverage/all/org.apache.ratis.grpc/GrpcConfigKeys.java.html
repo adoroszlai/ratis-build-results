@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrpcConfigKeys.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.grpc</a> &gt; <span class="el_source">GrpcConfigKeys.java</span></div><h1>GrpcConfigKeys.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.grpc;
+
+import org.apache.ratis.conf.Parameters;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.grpc.server.GrpcServices;
+import org.apache.ratis.server.RaftServerConfigKeys;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import static org.apache.ratis.conf.ConfUtils.get;
+import static org.apache.ratis.conf.ConfUtils.getBoolean;
+import static org.apache.ratis.conf.ConfUtils.getInt;
+import static org.apache.ratis.conf.ConfUtils.getSizeInBytes;
+import static org.apache.ratis.conf.ConfUtils.getTimeDuration;
+import static org.apache.ratis.conf.ConfUtils.printAll;
+import static org.apache.ratis.conf.ConfUtils.requireMax;
+import static org.apache.ratis.conf.ConfUtils.requireMin;
+import static org.apache.ratis.conf.ConfUtils.set;
+import static org.apache.ratis.conf.ConfUtils.setBoolean;
+import static org.apache.ratis.conf.ConfUtils.setInt;
+import static org.apache.ratis.conf.ConfUtils.setSizeInBytes;
+import static org.apache.ratis.conf.ConfUtils.setTimeDuration;
+
+public interface GrpcConfigKeys {
+<span class="fc" id="L47">  Logger LOG = LoggerFactory.getLogger(GrpcConfigKeys.class);</span>
+  static Consumer&lt;String&gt; getDefaultLog() {
+<span class="fc" id="L49">    return LOG::info;</span>
+  }
+
+  String PREFIX = &quot;raft.grpc&quot;;
+
+  interface TLS {
+    String PREFIX = GrpcConfigKeys.PREFIX + &quot;.tls&quot;;
+
+    @Deprecated
+    static void setEnabled(RaftProperties properties, boolean enabled) {
+<span class="nc" id="L59">      LOG.warn(&quot;This method has no effect. Use setConf(Parameters, GrpcTlsConfig) instead.&quot;);</span>
+<span class="nc" id="L60">    }</span>
+
+    @Deprecated
+    static void setMutualAuthnEnabled(RaftProperties properties, boolean mutualAuthnEnabled) {
+<span class="nc" id="L64">      LOG.warn(&quot;This method has no effect. Use setConf(Parameters, GrpcTlsConfig) instead.&quot;);</span>
+<span class="nc" id="L65">    }</span>
+
+    @Deprecated
+    static void setPrivateKeyFileName(RaftProperties properties, String privateKeyFileName) {
+<span class="nc" id="L69">      LOG.warn(&quot;This method has no effect. Use setConf(Parameters, GrpcTlsConfig) instead.&quot;);</span>
+<span class="nc" id="L70">    }</span>
+
+    @Deprecated
+    static void setCertChainFileName(RaftProperties properties, String certChainFileName) {
+<span class="nc" id="L74">      LOG.warn(&quot;This method has no effect. Use setConf(Parameters, GrpcTlsConfig) instead.&quot;);</span>
+<span class="nc" id="L75">    }</span>
+
+    @Deprecated
+    static void setTrustStore(RaftProperties properties, String trustStore) {
+<span class="nc" id="L79">      LOG.warn(&quot;This method has no effect. Use setConf(Parameters, GrpcTlsConfig) instead.&quot;);</span>
+<span class="nc" id="L80">    }</span>
+
+    String CONF_PARAMETER = PREFIX + &quot;.conf&quot;;
+<span class="fc" id="L83">    Class&lt;GrpcTlsConfig&gt; CONF_CLASS = GrpcTlsConfig.class;</span>
+    static GrpcTlsConfig conf(Parameters parameters) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">      return parameters != null ? parameters.get(CONF_PARAMETER, CONF_CLASS): null;</span>
+    }
+    static void setConf(Parameters parameters, GrpcTlsConfig conf) {
+<span class="nc" id="L88">      parameters.put(CONF_PARAMETER, conf, GrpcTlsConfig.class);</span>
+<span class="nc" id="L89">    }</span>
+  }
+
+  interface Admin {
+    String PREFIX = GrpcConfigKeys.PREFIX + &quot;.admin&quot;;
+
+    String HOST_KEY = PREFIX + &quot;.host&quot;;
+<span class="fc" id="L96">    String HOST_DEFAULT = null;</span>
+    static String host(RaftProperties properties) {
+<span class="fc" id="L98">      final String fallbackServerHost = Server.host(properties, null);</span>
+<span class="fc" id="L99">      return get(properties::get, HOST_KEY, HOST_DEFAULT, Server.HOST_KEY, fallbackServerHost, getDefaultLog());</span>
+    }
+    static void setHost(RaftProperties properties, String host) {
+<span class="nc" id="L102">      set(properties::set, HOST_KEY, host);</span>
+<span class="nc" id="L103">    }</span>
+
+    String PORT_KEY = PREFIX + &quot;.port&quot;;
+    int PORT_DEFAULT = -1;
+    static int port(RaftProperties properties) {
+<span class="fc" id="L108">      final int fallbackServerPort = Server.port(properties, null);</span>
+<span class="fc" id="L109">      return getInt(properties::getInt, PORT_KEY, PORT_DEFAULT, Server.PORT_KEY, fallbackServerPort,</span>
+<span class="fc" id="L110">          getDefaultLog(), requireMin(-1), requireMax(65536));</span>
+    }
+    static void setPort(RaftProperties properties, int port) {
+<span class="fc" id="L113">      setInt(properties::setInt, PORT_KEY, port);</span>
+<span class="fc" id="L114">    }</span>
+
+    String TLS_CONF_PARAMETER = PREFIX + &quot;.tls.conf&quot;;
+<span class="fc" id="L117">    Class&lt;GrpcTlsConfig&gt; TLS_CONF_CLASS = TLS.CONF_CLASS;</span>
+    static GrpcTlsConfig tlsConf(Parameters parameters) {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">      return parameters != null ? parameters.get(TLS_CONF_PARAMETER, TLS_CONF_CLASS): null;</span>
+    }
+    static void setTlsConf(Parameters parameters, GrpcTlsConfig conf) {
+<span class="fc" id="L122">      parameters.put(TLS_CONF_PARAMETER, conf, TLS_CONF_CLASS);</span>
+<span class="fc" id="L123">    }</span>
+  }
+
+  interface Client {
+    String PREFIX = GrpcConfigKeys.PREFIX + &quot;.client&quot;;
+
+    String HOST_KEY = PREFIX + &quot;.host&quot;;
+<span class="fc" id="L130">    String HOST_DEFAULT = null;</span>
+    static String host(RaftProperties properties) {
+<span class="fc" id="L132">      final String fallbackServerHost = Server.host(properties, null);</span>
+<span class="fc" id="L133">      return get(properties::get, HOST_KEY, HOST_DEFAULT, Server.HOST_KEY, fallbackServerHost, getDefaultLog());</span>
+    }
+    static void setHost(RaftProperties properties, String host) {
+<span class="nc" id="L136">      set(properties::set, HOST_KEY, host);</span>
+<span class="nc" id="L137">    }</span>
+
+    String PORT_KEY = PREFIX + &quot;.port&quot;;
+    int PORT_DEFAULT = -1;
+    static int port(RaftProperties properties) {
+<span class="fc" id="L142">      final int fallbackServerPort = Server.port(properties, null);</span>
+<span class="fc" id="L143">      return getInt(properties::getInt, PORT_KEY, PORT_DEFAULT, Server.PORT_KEY, fallbackServerPort,</span>
+<span class="fc" id="L144">          getDefaultLog(), requireMin(-1), requireMax(65536));</span>
+    }
+    static void setPort(RaftProperties properties, int port) {
+<span class="fc" id="L147">      setInt(properties::setInt, PORT_KEY, port);</span>
+<span class="fc" id="L148">    }</span>
+
+    String TLS_CONF_PARAMETER = PREFIX + &quot;.tls.conf&quot;;
+<span class="fc" id="L151">    Class&lt;GrpcTlsConfig&gt; TLS_CONF_CLASS = TLS.CONF_CLASS;</span>
+    static GrpcTlsConfig tlsConf(Parameters parameters) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">      return parameters != null ? parameters.get(TLS_CONF_PARAMETER, TLS_CONF_CLASS): null;</span>
+    }
+    static void setTlsConf(Parameters parameters, GrpcTlsConfig conf) {
+<span class="fc" id="L156">      parameters.put(TLS_CONF_PARAMETER, conf, TLS_CONF_CLASS);</span>
+<span class="fc" id="L157">    }</span>
+  }
+
+  interface Server {
+    String PREFIX = GrpcConfigKeys.PREFIX + &quot;.server&quot;;
+
+    String HOST_KEY = PREFIX + &quot;.host&quot;;
+<span class="fc" id="L164">    String HOST_DEFAULT = null;</span>
+    static String host(RaftProperties properties) {
+<span class="fc" id="L166">      return host(properties, getDefaultLog());</span>
+    }
+
+    static String host(RaftProperties properties, Consumer&lt;String&gt; logger) {
+<span class="fc" id="L170">      return get(properties::get, HOST_KEY, HOST_DEFAULT, logger);</span>
+    }
+
+    static void setHost(RaftProperties properties, String host) {
+<span class="nc" id="L174">      set(properties::set, HOST_KEY, host);</span>
+<span class="nc" id="L175">    }</span>
+
+    String PORT_KEY = PREFIX + &quot;.port&quot;;
+    int PORT_DEFAULT = 0;
+    static int port(RaftProperties properties) {
+<span class="fc" id="L180">      return port(properties, getDefaultLog());</span>
+    }
+
+    static int port(RaftProperties properties, Consumer&lt;String&gt; logger) {
+<span class="fc" id="L184">      return getInt(properties::getInt,</span>
+<span class="fc" id="L185">          PORT_KEY, PORT_DEFAULT, logger, requireMin(0), requireMax(65536));</span>
+    }
+
+    static void setPort(RaftProperties properties, int port) {
+<span class="fc" id="L189">      setInt(properties::setInt, PORT_KEY, port);</span>
+<span class="fc" id="L190">    }</span>
+
+    String ASYNC_REQUEST_THREAD_POOL_CACHED_KEY = PREFIX + &quot;.async.request.thread.pool.cached&quot;;
+    boolean ASYNC_REQUEST_THREAD_POOL_CACHED_DEFAULT = true;
+    static boolean asyncRequestThreadPoolCached(RaftProperties properties) {
+<span class="fc" id="L195">      return getBoolean(properties::getBoolean, ASYNC_REQUEST_THREAD_POOL_CACHED_KEY,</span>
+<span class="fc" id="L196">          ASYNC_REQUEST_THREAD_POOL_CACHED_DEFAULT, getDefaultLog());</span>
+    }
+    static void setAsyncRequestThreadPoolCached(RaftProperties properties, boolean useCached) {
+<span class="nc" id="L199">      setBoolean(properties::setBoolean, ASYNC_REQUEST_THREAD_POOL_CACHED_KEY, useCached);</span>
+<span class="nc" id="L200">    }</span>
+
+    String ASYNC_REQUEST_THREAD_POOL_SIZE_KEY = PREFIX + &quot;.async.request.thread.pool.size&quot;;
+    int ASYNC_REQUEST_THREAD_POOL_SIZE_DEFAULT = 32;
+    static int asyncRequestThreadPoolSize(RaftProperties properties) {
+<span class="fc" id="L205">      return getInt(properties::getInt, ASYNC_REQUEST_THREAD_POOL_SIZE_KEY,</span>
+<span class="fc" id="L206">          ASYNC_REQUEST_THREAD_POOL_SIZE_DEFAULT, getDefaultLog(),</span>
+<span class="fc" id="L207">          requireMin(0), requireMax(65536));</span>
+    }
+    static void setAsyncRequestThreadPoolSize(RaftProperties properties, int port) {
+<span class="nc" id="L210">      setInt(properties::setInt, ASYNC_REQUEST_THREAD_POOL_SIZE_KEY, port);</span>
+<span class="nc" id="L211">    }</span>
+
+    String LEADER_OUTSTANDING_APPENDS_MAX_KEY = PREFIX + &quot;.leader.outstanding.appends.max&quot;;
+    int LEADER_OUTSTANDING_APPENDS_MAX_DEFAULT = 8;
+    static int leaderOutstandingAppendsMax(RaftProperties properties) {
+<span class="fc" id="L216">      return getInt(properties::getInt,</span>
+<span class="fc" id="L217">          LEADER_OUTSTANDING_APPENDS_MAX_KEY, LEADER_OUTSTANDING_APPENDS_MAX_DEFAULT, getDefaultLog(), requireMin(0));</span>
+    }
+    static void setLeaderOutstandingAppendsMax(RaftProperties properties, int maxAppend) {
+<span class="fc" id="L220">      setInt(properties::setInt, LEADER_OUTSTANDING_APPENDS_MAX_KEY, maxAppend);</span>
+<span class="fc" id="L221">    }</span>
+
+    String INSTALL_SNAPSHOT_REQUEST_ELEMENT_LIMIT_KEY = PREFIX + &quot;.install_snapshot.request.element-limit&quot;;
+    int INSTALL_SNAPSHOT_REQUEST_ELEMENT_LIMIT_DEFAULT = 8;
+    static int installSnapshotRequestElementLimit(RaftProperties properties) {
+<span class="fc" id="L226">      return getInt(properties::getInt, INSTALL_SNAPSHOT_REQUEST_ELEMENT_LIMIT_KEY,</span>
+<span class="fc" id="L227">          INSTALL_SNAPSHOT_REQUEST_ELEMENT_LIMIT_DEFAULT, getDefaultLog(), requireMin(0));</span>
+    }
+    static void setInstallSnapshotRequestElementLimit(RaftProperties properties, int elementLimit) {
+<span class="nc" id="L230">      setInt(properties::setInt, INSTALL_SNAPSHOT_REQUEST_ELEMENT_LIMIT_KEY, elementLimit);</span>
+<span class="nc" id="L231">    }</span>
+
+    String INSTALL_SNAPSHOT_REQUEST_TIMEOUT_KEY = PREFIX + &quot;.install_snapshot.request.timeout&quot;;
+<span class="fc" id="L234">    TimeDuration INSTALL_SNAPSHOT_REQUEST_TIMEOUT_DEFAULT = RaftServerConfigKeys.Rpc.REQUEST_TIMEOUT_DEFAULT;</span>
+    static TimeDuration installSnapshotRequestTimeout(RaftProperties properties) {
+<span class="fc" id="L236">      return getTimeDuration(properties.getTimeDuration(INSTALL_SNAPSHOT_REQUEST_TIMEOUT_DEFAULT.getUnit()),</span>
+<span class="fc" id="L237">          INSTALL_SNAPSHOT_REQUEST_TIMEOUT_KEY, INSTALL_SNAPSHOT_REQUEST_TIMEOUT_DEFAULT, getDefaultLog());</span>
+    }
+    static void setInstallSnapshotRequestTimeout(RaftProperties properties,
+                                                 TimeDuration installSnapshotRequestTimeout) {
+<span class="nc" id="L241">      setTimeDuration(properties::setTimeDuration,</span>
+          INSTALL_SNAPSHOT_REQUEST_TIMEOUT_KEY, installSnapshotRequestTimeout);
+<span class="nc" id="L243">    }</span>
+
+    String HEARTBEAT_CHANNEL_KEY = PREFIX + &quot;.heartbeat.channel&quot;;
+    boolean HEARTBEAT_CHANNEL_DEFAULT = true;
+    static boolean heartbeatChannel(RaftProperties properties) {
+<span class="fc" id="L248">      return getBoolean(properties::getBoolean, HEARTBEAT_CHANNEL_KEY,</span>
+<span class="fc" id="L249">              HEARTBEAT_CHANNEL_DEFAULT, getDefaultLog());</span>
+    }
+    static void setHeartbeatChannel(RaftProperties properties, boolean useSeparate) {
+<span class="fc" id="L252">      setBoolean(properties::setBoolean, HEARTBEAT_CHANNEL_KEY, useSeparate);</span>
+<span class="fc" id="L253">    }</span>
+
+    String LOG_MESSAGE_BATCH_DURATION_KEY = PREFIX + &quot;.log-message.batch.duration&quot;;
+<span class="fc" id="L256">    TimeDuration LOG_MESSAGE_BATCH_DURATION_DEFAULT = TimeDuration.valueOf(5, TimeUnit.SECONDS);</span>
+    static TimeDuration logMessageBatchDuration(RaftProperties properties) {
+<span class="fc" id="L258">      return getTimeDuration(properties.getTimeDuration(LOG_MESSAGE_BATCH_DURATION_DEFAULT.getUnit()),</span>
+<span class="fc" id="L259">          LOG_MESSAGE_BATCH_DURATION_KEY, LOG_MESSAGE_BATCH_DURATION_DEFAULT, getDefaultLog());</span>
+    }
+    static void setLogMessageBatchDuration(RaftProperties properties,
+                                           TimeDuration logMessageBatchDuration) {
+<span class="nc" id="L263">      setTimeDuration(properties::setTimeDuration,</span>
+          LOG_MESSAGE_BATCH_DURATION_KEY, logMessageBatchDuration);
+<span class="nc" id="L265">    }</span>
+
+    String SERVICES_CUSTOMIZER_PARAMETER = PREFIX + &quot;.services.customizer&quot;;
+<span class="fc" id="L268">    Class&lt;GrpcServices.Customizer&gt; SERVICES_CUSTOMIZER_CLASS = GrpcServices.Customizer.class;</span>
+    static GrpcServices.Customizer servicesCustomizer(Parameters parameters) {
+<span class="fc bfc" id="L270" title="All 2 branches covered.">      return parameters == null ? null</span>
+<span class="fc" id="L271">          : parameters.get(SERVICES_CUSTOMIZER_PARAMETER, SERVICES_CUSTOMIZER_CLASS);</span>
+    }
+    static void setServicesCustomizer(Parameters parameters, GrpcServices.Customizer customizer) {
+<span class="fc" id="L274">      parameters.put(SERVICES_CUSTOMIZER_PARAMETER, customizer, SERVICES_CUSTOMIZER_CLASS);</span>
+<span class="fc" id="L275">    }</span>
+
+    String TLS_CONF_PARAMETER = PREFIX + &quot;.tls.conf&quot;;
+<span class="fc" id="L278">    Class&lt;GrpcTlsConfig&gt; TLS_CONF_CLASS = TLS.CONF_CLASS;</span>
+    static GrpcTlsConfig tlsConf(Parameters parameters) {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">      return parameters != null ? parameters.get(TLS_CONF_PARAMETER, TLS_CONF_CLASS): null;</span>
+    }
+    static void setTlsConf(Parameters parameters, GrpcTlsConfig conf) {
+<span class="fc" id="L283">      parameters.put(TLS_CONF_PARAMETER, conf, TLS_CONF_CLASS);</span>
+<span class="fc" id="L284">    }</span>
+
+    String STUB_POOL_SIZE_KEY = PREFIX + &quot;.stub.pool.size&quot;;
+    int STUB_POOL_SIZE_DEFAULT = 1;
+    static int stubPoolSize(RaftProperties properties) {
+<span class="fc" id="L289">      return get(properties::getInt, STUB_POOL_SIZE_KEY, STUB_POOL_SIZE_DEFAULT, getDefaultLog());</span>
+    }
+    static void setStubPoolSize(RaftProperties properties, int size) {
+<span class="nc" id="L292">      setInt(properties::setInt, STUB_POOL_SIZE_KEY, size);</span>
+<span class="nc" id="L293">    }</span>
+  }
+
+  String MESSAGE_SIZE_MAX_KEY = PREFIX + &quot;.message.size.max&quot;;
+<span class="fc" id="L297">  SizeInBytes MESSAGE_SIZE_MAX_DEFAULT = SizeInBytes.valueOf(&quot;64MB&quot;);</span>
+  static SizeInBytes messageSizeMax(RaftProperties properties, Consumer&lt;String&gt; logger) {
+<span class="fc" id="L299">    return getSizeInBytes(properties::getSizeInBytes,</span>
+        MESSAGE_SIZE_MAX_KEY, MESSAGE_SIZE_MAX_DEFAULT, logger);
+  }
+  static void setMessageSizeMax(RaftProperties properties, SizeInBytes maxMessageSize) {
+<span class="fc" id="L303">    setSizeInBytes(properties::set, MESSAGE_SIZE_MAX_KEY, maxMessageSize);</span>
+<span class="fc" id="L304">  }</span>
+
+  String FLOW_CONTROL_WINDOW_KEY = PREFIX + &quot;.flow.control.window&quot;;
+<span class="fc" id="L307">  SizeInBytes FLOW_CONTROL_WINDOW_DEFAULT = SizeInBytes.valueOf(&quot;1MB&quot;);</span>
+  static SizeInBytes flowControlWindow(RaftProperties properties, Consumer&lt;String&gt; logger) {
+<span class="fc" id="L309">    return getSizeInBytes(properties::getSizeInBytes,</span>
+        FLOW_CONTROL_WINDOW_KEY, FLOW_CONTROL_WINDOW_DEFAULT, logger);
+  }
+  static void setFlowControlWindow(RaftProperties properties, SizeInBytes flowControlWindowSize) {
+<span class="nc" id="L313">    setSizeInBytes(properties::set, FLOW_CONTROL_WINDOW_KEY, flowControlWindowSize);</span>
+<span class="nc" id="L314">  }</span>
+
+  static void main(String[] args) {
+<span class="nc" id="L317">    printAll(GrpcConfigKeys.class);</span>
+<span class="nc" id="L318">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

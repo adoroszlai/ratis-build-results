@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RaftClientRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.protocol</a> &gt; <span class="el_source">RaftClientRequest.java</span></div><h1>RaftClientRequest.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.protocol;
+
+import org.apache.ratis.proto.RaftProtos.DataStreamRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.ForwardRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.MessageStreamRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase;
+import org.apache.ratis.proto.RaftProtos.ReadRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.proto.RaftProtos.SlidingWindowEntry;
+import org.apache.ratis.proto.RaftProtos.SpanContextProto;
+import org.apache.ratis.proto.RaftProtos.StaleReadRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.WatchRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.WriteRequestTypeProto;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Request from client to server
+ */
+public class RaftClientRequest extends RaftClientMessage {
+<span class="fc" id="L44">  private static final Type DATA_STREAM_DEFAULT = new Type(DataStreamRequestTypeProto.getDefaultInstance());</span>
+<span class="fc" id="L45">  private static final Type FORWARD_DEFAULT = new Type(ForwardRequestTypeProto.getDefaultInstance());</span>
+<span class="fc" id="L46">  private static final Type WATCH_DEFAULT = new Type(</span>
+<span class="fc" id="L47">      WatchRequestTypeProto.newBuilder().setIndex(0L).setReplication(ReplicationLevel.MAJORITY).build());</span>
+
+<span class="fc" id="L49">  private static final Type READ_AFTER_WRITE_CONSISTENT_DEFAULT</span>
+<span class="fc" id="L50">      = new Type(ReadRequestTypeProto.newBuilder().setReadAfterWriteConsistent(true).build());</span>
+<span class="fc" id="L51">  private static final Type READ_DEFAULT = new Type(ReadRequestTypeProto.getDefaultInstance());</span>
+<span class="fc" id="L52">  private static final Type READ_NONLINEARIZABLE_DEFAULT</span>
+<span class="fc" id="L53">      = new Type(ReadRequestTypeProto.newBuilder().setPreferNonLinearizable(true).build());</span>
+<span class="fc" id="L54">  private static final Type STALE_READ_DEFAULT = new Type(StaleReadRequestTypeProto.getDefaultInstance());</span>
+
+  private static final Map&lt;ReplicationLevel, Type&gt; WRITE_REQUEST_TYPES;
+
+  static {
+<span class="fc" id="L59">    final EnumMap&lt;ReplicationLevel, Type&gt; map = new EnumMap&lt;&gt;(ReplicationLevel.class);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">    for(ReplicationLevel replication : ReplicationLevel.values()) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">      if (replication == ReplicationLevel.UNRECOGNIZED) {</span>
+<span class="fc" id="L62">        continue;</span>
+      }
+<span class="fc" id="L64">      final WriteRequestTypeProto write = WriteRequestTypeProto.newBuilder().setReplication(replication).build();</span>
+<span class="fc" id="L65">      map.put(replication, new Type(write));</span>
+    }
+<span class="fc" id="L67">    WRITE_REQUEST_TYPES = Collections.unmodifiableMap(map);</span>
+<span class="fc" id="L68">  }</span>
+
+  public static Type writeRequestType(ReplicationLevel replication) {
+<span class="fc" id="L71">    return WRITE_REQUEST_TYPES.get(replication);</span>
+  }
+
+  public static Type writeRequestType() {
+<span class="fc" id="L75">    return writeRequestType(ReplicationLevel.MAJORITY);</span>
+  }
+
+  public static Type dataStreamRequestType() {
+<span class="fc" id="L79">    return DATA_STREAM_DEFAULT;</span>
+  }
+
+  public static Type forwardRequestType() {
+<span class="fc" id="L83">    return FORWARD_DEFAULT;</span>
+  }
+
+  public static Type messageStreamRequestType(long streamId, long messageId, boolean endOfRequest) {
+<span class="fc" id="L87">    return new Type(MessageStreamRequestTypeProto.newBuilder()</span>
+<span class="fc" id="L88">        .setStreamId(streamId)</span>
+<span class="fc" id="L89">        .setMessageId(messageId)</span>
+<span class="fc" id="L90">        .setEndOfRequest(endOfRequest)</span>
+<span class="fc" id="L91">        .build());</span>
+  }
+
+  public static Type readAfterWriteConsistentRequestType() {
+<span class="fc" id="L95">    return READ_AFTER_WRITE_CONSISTENT_DEFAULT;</span>
+  }
+
+  public static Type readRequestType() {
+<span class="fc" id="L99">    return READ_DEFAULT;</span>
+  }
+
+  public static Type readRequestType(boolean nonLinearizable) {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    return nonLinearizable? READ_NONLINEARIZABLE_DEFAULT: readRequestType();</span>
+  }
+
+  public static Type staleReadRequestType(long minIndex) {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">    return minIndex == 0L? STALE_READ_DEFAULT</span>
+<span class="fc" id="L108">        : new Type(StaleReadRequestTypeProto.newBuilder().setMinIndex(minIndex).build());</span>
+  }
+
+  public static Type watchRequestType() {
+<span class="fc" id="L112">    return WATCH_DEFAULT;</span>
+  }
+  public static Type watchRequestType(long index, ReplicationLevel replication) {
+<span class="fc" id="L115">    return new Type(WatchRequestTypeProto.newBuilder().setIndex(index).setReplication(replication).build());</span>
+  }
+
+  /** The type of {@link RaftClientRequest} corresponding to {@link TypeCase}. */
+  public static final class Type {
+    public static Type valueOf(WriteRequestTypeProto write) {
+<span class="fc" id="L121">      return writeRequestType(write.getReplication());</span>
+    }
+
+    public static Type valueOf(DataStreamRequestTypeProto dataStream) {
+<span class="fc" id="L125">      return DATA_STREAM_DEFAULT;</span>
+    }
+
+    public static Type valueOf(ForwardRequestTypeProto forward) {
+<span class="fc" id="L129">      return FORWARD_DEFAULT;</span>
+    }
+
+    public static Type valueOf(ReadRequestTypeProto read) {
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">      return read.getPreferNonLinearizable()? READ_NONLINEARIZABLE_DEFAULT</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">          : read.getReadAfterWriteConsistent()? READ_AFTER_WRITE_CONSISTENT_DEFAULT</span>
+<span class="fc" id="L135">          : READ_DEFAULT;</span>
+    }
+
+    public static Type valueOf(StaleReadRequestTypeProto staleRead) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">      return staleRead.getMinIndex() == 0? STALE_READ_DEFAULT: new Type(staleRead);</span>
+    }
+
+    public static Type valueOf(WatchRequestTypeProto watch) {
+<span class="fc" id="L143">      return watchRequestType(watch.getIndex(), watch.getReplication());</span>
+    }
+
+    public static Type valueOf(MessageStreamRequestTypeProto messageStream) {
+<span class="fc" id="L147">      return messageStreamRequestType(</span>
+<span class="fc" id="L148">          messageStream.getStreamId(), messageStream.getMessageId(), messageStream.getEndOfRequest());</span>
+    }
+
+    /**
+     * The type case of the proto.
+     * Only the corresponding proto (must be non-null) is used.
+     * The other protos are ignored.
+     */
+    private final TypeCase typeCase;
+    private final Object proto;
+
+<span class="fc" id="L159">    private Type(TypeCase typeCase, Object proto) {</span>
+<span class="fc" id="L160">      this.typeCase = Objects.requireNonNull(typeCase, &quot;typeCase == null&quot;);</span>
+<span class="fc" id="L161">      this.proto = Objects.requireNonNull(proto, &quot;proto == null&quot;);</span>
+<span class="fc" id="L162">    }</span>
+
+    private Type(WriteRequestTypeProto write) {
+<span class="fc" id="L165">      this(TypeCase.WRITE, write);</span>
+<span class="fc" id="L166">    }</span>
+
+    private Type(DataStreamRequestTypeProto dataStream) {
+<span class="fc" id="L169">      this(TypeCase.DATASTREAM, dataStream);</span>
+<span class="fc" id="L170">    }</span>
+
+    private Type(ForwardRequestTypeProto forward) {
+<span class="fc" id="L173">      this(TypeCase.FORWARD, forward);</span>
+<span class="fc" id="L174">    }</span>
+
+    private Type(MessageStreamRequestTypeProto messageStream) {
+<span class="fc" id="L177">      this(TypeCase.MESSAGESTREAM, messageStream);</span>
+<span class="fc" id="L178">    }</span>
+
+    private Type(ReadRequestTypeProto read) {
+<span class="fc" id="L181">      this(TypeCase.READ, read);</span>
+<span class="fc" id="L182">    }</span>
+
+    private Type(StaleReadRequestTypeProto staleRead) {
+<span class="fc" id="L185">      this(TypeCase.STALEREAD, staleRead);</span>
+<span class="fc" id="L186">    }</span>
+
+    private Type(WatchRequestTypeProto watch) {
+<span class="fc" id="L189">      this(TypeCase.WATCH, watch);</span>
+<span class="fc" id="L190">    }</span>
+
+    public boolean is(TypeCase t) {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">      return getTypeCase() == t;</span>
+    }
+
+    public boolean isReadOnly() {
+<span class="pc bpc" id="L197" title="1 of 3 branches missed.">      switch (getTypeCase()) {</span>
+        case READ:
+        case STALEREAD:
+        case WATCH:
+<span class="fc" id="L201">          return true;</span>
+        case WRITE:
+        case MESSAGESTREAM:
+        case DATASTREAM:
+        case FORWARD:
+<span class="fc" id="L206">          return false;</span>
+        default:
+<span class="nc" id="L208">          throw new IllegalStateException(&quot;Unexpected type case: &quot; + getTypeCase());</span>
+      }
+    }
+
+    public TypeCase getTypeCase() {
+<span class="fc" id="L213">      return typeCase;</span>
+    }
+
+    private void assertType(TypeCase expected) {
+<span class="fc" id="L217">      Preconditions.assertSame(expected, getTypeCase(), &quot;type&quot;);</span>
+<span class="fc" id="L218">    }</span>
+
+    public WriteRequestTypeProto getWrite() {
+<span class="fc" id="L221">      assertType(TypeCase.WRITE);</span>
+<span class="fc" id="L222">      return (WriteRequestTypeProto)proto;</span>
+    }
+
+    public DataStreamRequestTypeProto getDataStream() {
+<span class="fc" id="L226">      assertType(TypeCase.DATASTREAM);</span>
+<span class="fc" id="L227">      return (DataStreamRequestTypeProto)proto;</span>
+    }
+
+    public ForwardRequestTypeProto getForward() {
+<span class="fc" id="L231">      assertType(TypeCase.FORWARD);</span>
+<span class="fc" id="L232">      return (ForwardRequestTypeProto)proto;</span>
+    }
+
+    public MessageStreamRequestTypeProto getMessageStream() {
+<span class="fc" id="L236">      assertType(TypeCase.MESSAGESTREAM);</span>
+<span class="fc" id="L237">      return (MessageStreamRequestTypeProto)proto;</span>
+    }
+
+    public ReadRequestTypeProto getRead() {
+<span class="fc" id="L241">      assertType(TypeCase.READ);</span>
+<span class="fc" id="L242">      return (ReadRequestTypeProto)proto;</span>
+    }
+
+    public StaleReadRequestTypeProto getStaleRead() {
+<span class="fc" id="L246">      assertType(TypeCase.STALEREAD);</span>
+<span class="fc" id="L247">      return (StaleReadRequestTypeProto)proto;</span>
+    }
+
+    public WatchRequestTypeProto getWatch() {
+<span class="fc" id="L251">      assertType(TypeCase.WATCH);</span>
+<span class="fc" id="L252">      return (WatchRequestTypeProto)proto;</span>
+    }
+
+    public static String toString(ReplicationLevel replication) {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">      return replication == ReplicationLevel.MAJORITY? &quot;&quot;: &quot;-&quot; + replication;</span>
+    }
+
+    public static String toString(WatchRequestTypeProto w) {
+<span class="fc" id="L260">      return &quot;Watch&quot; + toString(w.getReplication()) + &quot;(&quot; + w.getIndex() + &quot;)&quot;;</span>
+    }
+
+    public static String toString(MessageStreamRequestTypeProto s) {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">      return &quot;MessageStream&quot; + s.getStreamId() + &quot;-&quot; + s.getMessageId() + (s.getEndOfRequest()? &quot;-eor&quot;: &quot;&quot;);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="pc bpc" id="L269" title="2 of 8 branches missed.">      switch (typeCase) {</span>
+        case WRITE:
+<span class="fc" id="L271">          return &quot;RW&quot;;</span>
+        case DATASTREAM:
+<span class="fc" id="L273">          return &quot;DataStream&quot;;</span>
+        case FORWARD:
+<span class="nc" id="L275">          return &quot;Forward&quot;;</span>
+        case MESSAGESTREAM:
+<span class="fc" id="L277">          return toString(getMessageStream());</span>
+        case READ:
+<span class="fc" id="L279">          final ReadRequestTypeProto read = getRead();</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">          return read.getReadAfterWriteConsistent()? &quot;RaW&quot;</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">              : read.getPreferNonLinearizable()? &quot;RO(pNL)&quot;</span>
+<span class="fc" id="L282">              : &quot;RO&quot;;</span>
+        case STALEREAD:
+<span class="fc" id="L284">          return &quot;StaleRead(&quot; + getStaleRead().getMinIndex() + &quot;)&quot;;</span>
+        case WATCH:
+<span class="fc" id="L286">          return toString(getWatch());</span>
+        default:
+<span class="nc" id="L288">          throw new IllegalStateException(&quot;Unexpected request type: &quot; + typeCase);</span>
+      }
+    }
+  }
+
+  /**
+   * To build {@link RaftClientRequest}
+   */
+<span class="fc" id="L296">  public static class Builder {</span>
+    private ClientId clientId;
+    private RaftPeerId serverId;
+    private RaftGroupId groupId;
+    private long callId;
+    private boolean toLeader;
+<span class="fc" id="L302">    private Iterable&lt;Long&gt; repliedCallIds = Collections.emptyList();</span>
+
+    private Message message;
+    private Type type;
+    private SlidingWindowEntry slidingWindowEntry;
+    private RoutingTable routingTable;
+    private long timeoutMs;
+    private SpanContextProto spanContext;
+
+    public RaftClientRequest build() {
+<span class="fc" id="L312">      return new RaftClientRequest(this);</span>
+    }
+
+    public Builder setClientId(ClientId clientId) {
+<span class="fc" id="L316">      this.clientId = clientId;</span>
+<span class="fc" id="L317">      return this;</span>
+    }
+
+    public Builder setLeaderId(RaftPeerId leaderId) {
+<span class="fc" id="L321">      this.serverId = leaderId;</span>
+<span class="fc" id="L322">      this.toLeader = true;</span>
+<span class="fc" id="L323">      return this;</span>
+    }
+
+    public Builder setServerId(RaftPeerId serverId) {
+<span class="fc" id="L327">      this.serverId = serverId;</span>
+<span class="fc" id="L328">      this.toLeader = false;</span>
+<span class="fc" id="L329">      return this;</span>
+    }
+
+    public Builder setGroupId(RaftGroupId groupId) {
+<span class="fc" id="L333">      this.groupId = groupId;</span>
+<span class="fc" id="L334">      return this;</span>
+    }
+
+    public Builder setCallId(long callId) {
+<span class="fc" id="L338">      this.callId = callId;</span>
+<span class="fc" id="L339">      return this;</span>
+    }
+
+    public Builder setRepliedCallIds(Iterable&lt;Long&gt; repliedCallIds) {
+<span class="fc" id="L343">      this.repliedCallIds = repliedCallIds;</span>
+<span class="fc" id="L344">      return this;</span>
+    }
+
+    public Builder setMessage(Message message) {
+<span class="fc" id="L348">      this.message = message;</span>
+<span class="fc" id="L349">      return this;</span>
+    }
+
+    public Builder setType(Type type) {
+<span class="fc" id="L353">      this.type = type;</span>
+<span class="fc" id="L354">      return this;</span>
+    }
+
+    public Builder setSlidingWindowEntry(SlidingWindowEntry slidingWindowEntry) {
+<span class="fc" id="L358">      this.slidingWindowEntry = slidingWindowEntry;</span>
+<span class="fc" id="L359">      return this;</span>
+    }
+
+    public Builder setRoutingTable(RoutingTable routingTable) {
+<span class="fc" id="L363">      this.routingTable = routingTable;</span>
+<span class="fc" id="L364">      return this;</span>
+    }
+
+    public Builder setTimeoutMs(long timeoutMs) {
+<span class="fc" id="L368">      this.timeoutMs = timeoutMs;</span>
+<span class="fc" id="L369">      return this;</span>
+    }
+
+    public Builder setSpanContext(SpanContextProto spanContext) {
+<span class="fc" id="L373">      this.spanContext = spanContext;</span>
+<span class="fc" id="L374">      return this;</span>
+    }
+  }
+
+  public static Builder newBuilder() {
+<span class="fc" id="L379">    return new Builder();</span>
+  }
+
+  /** Convert the given request to a write request with the given message. */
+  public static RaftClientRequest toWriteRequest(RaftClientRequest r, Message message) {
+<span class="fc" id="L384">    return RaftClientRequest.newBuilder()</span>
+<span class="fc" id="L385">        .setClientId(r.getClientId())</span>
+<span class="fc" id="L386">        .setServerId(r.getServerId())</span>
+<span class="fc" id="L387">        .setGroupId(r.getRaftGroupId())</span>
+<span class="fc" id="L388">        .setCallId(r.getCallId())</span>
+<span class="fc" id="L389">        .setMessage(message)</span>
+<span class="fc" id="L390">        .setType(RaftClientRequest.writeRequestType())</span>
+<span class="fc" id="L391">        .setSlidingWindowEntry(r.getSlidingWindowEntry())</span>
+<span class="fc" id="L392">        .build();</span>
+  }
+
+  private final Message message;
+  private final Type type;
+
+  private final Iterable&lt;Long&gt; repliedCallIds;
+  private final SlidingWindowEntry slidingWindowEntry;
+
+  private final RoutingTable routingTable;
+
+  private final long timeoutMs;
+
+  private final boolean toLeader;
+
+  private final SpanContextProto spanContext;
+
+  /** Construct a request for sending to the given server. */
+  protected RaftClientRequest(ClientId clientId, RaftPeerId serverId, RaftGroupId groupId, long callId, Type type) {
+<span class="fc" id="L411">    this(newBuilder()</span>
+<span class="fc" id="L412">        .setClientId(clientId)</span>
+<span class="fc" id="L413">        .setServerId(serverId)</span>
+<span class="fc" id="L414">        .setGroupId(groupId)</span>
+<span class="fc" id="L415">        .setCallId(callId)</span>
+<span class="fc" id="L416">        .setType(type));</span>
+<span class="fc" id="L417">  }</span>
+
+  /** Construct a request for sending to the Leader. */
+  protected RaftClientRequest(ClientId clientId, RaftPeerId leaderId, RaftGroupId groupId, long callId, Type type,
+      long timeoutMs) {
+<span class="fc" id="L422">    this(newBuilder()</span>
+<span class="fc" id="L423">        .setClientId(clientId)</span>
+<span class="fc" id="L424">        .setLeaderId(leaderId)</span>
+<span class="fc" id="L425">        .setGroupId(groupId)</span>
+<span class="fc" id="L426">        .setCallId(callId)</span>
+<span class="fc" id="L427">        .setType(type)</span>
+<span class="fc" id="L428">        .setTimeoutMs(timeoutMs));</span>
+<span class="fc" id="L429">  }</span>
+
+  private RaftClientRequest(Builder b) {
+<span class="fc" id="L432">    super(b.clientId, b.serverId, b.groupId, b.callId);</span>
+<span class="fc" id="L433">    this.toLeader = b.toLeader;</span>
+
+<span class="fc" id="L435">    this.message = b.message;</span>
+<span class="fc" id="L436">    this.type = b.type;</span>
+<span class="fc" id="L437">    this.repliedCallIds = Optional.ofNullable(b.repliedCallIds).orElseGet(Collections::emptyList);</span>
+<span class="fc" id="L438">    this.slidingWindowEntry = b.slidingWindowEntry;</span>
+<span class="fc" id="L439">    this.routingTable = b.routingTable;</span>
+<span class="fc" id="L440">    this.timeoutMs = b.timeoutMs;</span>
+<span class="fc" id="L441">    this.spanContext = b.spanContext;</span>
+<span class="fc" id="L442">  }</span>
+
+  @Override
+  public final boolean isRequest() {
+<span class="nc" id="L446">    return true;</span>
+  }
+
+  public boolean isToLeader() {
+<span class="fc" id="L450">    return toLeader;</span>
+  }
+
+  public Iterable&lt;Long&gt; getRepliedCallIds() {
+<span class="fc" id="L454">    return repliedCallIds;</span>
+  }
+
+  public SlidingWindowEntry getSlidingWindowEntry() {
+<span class="fc" id="L458">    return slidingWindowEntry;</span>
+  }
+
+  public Message getMessage() {
+<span class="fc" id="L462">    return message;</span>
+  }
+
+  public Type getType() {
+<span class="fc" id="L466">    return type;</span>
+  }
+
+  public boolean is(TypeCase typeCase) {
+<span class="fc" id="L470">    return getType().is(typeCase);</span>
+  }
+
+  public boolean isReadOnly() {
+<span class="fc" id="L474">    return getType().isReadOnly();</span>
+  }
+
+  public RoutingTable getRoutingTable() {
+<span class="fc" id="L478">    return routingTable;</span>
+  }
+
+  public long getTimeoutMs() {
+<span class="fc" id="L482">    return timeoutMs;</span>
+  }
+
+  public SpanContextProto getSpanContext() {
+<span class="fc" id="L486">    return spanContext;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="fc" id="L491">    return super.toString() + &quot;, seq=&quot; + ProtoUtils.toString(slidingWindowEntry) + &quot;, &quot;</span>
+<span class="fc" id="L492">        + type + &quot;, &quot; + getMessage();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

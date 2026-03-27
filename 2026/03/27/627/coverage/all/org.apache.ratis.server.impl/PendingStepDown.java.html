@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PendingStepDown.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.impl</a> &gt; <span class="el_source">PendingStepDown.java</span></div><h1>PendingStepDown.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.impl;
+
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.server.leader.LeaderState;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.TimeDuration;
+import org.apache.ratis.util.TimeoutExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public class PendingStepDown {
+<span class="fc" id="L40">  public static final Logger LOG = LoggerFactory.getLogger(PendingStepDown.class);</span>
+
+  class PendingRequest {
+    private final TransferLeadershipRequest request;
+<span class="fc" id="L44">    private final CompletableFuture&lt;RaftClientReply&gt; replyFuture = new CompletableFuture&lt;&gt;();</span>
+
+<span class="fc" id="L46">    PendingRequest(TransferLeadershipRequest request) {</span>
+<span class="fc" id="L47">      this.request = request;</span>
+<span class="fc" id="L48">    }</span>
+
+    CompletableFuture&lt;RaftClientReply&gt; getReplyFuture() {
+<span class="fc" id="L51">      return replyFuture;</span>
+    }
+
+    void complete(Function&lt;TransferLeadershipRequest, RaftClientReply&gt; newSuccessReply) {
+<span class="fc" id="L55">      LOG.info(&quot;Successfully step down leader at {} for request {}&quot;, leader, request);</span>
+<span class="fc" id="L56">      replyFuture.complete(newSuccessReply.apply(request));</span>
+<span class="fc" id="L57">    }</span>
+
+    void completeExceptionally(Exception e) {
+<span class="nc" id="L60">      replyFuture.completeExceptionally(e);</span>
+<span class="nc" id="L61">    }</span>
+
+    void timeout() {
+<span class="nc" id="L64">      completeExceptionally(new TimeoutIOException(</span>
+<span class="nc" id="L65">          &quot;: Failed to step down leader on &quot; +  leader + &quot;request &quot; + request.getTimeoutMs() + &quot;ms&quot;));</span>
+<span class="nc" id="L66">    }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L70">      return request.toString();</span>
+    }
+  }
+
+
+<span class="fc" id="L75">  static class PendingRequestReference {</span>
+<span class="fc" id="L76">    private final AtomicReference&lt;PendingRequest&gt; ref = new AtomicReference&lt;&gt;();</span>
+
+    Optional&lt;PendingRequest&gt; getAndSetNull() {
+<span class="fc" id="L79">      return Optional.ofNullable(ref.getAndSet(null));</span>
+    }
+
+    PendingRequest getAndUpdate(Supplier&lt;PendingRequest&gt; supplier) {
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">      return ref.getAndUpdate(p -&gt; p != null? p: supplier.get());</span>
+    }
+  }
+
+  private final LeaderStateImpl leader;
+<span class="fc" id="L88">  private final TimeoutExecutor scheduler = TimeoutExecutor.getInstance();</span>
+<span class="fc" id="L89">  private final PendingRequestReference pending = new PendingRequestReference();</span>
+
+<span class="fc" id="L91">  PendingStepDown(LeaderStateImpl leaderState) {</span>
+<span class="fc" id="L92">    this.leader = leaderState;</span>
+<span class="fc" id="L93">  }</span>
+
+  CompletableFuture&lt;RaftClientReply&gt; submitAsync(TransferLeadershipRequest request) {
+<span class="fc" id="L96">    Preconditions.assertNull(request.getNewLeader(), &quot;request.getNewLeader()&quot;);</span>
+<span class="fc" id="L97">    final MemoizedSupplier&lt;PendingRequest&gt; supplier = JavaUtils.memoize(() -&gt; new PendingRequest(request));</span>
+<span class="fc" id="L98">    final PendingRequest previous = pending.getAndUpdate(supplier);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">    if (previous != null) {</span>
+<span class="nc" id="L100">      return previous.getReplyFuture();</span>
+    }
+<span class="fc" id="L102">    leader.submitStepDownEvent(LeaderState.StepDownReason.FORCE);</span>
+<span class="fc" id="L103">    scheduler.onTimeout(TimeDuration.valueOf(request.getTimeoutMs(), TimeUnit.MILLISECONDS),</span>
+<span class="nc" id="L104">        this::timeout, LOG, () -&gt; &quot;Timeout check failed for step down leader request: &quot; + request);</span>
+<span class="fc" id="L105">    return supplier.get().getReplyFuture();</span>
+  }
+
+  void complete(Function&lt;TransferLeadershipRequest, RaftClientReply&gt; newSuccessReply) {
+<span class="fc" id="L109">    pending.getAndSetNull().ifPresent(p -&gt; p.complete(newSuccessReply));</span>
+<span class="fc" id="L110">  }</span>
+
+  void completeExceptionally(Exception e) {
+<span class="nc" id="L113">    pending.getAndSetNull().ifPresent(p -&gt; p.completeExceptionally(e));</span>
+<span class="nc" id="L114">  }</span>
+
+  void timeout() {
+<span class="fc" id="L117">    pending.getAndSetNull().ifPresent(PendingRequest::timeout);</span>
+<span class="fc" id="L118">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

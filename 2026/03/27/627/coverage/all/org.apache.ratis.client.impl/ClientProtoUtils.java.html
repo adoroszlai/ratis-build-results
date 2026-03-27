@@ -1,0 +1,746 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClientProtoUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.client.impl</a> &gt; <span class="el_source">ClientProtoUtils.java</span></div><h1>ClientProtoUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.client.impl;
+
+import org.apache.ratis.datastream.impl.DataStreamReplyByteBuffer;
+import org.apache.ratis.proto.RaftProtos.AlreadyClosedExceptionProto;
+import org.apache.ratis.proto.RaftProtos.ClientMessageEntryProto;
+import org.apache.ratis.proto.RaftProtos.GroupAddRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupInfoReplyProto;
+import org.apache.ratis.proto.RaftProtos.GroupInfoRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupListReplyProto;
+import org.apache.ratis.proto.RaftProtos.GroupListRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.GroupRemoveRequestProto;
+import org.apache.ratis.proto.RaftProtos.LeaderElectionManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.LeaderElectionPauseRequestProto;
+import org.apache.ratis.proto.RaftProtos.LeaderElectionResumeRequestProto;
+import org.apache.ratis.proto.RaftProtos.LeaderNotReadyExceptionProto;
+import org.apache.ratis.proto.RaftProtos.NotLeaderExceptionProto;
+import org.apache.ratis.proto.RaftProtos.NotReplicatedExceptionProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientReplyProto;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
+import org.apache.ratis.proto.RaftProtos.RaftRpcReplyProto;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.RaftProtos.RouteProto;
+import org.apache.ratis.proto.RaftProtos.SetConfigurationRequestProto;
+import org.apache.ratis.proto.RaftProtos.SnapshotCreateRequestProto;
+import org.apache.ratis.proto.RaftProtos.SnapshotManagementRequestProto;
+import org.apache.ratis.proto.RaftProtos.StateMachineExceptionProto;
+import org.apache.ratis.proto.RaftProtos.TransferLeadershipRequestProto;
+import org.apache.ratis.protocol.ClientId;
+import org.apache.ratis.protocol.DataStreamReply;
+import org.apache.ratis.protocol.GroupInfoReply;
+import org.apache.ratis.protocol.GroupInfoRequest;
+import org.apache.ratis.protocol.GroupListReply;
+import org.apache.ratis.protocol.GroupListRequest;
+import org.apache.ratis.protocol.GroupManagementRequest;
+import org.apache.ratis.protocol.LeaderElectionManagementRequest;
+import org.apache.ratis.protocol.Message;
+import org.apache.ratis.protocol.RaftClientReply;
+import org.apache.ratis.protocol.RaftClientRequest;
+import org.apache.ratis.protocol.RaftGroupId;
+import org.apache.ratis.protocol.RaftGroupMemberId;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.RoutingTable;
+import org.apache.ratis.protocol.SetConfigurationRequest;
+import org.apache.ratis.protocol.SnapshotManagementRequest;
+import org.apache.ratis.protocol.TransferLeadershipRequest;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.protocol.exceptions.DataStreamException;
+import org.apache.ratis.protocol.exceptions.LeaderNotReadyException;
+import org.apache.ratis.protocol.exceptions.LeaderSteppingDownException;
+import org.apache.ratis.protocol.exceptions.NotLeaderException;
+import org.apache.ratis.protocol.exceptions.NotReplicatedException;
+import org.apache.ratis.protocol.exceptions.RaftException;
+import org.apache.ratis.protocol.exceptions.ReadException;
+import org.apache.ratis.protocol.exceptions.ReadIndexException;
+import org.apache.ratis.protocol.exceptions.StateMachineException;
+import org.apache.ratis.protocol.exceptions.TransferLeadershipException;
+import org.apache.ratis.rpc.CallId;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.ReflectionUtils;
+
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.ALREADYCLOSEDEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.DATASTREAMEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.LEADERNOTREADYEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.LEADERSTEPPINGDOWNEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.NOTLEADEREXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.NOTREPLICATEDEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.READEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.READINDEXEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.STATEMACHINEEXCEPTION;
+import static org.apache.ratis.proto.RaftProtos.RaftClientReplyProto.ExceptionDetailsCase.TRANSFERLEADERSHIPEXCEPTION;
+
+public interface ClientProtoUtils {
+
+  static RaftRpcReplyProto.Builder toRaftRpcReplyProtoBuilder(
+      ByteString requestorId, ByteString replyId, RaftGroupId groupId, Long callId, boolean success) {
+<span class="fc" id="L103">    return RaftRpcReplyProto.newBuilder()</span>
+<span class="fc" id="L104">        .setRequestorId(requestorId)</span>
+<span class="fc" id="L105">        .setReplyId(replyId)</span>
+<span class="fc" id="L106">        .setRaftGroupId(ProtoUtils.toRaftGroupIdProtoBuilder(groupId))</span>
+<span class="fc" id="L107">        .setCallId(Optional.ofNullable(callId).orElseGet(CallId::getDefault))</span>
+<span class="fc" id="L108">        .setSuccess(success);</span>
+  }
+
+  static RaftRpcRequestProto.Builder toRaftRpcRequestProtoBuilder(
+      ByteString requestorId, RaftPeerId replyId, RaftGroupId groupId) {
+<span class="fc" id="L113">    return RaftRpcRequestProto.newBuilder()</span>
+<span class="fc" id="L114">        .setRequestorId(requestorId)</span>
+<span class="fc" id="L115">        .setReplyId(replyId.toByteString())</span>
+<span class="fc" id="L116">        .setRaftGroupId(ProtoUtils.toRaftGroupIdProtoBuilder(groupId));</span>
+  }
+
+  /** For server requests. */
+  static RaftRpcRequestProto.Builder toRaftRpcRequestProtoBuilder(RaftGroupMemberId requestorId, RaftPeerId replyId) {
+<span class="fc" id="L121">    return toRaftRpcRequestProtoBuilder(requestorId.getPeerId().toByteString(), replyId, requestorId.getGroupId());</span>
+  }
+
+  /** For client requests. */
+  static RaftRpcRequestProto.Builder toRaftRpcRequestProtoBuilder(RaftClientRequest request) {
+<span class="fc" id="L126">    final RaftRpcRequestProto.Builder b = toRaftRpcRequestProtoBuilder(</span>
+<span class="fc" id="L127">        request.getClientId().toByteString(), request.getServerId(), request.getRaftGroupId());</span>
+
+<span class="fc" id="L129">    Optional.ofNullable(request.getSlidingWindowEntry()).ifPresent(b::setSlidingWindowEntry);</span>
+<span class="fc" id="L130">    Optional.ofNullable(request.getRoutingTable()).map(RoutingTable::toProto).ifPresent(b::setRoutingTable);</span>
+<span class="fc" id="L131">    Optional.ofNullable(request.getSpanContext()).ifPresent(b::setSpanContext);</span>
+
+<span class="fc" id="L133">    return b.setCallId(request.getCallId())</span>
+<span class="fc" id="L134">        .setToLeader(request.isToLeader())</span>
+<span class="fc" id="L135">        .addAllRepliedCallIds(request.getRepliedCallIds())</span>
+<span class="fc" id="L136">        .setTimeoutMs(request.getTimeoutMs());</span>
+  }
+
+  static RaftClientRequest.Type toRaftClientRequestType(RaftClientRequestProto p) {
+<span class="pc bpc" id="L140" title="1 of 8 branches missed.">    switch (p.getTypeCase()) {</span>
+      case WRITE:
+<span class="fc" id="L142">        return RaftClientRequest.Type.valueOf(p.getWrite());</span>
+      case DATASTREAM:
+<span class="fc" id="L144">        return RaftClientRequest.Type.valueOf(p.getDataStream());</span>
+      case FORWARD:
+<span class="fc" id="L146">        return RaftClientRequest.Type.valueOf(p.getForward());</span>
+      case MESSAGESTREAM:
+<span class="fc" id="L148">        return RaftClientRequest.Type.valueOf(p.getMessageStream());</span>
+      case READ:
+<span class="fc" id="L150">        return RaftClientRequest.Type.valueOf(p.getRead());</span>
+      case STALEREAD:
+<span class="fc" id="L152">        return RaftClientRequest.Type.valueOf(p.getStaleRead());</span>
+      case WATCH:
+<span class="fc" id="L154">        return RaftClientRequest.Type.valueOf(p.getWatch());</span>
+      default:
+<span class="nc" id="L156">        throw new IllegalArgumentException(&quot;Unexpected request type: &quot; + p.getTypeCase()</span>
+            + &quot; in request proto &quot; + p);
+    }
+  }
+
+  static RoutingTable getRoutingTable(RaftRpcRequestProto p) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">    if (!p.hasRoutingTable()) {</span>
+<span class="fc" id="L163">      return null;</span>
+    }
+
+<span class="fc" id="L166">    RoutingTable.Builder builder = RoutingTable.newBuilder();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">    for (RouteProto routeProto : p.getRoutingTable().getRoutesList()) {</span>
+<span class="fc" id="L168">      RaftPeerId from = RaftPeerId.valueOf(routeProto.getPeerId().getId());</span>
+<span class="fc" id="L169">      List&lt;RaftPeerId&gt; to = routeProto.getSuccessorsList().stream()</span>
+<span class="fc" id="L170">          .map(v -&gt; RaftPeerId.valueOf(v.getId())).collect(Collectors.toList());</span>
+<span class="fc" id="L171">      builder.addSuccessors(from, to);</span>
+<span class="fc" id="L172">    }</span>
+
+<span class="fc" id="L174">    return builder.build();</span>
+  }
+
+  static RaftClientRequest toRaftClientRequest(RaftClientRequestProto p) {
+<span class="fc" id="L178">    final RaftClientRequest.Type type = toRaftClientRequestType(p);</span>
+<span class="fc" id="L179">    final RaftRpcRequestProto request = p.getRpcRequest();</span>
+
+<span class="fc" id="L181">    final RaftClientRequest.Builder b = RaftClientRequest.newBuilder();</span>
+
+<span class="fc" id="L183">    final RaftPeerId peerId = RaftPeerId.valueOf(request.getReplyId());</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">    if (request.getToLeader()) {</span>
+<span class="fc" id="L185">      b.setLeaderId(peerId);</span>
+    } else {
+<span class="fc" id="L187">      b.setServerId(peerId);</span>
+    }
+<span class="fc bfc" id="L189" title="All 2 branches covered.">    if (request.hasSlidingWindowEntry()) {</span>
+<span class="fc" id="L190">      b.setSlidingWindowEntry(request.getSlidingWindowEntry());</span>
+    }
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">    if (request.hasSpanContext()) {</span>
+<span class="nc" id="L193">      b.setSpanContext(request.getSpanContext());</span>
+    }
+<span class="fc" id="L195">    return b.setClientId(ClientId.valueOf(request.getRequestorId()))</span>
+<span class="fc" id="L196">        .setGroupId(ProtoUtils.toRaftGroupId(request.getRaftGroupId()))</span>
+<span class="fc" id="L197">        .setCallId(request.getCallId())</span>
+<span class="fc" id="L198">        .setMessage(toMessage(p.getMessage()))</span>
+<span class="fc" id="L199">        .setType(type)</span>
+<span class="fc" id="L200">        .setRepliedCallIds(request.getRepliedCallIdsList())</span>
+<span class="fc" id="L201">        .setRoutingTable(getRoutingTable(request))</span>
+<span class="fc" id="L202">        .setTimeoutMs(request.getTimeoutMs())</span>
+<span class="fc" id="L203">        .build();</span>
+  }
+
+  static ByteBuffer toRaftClientRequestProtoByteBuffer(RaftClientRequest request) {
+<span class="fc" id="L207">    return toRaftClientRequestProto(request).toByteString().asReadOnlyByteBuffer();</span>
+  }
+
+  static RaftClientRequestProto toRaftClientRequestProto(RaftClientRequest request) {
+<span class="fc" id="L211">    return toRaftClientRequestProto(request, true);</span>
+  }
+
+  static RaftClientRequestProto toRaftClientRequestProto(RaftClientRequest request, boolean withMsg) {
+<span class="fc" id="L215">    final RaftClientRequestProto.Builder b = RaftClientRequestProto.newBuilder()</span>
+<span class="fc" id="L216">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request));</span>
+<span class="fc bfc" id="L217" title="All 4 branches covered.">    if (withMsg &amp;&amp; request.getMessage() != null) {</span>
+<span class="fc" id="L218">      b.setMessage(toClientMessageEntryProtoBuilder(request.getMessage()));</span>
+    }
+
+<span class="fc" id="L221">    final RaftClientRequest.Type type = request.getType();</span>
+<span class="pc bpc" id="L222" title="1 of 8 branches missed.">    switch (type.getTypeCase()) {</span>
+      case WRITE:
+<span class="fc" id="L224">        b.setWrite(type.getWrite());</span>
+<span class="fc" id="L225">        break;</span>
+      case DATASTREAM:
+<span class="fc" id="L227">        b.setDataStream(type.getDataStream());</span>
+<span class="fc" id="L228">        break;</span>
+      case FORWARD:
+<span class="fc" id="L230">        b.setForward(type.getForward());</span>
+<span class="fc" id="L231">        break;</span>
+      case MESSAGESTREAM:
+<span class="fc" id="L233">        b.setMessageStream(type.getMessageStream());</span>
+<span class="fc" id="L234">        break;</span>
+      case READ:
+<span class="fc" id="L236">        b.setRead(type.getRead());</span>
+<span class="fc" id="L237">        break;</span>
+      case STALEREAD:
+<span class="fc" id="L239">        b.setStaleRead(type.getStaleRead());</span>
+<span class="fc" id="L240">        break;</span>
+      case WATCH:
+<span class="fc" id="L242">        b.setWatch(type.getWatch());</span>
+<span class="fc" id="L243">        break;</span>
+      default:
+<span class="nc" id="L245">        throw new IllegalArgumentException(&quot;Unexpected request type: &quot; + request.getType()</span>
+            + &quot; in request &quot; + request);
+    }
+
+<span class="fc" id="L249">    return b.build();</span>
+  }
+
+  static StateMachineExceptionProto.Builder toStateMachineExceptionProtoBuilder(StateMachineException e) {
+<span class="fc bfc" id="L253" title="All 2 branches covered.">    final Throwable t = e.getCause() != null? e.getCause(): e;</span>
+<span class="fc" id="L254">    return StateMachineExceptionProto.newBuilder()</span>
+<span class="fc" id="L255">        .setExceptionClassName(t.getClass().getName())</span>
+<span class="fc" id="L256">        .setErrorMsg(t.getMessage())</span>
+<span class="fc" id="L257">        .setStacktrace(ProtoUtils.writeObject2ByteString(t.getStackTrace()));</span>
+  }
+
+  static AlreadyClosedExceptionProto.Builder toAlreadyClosedExceptionProtoBuilder(AlreadyClosedException ace) {
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">    final Throwable t = ace.getCause() != null ? ace.getCause() : ace;</span>
+<span class="fc" id="L262">    return AlreadyClosedExceptionProto.newBuilder()</span>
+<span class="fc" id="L263">        .setExceptionClassName(t.getClass().getName())</span>
+<span class="fc" id="L264">        .setErrorMsg(ace.getMessage())</span>
+<span class="fc" id="L265">        .setStacktrace(ProtoUtils.writeObject2ByteString(ace.getStackTrace()));</span>
+  }
+
+  static RaftClientReplyProto toRaftClientReplyProto(RaftClientReply reply) {
+<span class="fc" id="L269">    final RaftClientReplyProto.Builder b = RaftClientReplyProto.newBuilder();</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">    if (reply != null) {</span>
+<span class="fc" id="L271">      b.setRpcReply(toRaftRpcReplyProtoBuilder(reply.getClientId().toByteString(),</span>
+<span class="fc" id="L272">          reply.getServerId().toByteString(), reply.getRaftGroupId(),</span>
+<span class="fc" id="L273">          reply.getCallId(), reply.isSuccess()));</span>
+<span class="fc" id="L274">      b.setLogIndex(reply.getLogIndex());</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">      if (reply.getMessage() != null) {</span>
+<span class="fc" id="L276">        b.setMessage(toClientMessageEntryProtoBuilder(reply.getMessage()));</span>
+      }
+<span class="fc" id="L278">      b.addAllCommitInfos(reply.getCommitInfos());</span>
+
+<span class="fc" id="L280">      final NotLeaderException nle = reply.getNotLeaderException();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">      if (nle != null) {</span>
+        NotLeaderExceptionProto.Builder nleBuilder =
+<span class="fc" id="L283">            NotLeaderExceptionProto.newBuilder();</span>
+<span class="fc" id="L284">        final RaftPeer suggestedLeader = nle.getSuggestedLeader();</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        if (suggestedLeader != null) {</span>
+<span class="fc" id="L286">          nleBuilder.setSuggestedLeader(suggestedLeader.getRaftPeerProto());</span>
+        }
+<span class="fc" id="L288">        nleBuilder.addAllPeersInConf(ProtoUtils.toRaftPeerProtos(nle.getPeers()));</span>
+<span class="fc" id="L289">        b.setNotLeaderException(nleBuilder.build());</span>
+      }
+
+<span class="fc" id="L292">      final NotReplicatedException nre = reply.getNotReplicatedException();</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">      if (nre != null) {</span>
+<span class="fc" id="L294">        final NotReplicatedExceptionProto.Builder nreBuilder = NotReplicatedExceptionProto.newBuilder()</span>
+<span class="fc" id="L295">            .setCallId(nre.getCallId())</span>
+<span class="fc" id="L296">            .setReplication(nre.getRequiredReplication())</span>
+<span class="fc" id="L297">            .setLogIndex(nre.getLogIndex());</span>
+<span class="fc" id="L298">        b.setNotReplicatedException(nreBuilder);</span>
+      }
+
+<span class="fc" id="L301">      Optional.ofNullable(reply.getLeaderNotReadyException())</span>
+<span class="fc" id="L302">          .map(e -&gt; LeaderNotReadyExceptionProto.newBuilder().setServerId(e.getRaftGroupMemberIdProto()))</span>
+<span class="fc" id="L303">          .ifPresent(b::setLeaderNotReadyException);</span>
+
+<span class="fc" id="L305">      Optional.ofNullable(reply.getStateMachineException())</span>
+<span class="fc" id="L306">          .map(ClientProtoUtils::toStateMachineExceptionProtoBuilder)</span>
+<span class="fc" id="L307">          .ifPresent(b::setStateMachineException);</span>
+
+<span class="fc" id="L309">      Optional.ofNullable(reply.getDataStreamException())</span>
+<span class="fc" id="L310">          .map(ProtoUtils::toThrowableProto)</span>
+<span class="fc" id="L311">          .ifPresent(b::setDataStreamException);</span>
+
+<span class="fc" id="L313">      Optional.ofNullable(reply.getAlreadyClosedException())</span>
+<span class="fc" id="L314">          .map(ClientProtoUtils::toAlreadyClosedExceptionProtoBuilder)</span>
+<span class="fc" id="L315">          .ifPresent(b::setAlreadyClosedException);</span>
+
+<span class="fc" id="L317">      Optional.ofNullable(reply.getLeaderSteppingDownException())</span>
+<span class="fc" id="L318">          .map(ProtoUtils::toThrowableProto)</span>
+<span class="fc" id="L319">          .ifPresent(b::setLeaderSteppingDownException);</span>
+
+<span class="fc" id="L321">      Optional.ofNullable(reply.getTransferLeadershipException())</span>
+<span class="fc" id="L322">          .map(ProtoUtils::toThrowableProto)</span>
+<span class="fc" id="L323">          .ifPresent(b::setTransferLeadershipException);</span>
+
+<span class="fc" id="L325">      Optional.ofNullable(reply.getReadException())</span>
+<span class="fc" id="L326">          .map(ProtoUtils::toThrowableProto)</span>
+<span class="fc" id="L327">          .ifPresent(b::setReadException);</span>
+
+<span class="fc" id="L329">      Optional.ofNullable(reply.getReadIndexException())</span>
+<span class="fc" id="L330">          .map(ProtoUtils::toThrowableProto)</span>
+<span class="fc" id="L331">          .ifPresent(b::setReadIndexException);</span>
+
+<span class="fc" id="L333">      final RaftClientReplyProto serialized = b.build();</span>
+<span class="fc" id="L334">      final RaftException e = reply.getException();</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">      if (e != null) {</span>
+<span class="fc" id="L336">        final RaftClientReply deserialized = toRaftClientReply(serialized);</span>
+<span class="fc" id="L337">        if (!Optional.ofNullable(deserialized.getException())</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">            .map(Object::getClass).filter(e.getClass()::equals).isPresent()) {</span>
+<span class="nc" id="L339">          throw new AssertionError(&quot;Corruption while serializing reply= &quot; + reply</span>
+              + &quot; but serialized=&quot; + serialized + &quot; and deserialized=&quot; + deserialized, e);
+        }
+      }
+<span class="fc" id="L343">      return serialized;</span>
+    }
+<span class="nc" id="L345">    return b.build();</span>
+  }
+
+  static GroupListReplyProto toGroupListReplyProto(
+      GroupListReply reply) {
+    final GroupListReplyProto.Builder b =
+<span class="fc" id="L351">        GroupListReplyProto.newBuilder();</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">    if (reply != null) {</span>
+<span class="fc" id="L353">      b.setRpcReply(toRaftRpcReplyProtoBuilder(reply.getClientId().toByteString(),</span>
+<span class="fc" id="L354">          reply.getServerId().toByteString(), reply.getRaftGroupId(),</span>
+<span class="fc" id="L355">          reply.getCallId(), reply.isSuccess()));</span>
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">      if (reply.getGroupIds() != null) {</span>
+<span class="fc" id="L357">        reply.getGroupIds().forEach(groupId -&gt; b.addGroupId(ProtoUtils.toRaftGroupIdProtoBuilder(groupId)));</span>
+      }
+    }
+<span class="fc" id="L360">    return b.build();</span>
+  }
+
+  static GroupInfoReplyProto toGroupInfoReplyProto(GroupInfoReply reply) {
+    final GroupInfoReplyProto.Builder b =
+<span class="fc" id="L365">        GroupInfoReplyProto.newBuilder();</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">    if (reply != null) {</span>
+<span class="fc" id="L367">      b.setRpcReply(toRaftRpcReplyProtoBuilder(reply.getClientId().toByteString(),</span>
+<span class="fc" id="L368">          reply.getServerId().toByteString(), reply.getRaftGroupId(),</span>
+<span class="fc" id="L369">          reply.getCallId(), reply.isSuccess()));</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">      if (reply.getRaftGroupId() != null) {</span>
+<span class="fc" id="L371">        b.setGroup(ProtoUtils.toRaftGroupProtoBuilder(reply.getGroup()));</span>
+<span class="fc" id="L372">        b.setIsRaftStorageHealthy(reply.isRaftStorageHealthy());</span>
+<span class="fc" id="L373">        b.setRole(reply.getRoleInfoProto());</span>
+<span class="fc" id="L374">        b.addAllCommitInfos(reply.getCommitInfos());</span>
+<span class="fc" id="L375">        b.setLogInfo(reply.getLogInfoProto());</span>
+      }
+    }
+<span class="fc" id="L378">    return b.build();</span>
+  }
+
+  static RaftClientReply getRaftClientReply(DataStreamReply reply) {
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">    if (!(reply instanceof DataStreamReplyByteBuffer)) {</span>
+<span class="nc" id="L383">      throw new IllegalStateException(&quot;Unexpected &quot; + reply.getClass() + &quot;: reply is &quot; + reply);</span>
+    }
+    try {
+<span class="fc" id="L386">      return toRaftClientReply(((DataStreamReplyByteBuffer) reply).slice());</span>
+<span class="nc" id="L387">    } catch (InvalidProtocolBufferException e) {</span>
+<span class="nc" id="L388">      throw new IllegalStateException(&quot;Failed to getRaftClientReply from &quot; + reply, e);</span>
+    }
+  }
+
+  static RaftClientReply toRaftClientReply(ByteBuffer buffer) throws InvalidProtocolBufferException {
+<span class="fc" id="L393">    return toRaftClientReply(RaftClientReplyProto.parseFrom(buffer));</span>
+  }
+
+  static RaftClientReply toRaftClientReply(RaftClientReplyProto replyProto) {
+<span class="fc" id="L397">    final RaftRpcReplyProto rp = replyProto.getRpcReply();</span>
+<span class="fc" id="L398">    final RaftGroupMemberId serverMemberId = ProtoUtils.toRaftGroupMemberId(rp.getReplyId(), rp.getRaftGroupId());</span>
+
+    final RaftException e;
+<span class="fc bfc" id="L401" title="All 2 branches covered.">    if (replyProto.getExceptionDetailsCase().equals(NOTLEADEREXCEPTION)) {</span>
+<span class="fc" id="L402">      NotLeaderExceptionProto nleProto = replyProto.getNotLeaderException();</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">      final RaftPeer suggestedLeader = nleProto.hasSuggestedLeader() ?</span>
+<span class="fc" id="L404">          ProtoUtils.toRaftPeer(nleProto.getSuggestedLeader()) : null;</span>
+<span class="fc" id="L405">      final List&lt;RaftPeer&gt; peers = ProtoUtils.toRaftPeers(nleProto.getPeersInConfList());</span>
+<span class="fc" id="L406">      e = new NotLeaderException(serverMemberId, suggestedLeader, peers);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase() == NOTREPLICATEDEXCEPTION) {</span>
+<span class="fc" id="L408">      final NotReplicatedExceptionProto nre = replyProto.getNotReplicatedException();</span>
+<span class="fc" id="L409">      e = new NotReplicatedException(nre.getCallId(), nre.getReplication(), nre.getLogIndex(),</span>
+<span class="fc" id="L410">          replyProto.getCommitInfosList());</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(STATEMACHINEEXCEPTION)) {</span>
+<span class="fc" id="L412">      e = toStateMachineException(serverMemberId, replyProto.getStateMachineException());</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(DATASTREAMEXCEPTION)) {</span>
+<span class="fc" id="L414">      e = ProtoUtils.toThrowable(replyProto.getDataStreamException(), DataStreamException.class);</span>
+<span class="fc bfc" id="L415" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(LEADERNOTREADYEXCEPTION)) {</span>
+<span class="fc" id="L416">      LeaderNotReadyExceptionProto lnreProto = replyProto.getLeaderNotReadyException();</span>
+<span class="fc" id="L417">      e = new LeaderNotReadyException(ProtoUtils.toRaftGroupMemberId(lnreProto.getServerId()));</span>
+<span class="fc bfc" id="L418" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(ALREADYCLOSEDEXCEPTION)) {</span>
+<span class="fc" id="L419">      e = toAlreadyClosedException(replyProto.getAlreadyClosedException());</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">    } else if (replyProto.getExceptionDetailsCase().equals(LEADERSTEPPINGDOWNEXCEPTION)) {</span>
+<span class="nc" id="L421">      e = ProtoUtils.toThrowable(replyProto.getLeaderSteppingDownException(), LeaderSteppingDownException.class);</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(TRANSFERLEADERSHIPEXCEPTION)) {</span>
+<span class="fc" id="L423">      e = ProtoUtils.toThrowable(replyProto.getTransferLeadershipException(), TransferLeadershipException.class);</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(READEXCEPTION)) {</span>
+<span class="fc" id="L425">      e = ProtoUtils.toThrowable(replyProto.getReadException(), ReadException.class);</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">    } else if (replyProto.getExceptionDetailsCase().equals(READINDEXEXCEPTION)) {</span>
+<span class="fc" id="L427">      e = ProtoUtils.toThrowable(replyProto.getReadIndexException(), ReadIndexException.class);</span>
+    } else {
+<span class="fc" id="L429">      e = null;</span>
+    }
+
+<span class="fc" id="L432">    return RaftClientReply.newBuilder()</span>
+<span class="fc" id="L433">        .setClientId(ClientId.valueOf(rp.getRequestorId()))</span>
+<span class="fc" id="L434">        .setServerId(serverMemberId)</span>
+<span class="fc" id="L435">        .setCallId(rp.getCallId())</span>
+<span class="fc" id="L436">        .setSuccess(rp.getSuccess())</span>
+<span class="fc" id="L437">        .setMessage(toMessage(replyProto.getMessage()))</span>
+<span class="fc" id="L438">        .setException(e)</span>
+<span class="fc" id="L439">        .setLogIndex(replyProto.getLogIndex())</span>
+<span class="fc" id="L440">        .setCommitInfos(replyProto.getCommitInfosList())</span>
+<span class="fc" id="L441">        .build();</span>
+  }
+
+  static StateMachineException toStateMachineException(RaftGroupMemberId memberId, StateMachineExceptionProto proto) {
+<span class="fc" id="L445">    return toStateMachineException(memberId,</span>
+<span class="fc" id="L446">        proto.getExceptionClassName(),</span>
+<span class="fc" id="L447">        proto.getErrorMsg(),</span>
+<span class="fc" id="L448">        proto.getStacktrace());</span>
+  }
+
+  static StateMachineException toStateMachineException(RaftGroupMemberId memberId,
+      String className, String errorMsg, ByteString stackTraceBytes) {
+    StateMachineException sme;
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">    if (className == null) {</span>
+<span class="nc" id="L455">      sme = new StateMachineException(errorMsg);</span>
+    } else {
+      try {
+<span class="fc" id="L458">        final Class&lt;?&gt; clazz = Class.forName(className);</span>
+<span class="fc" id="L459">        final Exception e = ReflectionUtils.instantiateException(clazz.asSubclass(Exception.class), errorMsg);</span>
+<span class="fc" id="L460">        sme = new StateMachineException(memberId, e);</span>
+<span class="nc" id="L461">      } catch (Exception e) {</span>
+<span class="nc" id="L462">        sme = new StateMachineException(className + &quot;: &quot; + errorMsg);</span>
+<span class="fc" id="L463">      }</span>
+    }
+<span class="fc" id="L465">    final StackTraceElement[] stacktrace = (StackTraceElement[]) ProtoUtils.toObject(stackTraceBytes);</span>
+<span class="fc" id="L466">    sme.setStackTrace(stacktrace);</span>
+<span class="fc" id="L467">    return sme;</span>
+  }
+
+  static AlreadyClosedException toAlreadyClosedException(AlreadyClosedExceptionProto proto) {
+<span class="fc" id="L471">    return toAlreadyClosedException(</span>
+<span class="fc" id="L472">        proto.getExceptionClassName(),</span>
+<span class="fc" id="L473">        proto.getErrorMsg(),</span>
+<span class="fc" id="L474">        proto.getStacktrace());</span>
+  }
+
+  static AlreadyClosedException toAlreadyClosedException(
+      String className, String errorMsg, ByteString stackTraceBytes) {
+    AlreadyClosedException ace;
+<span class="pc bpc" id="L480" title="1 of 2 branches missed.">    if (className == null) {</span>
+<span class="nc" id="L481">      ace = new AlreadyClosedException(errorMsg);</span>
+    } else {
+      try {
+<span class="fc" id="L484">        Class&lt;?&gt; clazz = Class.forName(className);</span>
+<span class="fc" id="L485">        final Exception e = ReflectionUtils.instantiateException(clazz.asSubclass(Exception.class), errorMsg);</span>
+<span class="fc" id="L486">        ace = new AlreadyClosedException(errorMsg, e);</span>
+<span class="nc" id="L487">      } catch (Exception e) {</span>
+<span class="nc" id="L488">        ace = new AlreadyClosedException(className + &quot;: &quot; + errorMsg);</span>
+<span class="fc" id="L489">      }</span>
+    }
+<span class="fc" id="L491">    StackTraceElement[] stacktrace =</span>
+<span class="fc" id="L492">        (StackTraceElement[]) ProtoUtils.toObject(stackTraceBytes);</span>
+<span class="fc" id="L493">    ace.setStackTrace(stacktrace);</span>
+<span class="fc" id="L494">    return ace;</span>
+  }
+
+  static GroupListReply toGroupListReply(GroupListReplyProto replyProto) {
+<span class="fc" id="L498">    final RaftRpcReplyProto rpc = replyProto.getRpcReply();</span>
+<span class="fc" id="L499">    final List&lt;RaftGroupId&gt; groupIds = replyProto.getGroupIdList().stream()</span>
+<span class="fc" id="L500">        .map(ProtoUtils::toRaftGroupId)</span>
+<span class="fc" id="L501">        .collect(Collectors.toList());</span>
+<span class="fc" id="L502">    return new GroupListReply(ClientId.valueOf(rpc.getRequestorId()),</span>
+<span class="fc" id="L503">        RaftPeerId.valueOf(rpc.getReplyId()),</span>
+<span class="fc" id="L504">        ProtoUtils.toRaftGroupId(rpc.getRaftGroupId()),</span>
+<span class="fc" id="L505">        rpc.getCallId(),</span>
+        groupIds);
+  }
+
+  static GroupInfoReply toGroupInfoReply(GroupInfoReplyProto replyProto) {
+<span class="fc" id="L510">    final RaftRpcReplyProto rpc = replyProto.getRpcReply();</span>
+<span class="fc" id="L511">    return new GroupInfoReply(ClientId.valueOf(rpc.getRequestorId()),</span>
+<span class="fc" id="L512">        RaftPeerId.valueOf(rpc.getReplyId()),</span>
+<span class="fc" id="L513">        ProtoUtils.toRaftGroupId(rpc.getRaftGroupId()),</span>
+<span class="fc" id="L514">        rpc.getCallId(),</span>
+<span class="fc" id="L515">        replyProto.getCommitInfosList(),</span>
+<span class="fc" id="L516">        ProtoUtils.toRaftGroup(replyProto.getGroup()),</span>
+<span class="fc" id="L517">        replyProto.getRole(),</span>
+<span class="fc" id="L518">        replyProto.getIsRaftStorageHealthy(),</span>
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">        replyProto.hasConf()? replyProto.getConf(): null,</span>
+<span class="fc" id="L520">        replyProto.getLogInfo());</span>
+  }
+
+  static Message toMessage(final ClientMessageEntryProto p) {
+<span class="fc" id="L524">    return Message.valueOf(p.getContent());</span>
+  }
+
+  static ClientMessageEntryProto.Builder toClientMessageEntryProtoBuilder(ByteString message) {
+<span class="fc" id="L528">    return ClientMessageEntryProto.newBuilder().setContent(message);</span>
+  }
+
+  static ClientMessageEntryProto.Builder toClientMessageEntryProtoBuilder(Message message) {
+<span class="fc" id="L532">    return toClientMessageEntryProtoBuilder(message.getContent());</span>
+  }
+
+  static SetConfigurationRequest toSetConfigurationRequest(
+      SetConfigurationRequestProto p) {
+<span class="fc" id="L537">    final SetConfigurationRequest.Arguments arguments = SetConfigurationRequest.Arguments.newBuilder()</span>
+<span class="fc" id="L538">        .setServersInNewConf(ProtoUtils.toRaftPeers(p.getPeersList()))</span>
+<span class="fc" id="L539">        .setListenersInNewConf(ProtoUtils.toRaftPeers(p.getListenersList()))</span>
+<span class="fc" id="L540">        .setServersInCurrentConf(ProtoUtils.toRaftPeers(p.getCurrentPeersList()))</span>
+<span class="fc" id="L541">        .setListenersInCurrentConf(ProtoUtils.toRaftPeers(p.getCurrentListenersList()))</span>
+<span class="fc" id="L542">        .setMode(toSetConfigurationMode(p.getMode()))</span>
+<span class="fc" id="L543">        .build();</span>
+<span class="fc" id="L544">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc" id="L545">    return new SetConfigurationRequest(</span>
+<span class="fc" id="L546">        ClientId.valueOf(m.getRequestorId()),</span>
+<span class="fc" id="L547">        RaftPeerId.valueOf(m.getReplyId()),</span>
+<span class="fc" id="L548">        ProtoUtils.toRaftGroupId(m.getRaftGroupId()),</span>
+<span class="fc" id="L549">        p.getRpcRequest().getCallId(), arguments);</span>
+  }
+
+  static SetConfigurationRequest.Mode toSetConfigurationMode(
+      SetConfigurationRequestProto.Mode p) {
+<span class="pc bpc" id="L554" title="1 of 4 branches missed.">    switch (p) {</span>
+      case SET_UNCONDITIONALLY:
+<span class="fc" id="L556">        return SetConfigurationRequest.Mode.SET_UNCONDITIONALLY;</span>
+      case ADD:
+<span class="fc" id="L558">        return SetConfigurationRequest.Mode.ADD;</span>
+      case COMPARE_AND_SET:
+<span class="fc" id="L560">        return SetConfigurationRequest.Mode.COMPARE_AND_SET;</span>
+      default:
+<span class="nc" id="L562">        throw new IllegalArgumentException(&quot;Unexpected mode &quot; + p);</span>
+    }
+  }
+
+  static SetConfigurationRequestProto toSetConfigurationRequestProto(
+      SetConfigurationRequest request) {
+<span class="fc" id="L568">    final SetConfigurationRequest.Arguments arguments = request.getArguments();</span>
+<span class="fc" id="L569">    return SetConfigurationRequestProto.newBuilder()</span>
+<span class="fc" id="L570">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request))</span>
+<span class="fc" id="L571">        .addAllPeers(ProtoUtils.toRaftPeerProtos(arguments.getPeersInNewConf(RaftPeerRole.FOLLOWER)))</span>
+<span class="fc" id="L572">        .addAllListeners(ProtoUtils.toRaftPeerProtos(arguments.getPeersInNewConf(RaftPeerRole.LISTENER)))</span>
+<span class="fc" id="L573">        .addAllCurrentPeers(ProtoUtils.toRaftPeerProtos(arguments.getServersInCurrentConf()))</span>
+<span class="fc" id="L574">        .addAllCurrentListeners(ProtoUtils.toRaftPeerProtos(arguments.getListenersInCurrentConf()))</span>
+<span class="fc" id="L575">        .setMode(SetConfigurationRequestProto.Mode.valueOf(arguments.getMode().name()))</span>
+<span class="fc" id="L576">        .build();</span>
+  }
+
+  static TransferLeadershipRequest toTransferLeadershipRequest(
+      TransferLeadershipRequestProto p) {
+<span class="fc" id="L581">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc bfc" id="L582" title="All 2 branches covered.">    final RaftPeerId newLeader = p.hasNewLeader()? ProtoUtils.toRaftPeer(p.getNewLeader()).getId(): null;</span>
+<span class="fc" id="L583">    return new TransferLeadershipRequest(</span>
+<span class="fc" id="L584">        ClientId.valueOf(m.getRequestorId()),</span>
+<span class="fc" id="L585">        RaftPeerId.valueOf(m.getReplyId()),</span>
+<span class="fc" id="L586">        ProtoUtils.toRaftGroupId(m.getRaftGroupId()),</span>
+<span class="fc" id="L587">        p.getRpcRequest().getCallId(),</span>
+        newLeader,
+<span class="fc" id="L589">        m.getTimeoutMs());</span>
+  }
+
+  static TransferLeadershipRequestProto toTransferLeadershipRequestProto(
+      TransferLeadershipRequest request) {
+<span class="fc" id="L594">    final TransferLeadershipRequestProto.Builder b = TransferLeadershipRequestProto.newBuilder()</span>
+<span class="fc" id="L595">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request));</span>
+<span class="fc" id="L596">    Optional.ofNullable(request.getNewLeader())</span>
+<span class="fc" id="L597">        .map(l -&gt; RaftPeer.newBuilder().setId(l).build())</span>
+<span class="fc" id="L598">        .map(RaftPeer::getRaftPeerProto)</span>
+<span class="fc" id="L599">        .ifPresent(b::setNewLeader);</span>
+<span class="fc" id="L600">    return b.build();</span>
+  }
+
+  static GroupManagementRequest toGroupManagementRequest(GroupManagementRequestProto p) {
+<span class="fc" id="L604">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc" id="L605">    final ClientId clientId = ClientId.valueOf(m.getRequestorId());</span>
+<span class="fc" id="L606">    final RaftPeerId serverId = RaftPeerId.valueOf(m.getReplyId());</span>
+<span class="pc bpc" id="L607" title="1 of 3 branches missed.">    switch(p.getOpCase()) {</span>
+      case GROUPADD:
+<span class="fc" id="L609">        final GroupAddRequestProto add = p.getGroupAdd();</span>
+<span class="fc" id="L610">        return GroupManagementRequest.newAdd(clientId, serverId, m.getCallId(),</span>
+<span class="fc" id="L611">            ProtoUtils.toRaftGroup(add.getGroup()), add.getFormat());</span>
+      case GROUPREMOVE:
+<span class="fc" id="L613">        final GroupRemoveRequestProto remove = p.getGroupRemove();</span>
+<span class="fc" id="L614">        return GroupManagementRequest.newRemove(clientId, serverId, m.getCallId(),</span>
+<span class="fc" id="L615">            ProtoUtils.toRaftGroupId(remove.getGroupId()),</span>
+<span class="fc" id="L616">            remove.getDeleteDirectory(), remove.getRenameDirectory());</span>
+      default:
+<span class="nc" id="L618">        throw new IllegalArgumentException(&quot;Unexpected op &quot; + p.getOpCase() + &quot; in &quot; + p);</span>
+    }
+  }
+
+  static GroupInfoRequest toGroupInfoRequest(
+      GroupInfoRequestProto p) {
+<span class="fc" id="L624">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc" id="L625">    return new GroupInfoRequest(</span>
+<span class="fc" id="L626">        ClientId.valueOf(m.getRequestorId()),</span>
+<span class="fc" id="L627">        RaftPeerId.valueOf(m.getReplyId()),</span>
+<span class="fc" id="L628">        ProtoUtils.toRaftGroupId(m.getRaftGroupId()),</span>
+<span class="fc" id="L629">        m.getCallId());</span>
+  }
+
+  static GroupListRequest toGroupListRequest(
+      GroupListRequestProto p) {
+<span class="fc" id="L634">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc" id="L635">    return new GroupListRequest(</span>
+<span class="fc" id="L636">        ClientId.valueOf(m.getRequestorId()),</span>
+<span class="fc" id="L637">        RaftPeerId.valueOf(m.getReplyId()),</span>
+<span class="fc" id="L638">        ProtoUtils.toRaftGroupId(m.getRaftGroupId()),</span>
+<span class="fc" id="L639">        m.getCallId());</span>
+  }
+
+
+  static GroupManagementRequestProto toGroupManagementRequestProto(GroupManagementRequest request) {
+<span class="fc" id="L644">    final GroupManagementRequestProto.Builder b = GroupManagementRequestProto.newBuilder()</span>
+<span class="fc" id="L645">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request));</span>
+<span class="fc" id="L646">    final GroupManagementRequest.Add add = request.getAdd();</span>
+<span class="fc bfc" id="L647" title="All 2 branches covered.">    if (add != null) {</span>
+<span class="fc" id="L648">      b.setGroupAdd(GroupAddRequestProto.newBuilder()</span>
+<span class="fc" id="L649">          .setGroup(ProtoUtils.toRaftGroupProtoBuilder(add.getGroup()))</span>
+<span class="fc" id="L650">          .setFormat(add.isFormat())</span>
+<span class="fc" id="L651">          .build());</span>
+    }
+<span class="fc" id="L653">    final GroupManagementRequest.Remove remove = request.getRemove();</span>
+<span class="fc bfc" id="L654" title="All 2 branches covered.">    if (remove != null) {</span>
+<span class="fc" id="L655">      b.setGroupRemove(GroupRemoveRequestProto.newBuilder()</span>
+<span class="fc" id="L656">          .setGroupId(ProtoUtils.toRaftGroupIdProtoBuilder(remove.getGroupId()))</span>
+<span class="fc" id="L657">          .setDeleteDirectory(remove.isDeleteDirectory())</span>
+<span class="fc" id="L658">          .setRenameDirectory(remove.isRenameDirectory())</span>
+<span class="fc" id="L659">          .build());</span>
+    }
+<span class="fc" id="L661">    return b.build();</span>
+  }
+
+  static SnapshotManagementRequest toSnapshotManagementRequest(SnapshotManagementRequestProto p) {
+<span class="fc" id="L665">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc" id="L666">    final ClientId clientId = ClientId.valueOf(m.getRequestorId());</span>
+<span class="fc" id="L667">    final RaftPeerId serverId = RaftPeerId.valueOf(m.getReplyId());</span>
+<span class="pc bpc" id="L668" title="1 of 2 branches missed.">    switch(p.getOpCase()) {</span>
+      case CREATE:
+<span class="fc" id="L670">        return SnapshotManagementRequest.newCreate(clientId, serverId,</span>
+<span class="fc" id="L671">            ProtoUtils.toRaftGroupId(m.getRaftGroupId()), m.getCallId(), m.getTimeoutMs(),</span>
+<span class="fc" id="L672">            p.getCreate().getCreationGap());</span>
+      default:
+<span class="nc" id="L674">        throw new IllegalArgumentException(&quot;Unexpected op &quot; + p.getOpCase() + &quot; in &quot; + p);</span>
+    }
+  }
+
+  static SnapshotManagementRequestProto toSnapshotManagementRequestProto(
+      SnapshotManagementRequest request) {
+<span class="fc" id="L680">    final SnapshotManagementRequestProto.Builder b = SnapshotManagementRequestProto.newBuilder()</span>
+<span class="fc" id="L681">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request));</span>
+<span class="fc" id="L682">    final SnapshotManagementRequest.Create create = request.getCreate();</span>
+<span class="pc bpc" id="L683" title="1 of 2 branches missed.">    if (create != null) {</span>
+<span class="fc" id="L684">      b.setCreate(SnapshotCreateRequestProto.newBuilder().setCreationGap(create.getCreationGap()).build());</span>
+    }
+<span class="fc" id="L686">    return b.build();</span>
+  }
+
+  static LeaderElectionManagementRequest toLeaderElectionManagementRequest(LeaderElectionManagementRequestProto p) {
+<span class="fc" id="L690">    final RaftRpcRequestProto m = p.getRpcRequest();</span>
+<span class="fc" id="L691">    final ClientId clientId = ClientId.valueOf(m.getRequestorId());</span>
+<span class="fc" id="L692">    final RaftPeerId serverId = RaftPeerId.valueOf(m.getReplyId());</span>
+<span class="pc bpc" id="L693" title="1 of 3 branches missed.">    switch(p.getOpCase()) {</span>
+      case PAUSE:
+<span class="fc" id="L695">        return LeaderElectionManagementRequest.newPause(clientId, serverId,</span>
+<span class="fc" id="L696">            ProtoUtils.toRaftGroupId(m.getRaftGroupId()), m.getCallId());</span>
+      case RESUME:
+<span class="fc" id="L698">        return LeaderElectionManagementRequest.newResume(clientId, serverId,</span>
+<span class="fc" id="L699">            ProtoUtils.toRaftGroupId(m.getRaftGroupId()), m.getCallId());</span>
+      default:
+<span class="nc" id="L701">        throw new IllegalArgumentException(&quot;Unexpected op &quot; + p.getOpCase() + &quot; in &quot; + p);</span>
+    }
+  }
+
+  static LeaderElectionManagementRequestProto toLeaderElectionManagementRequestProto(
+      LeaderElectionManagementRequest request) {
+<span class="fc" id="L707">    final LeaderElectionManagementRequestProto.Builder b = LeaderElectionManagementRequestProto.newBuilder()</span>
+<span class="fc" id="L708">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request));</span>
+<span class="fc" id="L709">    final LeaderElectionManagementRequest.Pause pause = request.getPause();</span>
+<span class="fc bfc" id="L710" title="All 2 branches covered.">    if (pause != null) {</span>
+<span class="fc" id="L711">      b.setPause(LeaderElectionPauseRequestProto.newBuilder().build());</span>
+    }
+<span class="fc" id="L713">    final LeaderElectionManagementRequest.Resume resume = request.getResume();</span>
+<span class="fc bfc" id="L714" title="All 2 branches covered.">    if (resume != null) {</span>
+<span class="fc" id="L715">      b.setResume(LeaderElectionResumeRequestProto.newBuilder().build());</span>
+    }
+<span class="fc" id="L717">    return b.build();</span>
+  }
+
+  static GroupInfoRequestProto toGroupInfoRequestProto(
+      GroupInfoRequest request) {
+<span class="fc" id="L722">    return GroupInfoRequestProto.newBuilder()</span>
+<span class="fc" id="L723">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request))</span>
+<span class="fc" id="L724">        .build();</span>
+  }
+
+  static GroupListRequestProto toGroupListRequestProto(
+      GroupListRequest request) {
+<span class="fc" id="L729">    return GroupListRequestProto.newBuilder()</span>
+<span class="fc" id="L730">        .setRpcRequest(toRaftRpcRequestProtoBuilder(request))</span>
+<span class="fc" id="L731">        .build();</span>
+  }
+
+  static String toString(RaftClientRequestProto proto) {
+<span class="nc" id="L735">    final RaftRpcRequestProto rpc = proto.getRpcRequest();</span>
+<span class="nc" id="L736">    return ClientId.valueOf(rpc.getRequestorId()) + &quot;-&gt;&quot; + rpc.getReplyId().toStringUtf8()</span>
+<span class="nc" id="L737">        + &quot;#&quot; + rpc.getCallId() + &quot;-&quot; + ProtoUtils.toString(rpc.getSlidingWindowEntry());</span>
+  }
+
+  static String toString(RaftClientReplyProto proto) {
+<span class="nc" id="L741">    final RaftRpcReplyProto rpc = proto.getRpcReply();</span>
+<span class="nc" id="L742">    return ClientId.valueOf(rpc.getRequestorId()) + &quot;&lt;-&quot; + rpc.getReplyId().toStringUtf8()</span>
+<span class="nc" id="L743">        + &quot;#&quot; + rpc.getCallId();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

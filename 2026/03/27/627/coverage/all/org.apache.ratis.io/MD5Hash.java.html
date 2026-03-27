@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MD5Hash.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.io</a> &gt; <span class="el_source">MD5Hash.java</span></div><h1>MD5Hash.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ratis.io;
+
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+/**
+ * A MD5 hash value.
+ * &lt;p&gt;
+ * This is a value-based class.
+ */
+public final class MD5Hash {
+  public static final int MD5_LENGTH = 16;
+
+  /** @return an instance with the given digest in a (case-insensitive) hexadecimals. */
+  public static MD5Hash newInstance(String digestHexadecimals) {
+<span class="fc" id="L39">    Objects.requireNonNull(digestHexadecimals, &quot;digestHexadecimals == null&quot;);</span>
+<span class="fc" id="L40">    Preconditions.assertSame(2 * MD5_LENGTH, digestHexadecimals.length(), &quot;digestHexadecimals&quot;);</span>
+
+<span class="fc" id="L42">    final byte[] digest = new byte[MD5_LENGTH];</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">    for (int i = 0; i &lt; MD5_LENGTH; i++) {</span>
+<span class="fc" id="L44">      final int j = i &lt;&lt; 1;</span>
+<span class="fc" id="L45">      digest[i] = (byte) (charToNibble(digestHexadecimals, j) &lt;&lt; 4 |</span>
+<span class="fc" id="L46">          charToNibble(digestHexadecimals, j + 1));</span>
+    }
+<span class="fc" id="L48">    return new MD5Hash(digest);</span>
+  }
+
+  /** @return an instance with the given digest. */
+  public static MD5Hash newInstance(byte[] digest) {
+<span class="fc" id="L53">    Objects.requireNonNull(digest, &quot;digest == null&quot;);</span>
+<span class="fc" id="L54">    Preconditions.assertSame(MD5_LENGTH, digest.length, &quot;digest&quot;);</span>
+<span class="fc" id="L55">    return new MD5Hash(digest.clone());</span>
+  }
+
+  private final byte[] digest;
+  private final Supplier&lt;String&gt; digestString;
+
+<span class="fc" id="L61">  private MD5Hash(byte[] digest) {</span>
+<span class="fc" id="L62">    this.digest = digest;</span>
+<span class="fc" id="L63">    this.digestString = MemoizedSupplier.valueOf(() -&gt; digestToString(digest));</span>
+<span class="fc" id="L64">  }</span>
+
+  /** @return the digest wrapped by a read-only {@link ByteBuffer}. */
+  public ByteBuffer getDigest() {
+<span class="fc" id="L68">    return ByteBuffer.wrap(digest).asReadOnlyBuffer();</span>
+  }
+
+  @Override
+  public boolean equals(Object object) {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">    if (this == object) {</span>
+<span class="nc" id="L74">      return true;</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">    } else if (!(object instanceof MD5Hash)) {</span>
+<span class="nc" id="L76">      return false;</span>
+    }
+<span class="fc" id="L78">    final MD5Hash that = (MD5Hash) object;</span>
+<span class="fc" id="L79">    return Arrays.equals(this.digest, that.digest);</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="fc" id="L84">    return ((digest[0] &amp; 0xFF) &lt;&lt; 24)</span>
+        |  ((digest[1] &amp; 0xFF) &lt;&lt; 16)
+        |  ((digest[2] &amp; 0xFF) &lt;&lt; 8)
+        |   (digest[3] &amp; 0xFF);
+  }
+
+<span class="fc" id="L90">  private static final char[] HEX_DIGITS =</span>
+      {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+
+  /** Returns a string representation of this object. */
+  @Override
+  public String toString() {
+<span class="fc" id="L96">    return digestString.get();</span>
+  }
+
+  static String digestToString(byte[] digest) {
+<span class="fc" id="L100">    StringBuilder buf = new StringBuilder(MD5_LENGTH *2);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">    for (int i = 0; i &lt; MD5_LENGTH; i++) {</span>
+<span class="fc" id="L102">      int b = digest[i];</span>
+<span class="fc" id="L103">      buf.append(HEX_DIGITS[(b &gt;&gt; 4) &amp; 0xf]);</span>
+<span class="fc" id="L104">      buf.append(HEX_DIGITS[b &amp; 0xf]);</span>
+    }
+<span class="fc" id="L106">    return buf.toString();</span>
+  }
+
+  private static int charToNibble(String hexadecimals, int i) {
+<span class="fc" id="L110">    final char c = hexadecimals.charAt(i);</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">    if (c &gt;= '0' &amp;&amp; c &lt;= '9') {</span>
+<span class="fc" id="L112">      return c - '0';</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">    } else if (c &gt;= 'a' &amp;&amp; c &lt;= 'f') {</span>
+<span class="fc" id="L114">      return 0xa + (c - 'a');</span>
+<span class="pc bpc" id="L115" title="2 of 4 branches missed.">    } else if (c &gt;= 'A' &amp;&amp; c &lt;= 'F') {</span>
+<span class="fc" id="L116">      return 0xA + (c - 'A');</span>
+    } else {
+<span class="nc" id="L118">      throw new IllegalArgumentException(</span>
+          &quot;Found a non-hexadecimal character '&quot; + c + &quot;' at index &quot; + i + &quot; in \&quot;&quot; + hexadecimals + &quot;\&quot;&quot;);
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

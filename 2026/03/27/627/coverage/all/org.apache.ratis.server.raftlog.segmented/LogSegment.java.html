@@ -1,0 +1,515 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogSegment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.raftlog.segmented</a> &gt; <span class="el_source">LogSegment.java</span></div><h1>LogSegment.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.raftlog.segmented;
+
+import org.apache.ratis.proto.RaftProtos.LogEntryProto;
+import org.apache.ratis.server.RaftServerConfigKeys.Log.CorruptionPolicy;
+import org.apache.ratis.server.metrics.SegmentedRaftLogMetrics;
+import org.apache.ratis.server.protocol.TermIndex;
+import org.apache.ratis.server.raftlog.LogEntryHeader;
+import org.apache.ratis.server.raftlog.LogProtoUtils;
+import org.apache.ratis.server.raftlog.RaftLogIOException;
+import org.apache.ratis.server.storage.RaftStorage;
+import org.apache.ratis.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.ratis.thirdparty.com.google.common.cache.CacheLoader;
+import org.apache.ratis.thirdparty.com.google.protobuf.CodedOutputStream;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.SizeInBytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import org.apache.ratis.util.CodeInjectionForTesting;
+
+
+/**
+ * In-memory cache for a log segment file. All the updates will be first written
+ * into LogSegment then into corresponding files in the same order.
+ *
+ * This class will be protected by the {@link SegmentedRaftLog}'s read-write lock.
+ */
+public final class LogSegment {
+
+<span class="fc" id="L61">  static final Logger LOG = LoggerFactory.getLogger(LogSegment.class);</span>
+
+<span class="fc" id="L63">  enum Op {</span>
+<span class="fc" id="L64">    LOAD_SEGMENT_FILE,</span>
+<span class="fc" id="L65">    REMOVE_CACHE,</span>
+<span class="fc" id="L66">    CHECK_SEGMENT_FILE_FULL,</span>
+<span class="fc" id="L67">    WRITE_CACHE_WITH_STATE_MACHINE_CACHE,</span>
+<span class="fc" id="L68">    WRITE_CACHE_WITHOUT_STATE_MACHINE_CACHE</span>
+  }
+
+  static long getEntrySize(LogEntryProto entry, Op op) {
+<span class="fc" id="L72">    LogEntryProto e = entry;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">    if (op == Op.CHECK_SEGMENT_FILE_FULL) {</span>
+<span class="fc" id="L74">      e = LogProtoUtils.removeStateMachineData(entry);</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">    } else if (op == Op.LOAD_SEGMENT_FILE || op == Op.WRITE_CACHE_WITH_STATE_MACHINE_CACHE) {</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">      Preconditions.assertTrue(entry == LogProtoUtils.removeStateMachineData(entry),</span>
+<span class="nc" id="L77">          () -&gt; &quot;Unexpected LogEntryProto with StateMachine data: op=&quot; + op + &quot;, entry=&quot; + entry);</span>
+    } else {
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">      Preconditions.assertTrue(op == Op.WRITE_CACHE_WITHOUT_STATE_MACHINE_CACHE || op == Op.REMOVE_CACHE,</span>
+<span class="nc" id="L80">          () -&gt; &quot;Unexpected op &quot; + op + &quot;, entry=&quot; + entry);</span>
+    }
+<span class="fc" id="L82">    final int serialized = e.getSerializedSize();</span>
+<span class="fc" id="L83">    return serialized + CodedOutputStream.computeUInt32SizeNoTag(serialized) + 4L;</span>
+  }
+
+  static class LogRecord {
+    /** starting offset in the file */
+    private final long offset;
+    private final LogEntryHeader logEntryHeader;
+
+<span class="fc" id="L91">    LogRecord(long offset, LogEntryProto entry) {</span>
+<span class="fc" id="L92">      this.offset = offset;</span>
+<span class="fc" id="L93">      this.logEntryHeader = LogEntryHeader.valueOf(entry);</span>
+<span class="fc" id="L94">    }</span>
+
+    LogEntryHeader getLogEntryHeader() {
+<span class="fc" id="L97">      return logEntryHeader;</span>
+    }
+
+    TermIndex getTermIndex() {
+<span class="fc" id="L101">      return getLogEntryHeader().getTermIndex();</span>
+    }
+
+    long getOffset() {
+<span class="fc" id="L105">      return offset;</span>
+    }
+  }
+
+<span class="fc" id="L109">  private static class Records {</span>
+<span class="fc" id="L110">    private final ConcurrentNavigableMap&lt;Long, LogRecord&gt; map = new ConcurrentSkipListMap&lt;&gt;();</span>
+
+    int size() {
+<span class="fc" id="L113">      return map.size();</span>
+    }
+
+    LogRecord getFirst() {
+<span class="fc" id="L117">      final Map.Entry&lt;Long, LogRecord&gt; first = map.firstEntry();</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">      return first != null? first.getValue() : null;</span>
+    }
+
+    LogRecord getLast() {
+<span class="fc" id="L122">      final Map.Entry&lt;Long, LogRecord&gt; last = map.lastEntry();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">      return last != null? last.getValue() : null;</span>
+    }
+
+    LogRecord get(long i) {
+<span class="fc" id="L127">      return map.get(i);</span>
+    }
+
+    long append(LogRecord record) {
+<span class="fc" id="L131">      final long index = record.getTermIndex().getIndex();</span>
+<span class="fc" id="L132">      final LogRecord previous = map.put(index, record);</span>
+<span class="fc" id="L133">      Preconditions.assertNull(previous, &quot;previous&quot;);</span>
+<span class="fc" id="L134">      return index;</span>
+    }
+
+    LogRecord removeLast() {
+<span class="fc" id="L138">      final Map.Entry&lt;Long, LogRecord&gt; last = map.pollLastEntry();</span>
+<span class="fc" id="L139">      return Objects.requireNonNull(last, &quot;last == null&quot;).getValue();</span>
+    }
+
+    void clear() {
+<span class="fc" id="L143">      map.clear();</span>
+<span class="fc" id="L144">    }</span>
+  }
+
+  static LogSegment newOpenSegment(RaftStorage storage, long start, SizeInBytes maxOpSize,
+      SegmentedRaftLogMetrics raftLogMetrics) {
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">    Preconditions.assertTrue(start &gt;= 0);</span>
+<span class="fc" id="L150">    return new LogSegment(storage, true, start, start - 1, maxOpSize, raftLogMetrics);</span>
+  }
+
+  @VisibleForTesting
+  static LogSegment newCloseSegment(RaftStorage storage,
+      long start, long end, SizeInBytes maxOpSize, SegmentedRaftLogMetrics raftLogMetrics) {
+<span class="pc bpc" id="L156" title="2 of 4 branches missed.">    Preconditions.assertTrue(start &gt;= 0 &amp;&amp; end &gt;= start);</span>
+<span class="fc" id="L157">    return new LogSegment(storage, false, start, end, maxOpSize, raftLogMetrics);</span>
+  }
+
+  static LogSegment newLogSegment(RaftStorage storage, LogSegmentStartEnd startEnd, SizeInBytes maxOpSize,
+      SegmentedRaftLogMetrics metrics) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">    return startEnd.isOpen()? newOpenSegment(storage, startEnd.getStartIndex(), maxOpSize, metrics)</span>
+<span class="fc" id="L163">        : newCloseSegment(storage, startEnd.getStartIndex(), startEnd.getEndIndex(), maxOpSize, metrics);</span>
+  }
+
+  public static int readSegmentFile(File file, LogSegmentStartEnd startEnd, SizeInBytes maxOpSize,
+      CorruptionPolicy corruptionPolicy, SegmentedRaftLogMetrics raftLogMetrics, Consumer&lt;LogEntryProto&gt; entryConsumer)
+      throws IOException {
+<span class="fc" id="L169">    int count = 0;</span>
+<span class="fc" id="L170">    try(SegmentedRaftLogInputStream in = new SegmentedRaftLogInputStream(file, startEnd, maxOpSize, raftLogMetrics)) {</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">      for(LogEntryProto prev = null, next; (next = in.nextEntry()) != null; prev = next) {</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (prev != null) {</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">          Preconditions.assertTrue(next.getIndex() == prev.getIndex() + 1,</span>
+              &quot;gap between entry %s and entry %s&quot;, prev, next);
+        }
+
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (entryConsumer != null) {</span>
+<span class="fc" id="L178">          entryConsumer.accept(next);</span>
+        }
+<span class="fc" id="L180">        count++;</span>
+      }
+<span class="fc" id="L182">    } catch (IOException ioe) {</span>
+<span class="pc bpc" id="L183" title="1 of 3 branches missed.">      switch (corruptionPolicy) {</span>
+<span class="fc" id="L184">        case EXCEPTION: throw ioe;</span>
+        case WARN_AND_RETURN:
+<span class="fc" id="L186">          LOG.warn(&quot;Failed to read segment file {} ({}): only {} entries read successfully&quot;,</span>
+<span class="fc" id="L187">              file, startEnd, count, ioe);</span>
+<span class="fc" id="L188">          break;</span>
+        default:
+<span class="nc" id="L190">          throw new IllegalStateException(&quot;Unexpected enum value: &quot; + corruptionPolicy</span>
+              + &quot;, class=&quot; + CorruptionPolicy.class);
+      }
+<span class="fc" id="L193">    }</span>
+
+<span class="fc" id="L195">    return count;</span>
+  }
+
+  static LogSegment loadSegment(RaftStorage storage, File file, LogSegmentStartEnd startEnd, SizeInBytes maxOpSize,
+      boolean keepEntryInCache, Consumer&lt;LogEntryProto&gt; logConsumer, SegmentedRaftLogMetrics raftLogMetrics)
+      throws IOException {
+<span class="fc" id="L201">    final LogSegment segment = newLogSegment(storage, startEnd, maxOpSize, raftLogMetrics);</span>
+<span class="fc" id="L202">    final CorruptionPolicy corruptionPolicy = CorruptionPolicy.get(storage, RaftStorage::getLogCorruptionPolicy);</span>
+<span class="fc" id="L203">    final boolean isOpen = startEnd.isOpen();</span>
+<span class="fc" id="L204">    final int entryCount = readSegmentFile(file, startEnd, maxOpSize, corruptionPolicy, raftLogMetrics, entry -&gt; {</span>
+<span class="fc bfc" id="L205" title="All 4 branches covered.">      segment.append(keepEntryInCache || isOpen, entry, Op.LOAD_SEGMENT_FILE);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">      if (logConsumer != null) {</span>
+<span class="fc" id="L207">        logConsumer.accept(entry);</span>
+      }
+<span class="fc" id="L209">    });</span>
+<span class="fc" id="L210">    LOG.info(&quot;Successfully read {} entries from segment file {}&quot;, entryCount, file);</span>
+
+<span class="fc" id="L212">    final long start = startEnd.getStartIndex();</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">    final long end = isOpen? segment.getEndIndex(): startEnd.getEndIndex();</span>
+<span class="fc" id="L214">    final int expectedEntryCount = Math.toIntExact(end - start + 1);</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">    final boolean corrupted = entryCount != expectedEntryCount;</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">    if (corrupted) {</span>
+<span class="nc" id="L217">      LOG.warn(&quot;Segment file is corrupted: expected to have {} entries but only {} entries read successfully&quot;,</span>
+<span class="nc" id="L218">          expectedEntryCount, entryCount);</span>
+    }
+
+<span class="fc bfc" id="L221" title="All 2 branches covered.">    if (entryCount == 0) {</span>
+      // The segment does not have any entries, delete the file.
+<span class="fc" id="L223">      final Path deleted = FileUtils.deleteFile(file);</span>
+<span class="fc" id="L224">      LOG.info(&quot;Deleted RaftLog segment since entry count is zero: startEnd={}, path={}&quot;, startEnd, deleted);</span>
+<span class="fc" id="L225">      return null;</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">    } else if (file.length() &gt; segment.getTotalFileSize()) {</span>
+      // The segment has extra padding, truncate it.
+<span class="fc" id="L228">      FileUtils.truncateFile(file, segment.getTotalFileSize());</span>
+    }
+
+    try {
+<span class="fc" id="L232">      segment.assertSegment(start, entryCount, corrupted, end);</span>
+<span class="nc" id="L233">    } catch (Exception e) {</span>
+<span class="nc" id="L234">      throw new IllegalStateException(&quot;Failed to read segment file &quot; + file, e);</span>
+<span class="fc" id="L235">    }</span>
+<span class="fc" id="L236">    return segment;</span>
+  }
+
+  private void assertSegment(long expectedStart, int expectedEntryCount, boolean corrupted, long expectedEnd) {
+<span class="fc" id="L240">    Preconditions.assertSame(expectedStart, getStartIndex(), &quot;Segment start index&quot;);</span>
+<span class="fc" id="L241">    Preconditions.assertSame(expectedEntryCount, records.size(), &quot;Number of records&quot;);</span>
+
+<span class="fc" id="L243">    final long expectedLastIndex = expectedStart + expectedEntryCount - 1;</span>
+<span class="fc" id="L244">    Preconditions.assertSame(expectedLastIndex, getEndIndex(), &quot;Segment end index&quot;);</span>
+
+<span class="fc" id="L246">    final LogRecord last = records.getLast();</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">    if (last != null) {</span>
+<span class="fc" id="L248">      Preconditions.assertSame(expectedLastIndex, last.getTermIndex().getIndex(), &quot;Index at the last record&quot;);</span>
+<span class="fc" id="L249">      final LogRecord first = records.getFirst();</span>
+<span class="fc" id="L250">      Objects.requireNonNull(first, &quot;first record&quot;);</span>
+<span class="fc" id="L251">      Preconditions.assertSame(expectedStart, first.getTermIndex().getIndex(), &quot;Index at the first record&quot;);</span>
+    }
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">    if (!corrupted) {</span>
+<span class="fc" id="L254">      Preconditions.assertSame(expectedEnd, expectedLastIndex, &quot;End/last Index&quot;);</span>
+    }
+<span class="fc" id="L256">  }</span>
+
+  /**
+   * The current log entry loader simply loads the whole segment into the memory.
+   * In most of the cases this may be good enough considering the main use case
+   * for load log entries is for leader appending to followers.
+   *
+   * In the future we can make the cache loader configurable if necessary.
+   */
+  class LogEntryLoader extends CacheLoader&lt;LogRecord, LogEntryProto&gt; {
+    private final SegmentedRaftLogMetrics raftLogMetrics;
+
+<span class="fc" id="L268">    LogEntryLoader(SegmentedRaftLogMetrics raftLogMetrics) {</span>
+<span class="fc" id="L269">      this.raftLogMetrics = raftLogMetrics;</span>
+<span class="fc" id="L270">    }</span>
+
+    @Override
+    public LogEntryProto load(LogRecord key) throws IOException {
+<span class="fc" id="L274">      final File file = getFile();</span>
+      // note the loading should not exceed the endIndex: it is possible that
+      // the on-disk log file should be truncated but has not been done yet.
+<span class="fc" id="L277">      final AtomicReference&lt;LogEntryProto&gt; toReturn = new AtomicReference&lt;&gt;();</span>
+<span class="fc" id="L278">      final LogSegmentStartEnd startEnd = LogSegmentStartEnd.valueOf(startIndex, endIndex, isOpen);</span>
+<span class="fc" id="L279">      readSegmentFile(file, startEnd, maxOpSize,</span>
+<span class="fc" id="L280">          getLogCorruptionPolicy(), raftLogMetrics, entry -&gt; {</span>
+<span class="fc" id="L281">        final TermIndex ti = TermIndex.valueOf(entry);</span>
+<span class="fc" id="L282">        putEntryCache(ti, entry, Op.LOAD_SEGMENT_FILE);</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        if (ti.equals(key.getTermIndex())) {</span>
+<span class="fc" id="L284">          toReturn.set(entry);</span>
+        }
+<span class="fc" id="L286">      });</span>
+<span class="fc" id="L287">      loadingTimes.incrementAndGet();</span>
+<span class="fc" id="L288">      final LogEntryProto proto = toReturn.get();</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">      if (proto == null) {</span>
+<span class="nc" id="L290">        throw new RaftLogIOException(&quot;Failed to load log entry &quot; + key);</span>
+      }
+<span class="fc" id="L292">      return proto;</span>
+    }
+  }
+
+  File getFile() {
+<span class="fc" id="L297">    return LogSegmentStartEnd.valueOf(startIndex, endIndex, isOpen).getFile(storage);</span>
+  }
+
+  private volatile boolean isOpen;
+<span class="fc" id="L301">  private long totalFileSize = SegmentedRaftLogFormat.getHeaderLength();</span>
+<span class="fc" id="L302">  private AtomicLong totalCacheSize = new AtomicLong(0);</span>
+  /** Segment start index, inclusive. */
+  private final long startIndex;
+  /** Segment end index, inclusive. */
+  private volatile long endIndex;
+  private final RaftStorage storage;
+  private final SizeInBytes maxOpSize;
+  private final LogEntryLoader cacheLoader;
+  /** later replace it with a metric */
+<span class="fc" id="L311">  private final AtomicInteger loadingTimes = new AtomicInteger();</span>
+
+  /**
+   * the list of records is more like the index of a segment
+   */
+<span class="fc" id="L316">  private final Records records = new Records();</span>
+  /**
+   * the entryCache caches the content of log entries.
+   */
+<span class="fc" id="L320">  private final Map&lt;TermIndex, LogEntryProto&gt; entryCache = new ConcurrentHashMap&lt;&gt;();</span>
+
+  private LogSegment(RaftStorage storage, boolean isOpen, long start, long end, SizeInBytes maxOpSize,
+<span class="fc" id="L323">      SegmentedRaftLogMetrics raftLogMetrics) {</span>
+<span class="fc" id="L324">    this.storage = storage;</span>
+<span class="fc" id="L325">    this.isOpen = isOpen;</span>
+<span class="fc" id="L326">    this.startIndex = start;</span>
+<span class="fc" id="L327">    this.endIndex = end;</span>
+<span class="fc" id="L328">    this.maxOpSize = maxOpSize;</span>
+<span class="fc" id="L329">    this.cacheLoader = new LogEntryLoader(raftLogMetrics);</span>
+<span class="fc" id="L330">  }</span>
+
+  long getStartIndex() {
+<span class="fc" id="L333">    return startIndex;</span>
+  }
+
+  long getEndIndex() {
+<span class="fc bfc" id="L337" title="All 2 branches covered.">    if (!isOpen) {</span>
+<span class="fc" id="L338">      return endIndex;</span>
+    }
+<span class="fc" id="L340">    final LogRecord last = records.getLast();</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">    return last == null ? getStartIndex() - 1 : last.getTermIndex().getIndex();</span>
+  }
+
+  boolean isOpen() {
+<span class="fc" id="L345">    return isOpen;</span>
+  }
+
+  int numOfEntries() {
+<span class="fc" id="L349">    return Math.toIntExact(getEndIndex() - startIndex + 1);</span>
+  }
+
+  CorruptionPolicy getLogCorruptionPolicy() {
+<span class="fc" id="L353">    return CorruptionPolicy.get(storage, RaftStorage::getLogCorruptionPolicy);</span>
+  }
+
+  void appendToOpenSegment(LogEntryProto entry, Op op) {
+<span class="fc" id="L357">    Preconditions.assertTrue(isOpen(), &quot;The log segment %s is not open for append&quot;, this);</span>
+<span class="fc" id="L358">    append(true, entry, op);</span>
+<span class="fc" id="L359">  }</span>
+
+<span class="fc" id="L361">  public static final String APPEND_RECORD = LogSegment.class.getSimpleName() + &quot;.append&quot;;</span>
+  private void append(boolean keepEntryInCache, LogEntryProto entry, Op op) {
+<span class="fc" id="L363">    Objects.requireNonNull(entry, &quot;entry == null&quot;);</span>
+<span class="fc" id="L364">    final LogRecord currentLast = records.getLast();</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">    if (currentLast == null) {</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">      Preconditions.assertTrue(entry.getIndex() == startIndex,</span>
+          &quot;gap between start index %s and first entry to append %s&quot;,
+<span class="fc" id="L368">          startIndex, entry.getIndex());</span>
+    } else {
+<span class="fc bfc" id="L370" title="All 2 branches covered.">      Preconditions.assertTrue(entry.getIndex() == currentLast.getTermIndex().getIndex() + 1,</span>
+<span class="fc" id="L371">          &quot;gap between entries %s and %s&quot;, entry.getIndex(), currentLast.getTermIndex().getIndex());</span>
+    }
+
+<span class="fc" id="L374">    final LogRecord record = new LogRecord(totalFileSize, entry);</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">    if (keepEntryInCache) {</span>
+      // It is important to put the entry into the cache before appending the
+      // record to the record list. Otherwise, a reader thread may get the
+      // record from the list but not the entry from the cache.
+<span class="fc" id="L379">      putEntryCache(record.getTermIndex(), entry, op);</span>
+<span class="fc" id="L380">      CodeInjectionForTesting.execute(APPEND_RECORD, this, record.getTermIndex());</span>
+    }
+<span class="fc" id="L382">    records.append(record);</span>
+
+<span class="fc" id="L384">    totalFileSize += getEntrySize(entry, op);</span>
+<span class="fc" id="L385">    endIndex = entry.getIndex();</span>
+<span class="fc" id="L386">  }</span>
+
+  LogEntryProto getEntryFromCache(TermIndex ti) {
+<span class="fc" id="L389">    return entryCache.get(ti);</span>
+  }
+
+  /**
+   * Acquire LogSegment's monitor so that there is no concurrent loading.
+   */
+  synchronized LogEntryProto loadCache(LogRecord record) throws RaftLogIOException {
+<span class="fc" id="L396">    LogEntryProto entry = entryCache.get(record.getTermIndex());</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">    if (entry != null) {</span>
+<span class="nc" id="L398">      return entry;</span>
+    }
+    try {
+<span class="fc" id="L401">      return cacheLoader.load(record);</span>
+<span class="nc" id="L402">    } catch (RaftLogIOException e) {</span>
+<span class="nc" id="L403">      throw e;</span>
+<span class="nc" id="L404">    } catch (Exception e) {</span>
+<span class="nc" id="L405">      throw new RaftLogIOException(&quot;Failed to loadCache for log entry &quot; + record, e);</span>
+    }
+  }
+
+  LogRecord getLogRecord(long index) {
+<span class="pc bpc" id="L410" title="1 of 4 branches missed.">    if (index &gt;= startIndex &amp;&amp; index &lt;= getEndIndex()) {</span>
+<span class="fc" id="L411">      return records.get(index);</span>
+    }
+<span class="fc" id="L413">    return null;</span>
+  }
+
+  TermIndex getLastTermIndex() {
+<span class="fc" id="L417">    final LogRecord last = records.getLast();</span>
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">    return last == null ? null : last.getTermIndex();</span>
+  }
+
+  long getTotalFileSize() {
+<span class="fc" id="L422">    return totalFileSize;</span>
+  }
+
+  long getTotalCacheSize() {
+<span class="fc" id="L426">    return totalCacheSize.get();</span>
+  }
+
+  /**
+   * Remove records from the given index (inclusive)
+   */
+  synchronized void truncate(long fromIndex) {
+<span class="pc bpc" id="L433" title="2 of 4 branches missed.">    Preconditions.assertTrue(fromIndex &gt;= startIndex &amp;&amp; fromIndex &lt;= endIndex);</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">    for (long index = endIndex; index &gt;= fromIndex; index--) {</span>
+<span class="fc" id="L435">      final LogRecord removed = records.removeLast();</span>
+<span class="fc" id="L436">      Preconditions.assertSame(index, removed.getTermIndex().getIndex(), &quot;removedIndex&quot;);</span>
+<span class="fc" id="L437">      removeEntryCache(removed.getTermIndex(), Op.REMOVE_CACHE);</span>
+<span class="fc" id="L438">      totalFileSize = removed.offset;</span>
+    }
+<span class="fc" id="L440">    isOpen = false;</span>
+<span class="fc" id="L441">    this.endIndex = fromIndex - 1;</span>
+<span class="fc" id="L442">  }</span>
+
+  void close() {
+<span class="fc" id="L445">    Preconditions.assertTrue(isOpen());</span>
+<span class="fc" id="L446">    isOpen = false;</span>
+<span class="fc" id="L447">  }</span>
+
+  @Override
+  public String toString() {
+<span class="fc bfc" id="L451" title="All 2 branches covered.">    return isOpen() ? &quot;log_&quot; + &quot;inprogress_&quot; + startIndex :</span>
+<span class="fc" id="L452">        &quot;log-&quot; + startIndex + &quot;_&quot; + endIndex;</span>
+  }
+
+  /** Comparator to find &lt;code&gt;index&lt;/code&gt; in list of &lt;code&gt;LogSegment&lt;/code&gt;s. */
+<span class="fc" id="L456">  static final Comparator&lt;Object&gt; SEGMENT_TO_INDEX_COMPARATOR = (o1, o2) -&gt; {</span>
+<span class="pc bpc" id="L457" title="2 of 4 branches missed.">    if (o1 instanceof LogSegment &amp;&amp; o2 instanceof Long) {</span>
+<span class="fc" id="L458">      return ((LogSegment) o1).compareTo((Long) o2);</span>
+<span class="nc bnc" id="L459" title="All 4 branches missed.">    } else if (o1 instanceof Long &amp;&amp; o2 instanceof LogSegment) {</span>
+<span class="nc" id="L460">      return Integer.compare(0, ((LogSegment) o2).compareTo((Long) o1));</span>
+    }
+<span class="nc" id="L462">    throw new IllegalStateException(&quot;Unexpected objects to compare(&quot; + o1 + &quot;,&quot; + o2 + &quot;)&quot;);</span>
+  };
+
+  private int compareTo(Long l) {
+<span class="fc bfc" id="L466" title="All 4 branches covered.">    return (l &gt;= getStartIndex() &amp;&amp; l &lt;= getEndIndex()) ? 0 :</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">        (this.getEndIndex() &lt; l ? -1 : 1);</span>
+  }
+
+  synchronized void clear() {
+<span class="fc" id="L471">    records.clear();</span>
+<span class="fc" id="L472">    evictCache();</span>
+<span class="fc" id="L473">    endIndex = startIndex - 1;</span>
+<span class="fc" id="L474">  }</span>
+
+  int getLoadingTimes() {
+<span class="fc" id="L477">    return loadingTimes.get();</span>
+  }
+
+  void evictCache() {
+<span class="fc" id="L481">    entryCache.clear();</span>
+<span class="fc" id="L482">    totalCacheSize.set(0);</span>
+<span class="fc" id="L483">  }</span>
+
+  void putEntryCache(TermIndex key, LogEntryProto value, Op op) {
+<span class="fc" id="L486">    final LogEntryProto previous = entryCache.put(key, value);</span>
+<span class="fc" id="L487">    long previousSize = 0;</span>
+<span class="fc bfc" id="L488" title="All 2 branches covered.">    if (previous != null) {</span>
+      // Different threads maybe load LogSegment file into cache at the same time, so duplicate maybe happen
+<span class="fc" id="L490">      previousSize = getEntrySize(value, Op.REMOVE_CACHE);</span>
+    }
+<span class="fc" id="L492">    totalCacheSize.getAndAdd(getEntrySize(value, op) - previousSize);</span>
+<span class="fc" id="L493">  }</span>
+
+  void removeEntryCache(TermIndex key, Op op) {
+<span class="fc" id="L496">    LogEntryProto value = entryCache.remove(key);</span>
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">    if (value != null) {</span>
+<span class="fc" id="L498">      totalCacheSize.getAndAdd(-getEntrySize(value, op));</span>
+    }
+<span class="fc" id="L500">  }</span>
+
+  boolean hasCache() {
+<span class="pc bpc" id="L503" title="1 of 4 branches missed.">    return isOpen || !entryCache.isEmpty(); // open segment always has cache.</span>
+  }
+
+  boolean containsIndex(long index) {
+<span class="fc bfc" id="L507" title="All 4 branches covered.">    return startIndex &lt;= index &amp;&amp; getEndIndex() &gt;= index;</span>
+  }
+
+  boolean hasEntries() {
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">    return numOfEntries() &gt; 0;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

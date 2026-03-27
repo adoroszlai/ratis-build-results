@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileChunkReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.server.storage</a> &gt; <span class="el_source">FileChunkReader.java</span></div><h1>FileChunkReader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.server.storage;
+
+import org.apache.ratis.proto.RaftProtos.FileChunkProto;
+import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.thirdparty.com.google.protobuf.UnsafeByteOperations;
+import org.apache.ratis.util.FileUtils;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.MD5FileUtil;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+
+/** Read {@link FileChunkProto}s from a file. */
+public final class FileChunkReader implements Closeable {
+  private final FileInfo info;
+  private final Path relativePath;
+  private final InputStream in;
+  private final MessageDigest digester;
+  /** The offset position of the current chunk. */
+<span class="fc" id="L43">  private long offset = 0;</span>
+  /** The index of the current chunk. */
+<span class="fc" id="L45">  private int chunkIndex = 0;</span>
+
+  /**
+   * Construct a reader from a file specified by the given {@link FileInfo}.
+   *
+   * @param info the information of the file.
+   * @param relativePath the relative path of the file.
+   * @throws IOException if it failed to open the file.
+   */
+  public static FileChunkReader newInstance(FileInfo info, Path relativePath) throws IOException {
+<span class="fc" id="L55">    final File f = info.getPath().toFile();</span>
+    final InputStream in;
+    final MessageDigest digester;
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">    if (info.getFileDigest() == null) {</span>
+<span class="fc" id="L60">      digester = MD5FileUtil.newMD5();</span>
+<span class="fc" id="L61">      in = new DigestInputStream(FileUtils.newInputStream(f), digester);</span>
+    } else {
+<span class="fc" id="L63">      digester = null;</span>
+<span class="fc" id="L64">      in = FileUtils.newInputStream(f);</span>
+    }
+
+<span class="fc" id="L67">    return new FileChunkReader(info, relativePath, in, digester);</span>
+  }
+
+<span class="fc" id="L70">  private FileChunkReader(FileInfo info, Path relativePath, InputStream in, MessageDigest digester) {</span>
+<span class="fc" id="L71">    this.info = info;</span>
+<span class="fc" id="L72">    this.relativePath = relativePath;</span>
+<span class="fc" id="L73">    this.in = in;</span>
+<span class="fc" id="L74">    this.digester = digester;</span>
+<span class="fc" id="L75">  }</span>
+
+  static ByteString readFileChunk(int chunkLength, InputStream in) throws IOException {
+<span class="fc" id="L78">    final byte[] chunkBuffer = new byte[chunkLength];</span>
+<span class="fc" id="L79">    IOUtils.readFully(in, chunkBuffer, 0, chunkBuffer.length);</span>
+<span class="fc" id="L80">    return UnsafeByteOperations.unsafeWrap(chunkBuffer);</span>
+  }
+
+  /**
+   * Read the next chunk.
+   *
+   * @param chunkMaxSize maximum chunk size
+   * @return the chunk read from the file.
+   * @throws IOException if it failed to read the file.
+   */
+  public FileChunkProto readFileChunk(int chunkMaxSize) throws IOException {
+<span class="fc" id="L91">    final long remaining = info.getFileSize() - offset;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">    final int chunkLength = remaining &lt; chunkMaxSize ? (int) remaining : chunkMaxSize;</span>
+<span class="fc" id="L93">    final ByteString data = readFileChunk(chunkLength, in);</span>
+    // whether this chunk is the last chunk of current file
+<span class="fc bfc" id="L95" title="All 2 branches covered.">    final boolean isDone = offset + chunkLength == info.getFileSize();</span>
+    final ByteString fileDigest;
+<span class="fc bfc" id="L97" title="All 2 branches covered.">    if (digester != null) {</span>
+      // file digest is calculated once in the end and shipped with last FileChunkProto
+<span class="fc bfc" id="L99" title="All 2 branches covered.">      fileDigest = isDone ? ByteString.copyFrom(digester.digest()) : ByteString.EMPTY;</span>
+    } else {
+<span class="fc" id="L101">      fileDigest = ByteString.copyFrom(info.getFileDigest().getDigest());</span>
+    }
+
+<span class="fc" id="L104">    final FileChunkProto proto = FileChunkProto.newBuilder()</span>
+<span class="fc" id="L105">        .setFilename(relativePath.toString())</span>
+<span class="fc" id="L106">        .setOffset(offset)</span>
+<span class="fc" id="L107">        .setChunkIndex(chunkIndex)</span>
+<span class="fc" id="L108">        .setDone(isDone)</span>
+<span class="fc" id="L109">        .setData(data)</span>
+<span class="fc" id="L110">        .setFileDigest(fileDigest)</span>
+<span class="fc" id="L111">        .build();</span>
+<span class="fc" id="L112">    chunkIndex++;</span>
+<span class="fc" id="L113">    offset += chunkLength;</span>
+<span class="fc" id="L114">    return proto;</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="fc" id="L119">    in.close();</span>
+<span class="fc" id="L120">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L124">    return JavaUtils.getClassSimpleName(getClass())</span>
+        + &quot;{chunkIndex=&quot; + chunkIndex
+        + &quot;, offset=&quot; + offset
+        + &quot;, &quot; + info + '}';
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

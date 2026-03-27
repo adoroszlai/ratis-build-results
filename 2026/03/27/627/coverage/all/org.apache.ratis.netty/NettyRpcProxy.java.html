@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NettyRpcProxy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.netty</a> &gt; <span class="el_source">NettyRpcProxy.java</span></div><h1>NettyRpcProxy.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.apache.ratis.netty;
+
+import org.apache.ratis.client.RaftClientConfigKeys;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.protocol.RaftPeer;
+import org.apache.ratis.protocol.exceptions.TimeoutIOException;
+import org.apache.ratis.thirdparty.io.netty.channel.*;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufEncoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
+import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
+import org.apache.ratis.proto.RaftProtos.RaftRpcRequestProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerReplyProto;
+import org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerRequestProto;
+import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LogLevel;
+import org.apache.ratis.thirdparty.io.netty.handler.logging.LoggingHandler;
+import org.apache.ratis.util.IOUtils;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.PeerProxyMap;
+import org.apache.ratis.util.Preconditions;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.TimeDuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import static org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerReplyProto.RaftNettyServerReplyCase.EXCEPTIONREPLY;
+
+public class NettyRpcProxy implements Closeable {
+<span class="fc" id="L57">  public static final Logger LOG = LoggerFactory.getLogger(NettyRpcProxy.class);</span>
+  public static class PeerMap extends PeerProxyMap&lt;NettyRpcProxy&gt; {
+    private final EventLoopGroup group;
+
+    public PeerMap(String name, RaftProperties properties) {
+<span class="fc" id="L62">      this(name, properties, NettyUtils.newEventLoopGroup(name, 0,</span>
+<span class="fc" id="L63">          NettyConfigKeys.Client.useEpoll(properties)));</span>
+<span class="fc" id="L64">    }</span>
+
+    private PeerMap(String name, RaftProperties properties, EventLoopGroup group) {
+<span class="fc" id="L67">      super(name, peer -&gt; {</span>
+        try {
+<span class="fc" id="L69">          return new NettyRpcProxy(peer, properties, group);</span>
+<span class="fc" id="L70">        } catch (InterruptedException e) {</span>
+<span class="fc" id="L71">          Thread.currentThread().interrupt();</span>
+<span class="fc" id="L72">          throw IOUtils.toInterruptedIOException(&quot;Failed connecting to &quot; + peer, e);</span>
+        }
+      });
+<span class="fc" id="L75">      this.group = group;</span>
+<span class="fc" id="L76">    }</span>
+
+    @Override
+    public void close() {
+<span class="fc" id="L80">      super.close();</span>
+<span class="fc" id="L81">      group.shutdownGracefully();</span>
+<span class="fc" id="L82">    }</span>
+  }
+
+  static RaftRpcRequestProto getRequest(RaftNettyServerRequestProto proto) {
+<span class="fc" id="L86">    final RaftNettyServerRequestProto.RaftNettyServerRequestCase requestCase = proto.getRaftNettyServerRequestCase();</span>
+<span class="pc bpc" id="L87" title="2 of 14 branches missed.">    switch (requestCase) {</span>
+      case REQUESTVOTEREQUEST:
+<span class="fc" id="L89">        return proto.getRequestVoteRequest().getServerRequest();</span>
+      case APPENDENTRIESREQUEST:
+<span class="fc" id="L91">        return proto.getAppendEntriesRequest().getServerRequest();</span>
+      case INSTALLSNAPSHOTREQUEST:
+<span class="fc" id="L93">        return proto.getInstallSnapshotRequest().getServerRequest();</span>
+      case RAFTCLIENTREQUEST:
+<span class="fc" id="L95">        return proto.getRaftClientRequest().getRpcRequest();</span>
+      case SETCONFIGURATIONREQUEST:
+<span class="fc" id="L97">        return proto.getSetConfigurationRequest().getRpcRequest();</span>
+      case GROUPMANAGEMENTREQUEST:
+<span class="fc" id="L99">        return proto.getGroupManagementRequest().getRpcRequest();</span>
+      case GROUPLISTREQUEST:
+<span class="fc" id="L101">        return proto.getGroupListRequest().getRpcRequest();</span>
+      case GROUPINFOREQUEST:
+<span class="fc" id="L103">        return proto.getGroupInfoRequest().getRpcRequest();</span>
+      case TRANSFERLEADERSHIPREQUEST:
+<span class="fc" id="L105">        return proto.getTransferLeadershipRequest().getRpcRequest();</span>
+      case STARTLEADERELECTIONREQUEST:
+<span class="fc" id="L107">        return proto.getStartLeaderElectionRequest().getServerRequest();</span>
+      case SNAPSHOTMANAGEMENTREQUEST:
+<span class="fc" id="L109">        return proto.getSnapshotManagementRequest().getRpcRequest();</span>
+      case LEADERELECTIONMANAGEMENTREQUEST:
+<span class="fc" id="L111">        return proto.getLeaderElectionManagementRequest().getRpcRequest();</span>
+
+      case RAFTNETTYSERVERREQUEST_NOT_SET:
+<span class="nc" id="L114">        throw new IllegalArgumentException(&quot;Request case not set in proto: &quot; + requestCase);</span>
+      default:
+<span class="nc" id="L116">        throw new UnsupportedOperationException(&quot;Request case not supported: &quot; + requestCase);</span>
+    }
+  }
+
+  public static long getCallId(RaftNettyServerReplyProto proto) {
+<span class="pc bpc" id="L121" title="2 of 10 branches missed.">    switch (proto.getRaftNettyServerReplyCase()) {</span>
+      case REQUESTVOTEREPLY:
+<span class="fc" id="L123">        return proto.getRequestVoteReply().getServerReply().getCallId();</span>
+      case STARTLEADERELECTIONREPLY:
+<span class="fc" id="L125">        return proto.getStartLeaderElectionReply().getServerReply().getCallId();</span>
+      case APPENDENTRIESREPLY:
+<span class="fc" id="L127">        return proto.getAppendEntriesReply().getServerReply().getCallId();</span>
+      case INSTALLSNAPSHOTREPLY:
+<span class="fc" id="L129">        return proto.getInstallSnapshotReply().getServerReply().getCallId();</span>
+      case RAFTCLIENTREPLY:
+<span class="fc" id="L131">        return proto.getRaftClientReply().getRpcReply().getCallId();</span>
+      case GROUPLISTREPLY:
+<span class="fc" id="L133">        return proto.getGroupListReply().getRpcReply().getCallId();</span>
+      case GROUPINFOREPLY:
+<span class="fc" id="L135">        return proto.getGroupInfoReply().getRpcReply().getCallId();</span>
+      case EXCEPTIONREPLY:
+<span class="fc" id="L137">        return proto.getExceptionReply().getRpcReply().getCallId();</span>
+      case RAFTNETTYSERVERREPLY_NOT_SET:
+<span class="nc" id="L139">        throw new IllegalArgumentException(&quot;Reply case not set in proto: &quot;</span>
+<span class="nc" id="L140">            + proto.getRaftNettyServerReplyCase());</span>
+      default:
+<span class="nc" id="L142">        throw new UnsupportedOperationException(&quot;Reply case not supported: &quot;</span>
+<span class="nc" id="L143">            + proto.getRaftNettyServerReplyCase());</span>
+    }
+  }
+
+
+  class Connection implements Closeable {
+<span class="fc" id="L149">    private final NettyClient client = new NettyClient(peer.getAddress());</span>
+<span class="fc" id="L150">    private final Map&lt;Long, CompletableFuture&lt;RaftNettyServerReplyProto&gt;&gt; replies = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L152">    Connection(EventLoopGroup group) throws InterruptedException {</span>
+<span class="fc" id="L153">      final ChannelInboundHandler inboundHandler</span>
+<span class="fc" id="L154">          = new SimpleChannelInboundHandler&lt;RaftNettyServerReplyProto&gt;() {</span>
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx,
+                                    RaftNettyServerReplyProto proto) {
+<span class="fc" id="L158">          final long callId = getCallId(proto);</span>
+<span class="fc" id="L159">          final CompletableFuture&lt;RaftNettyServerReplyProto&gt; future = getReplyFuture(callId, null, &quot;reply&quot;);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">          if (future == null) {</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L162">              LOG.debug(&quot;Ignoring reply for callId={} from {} (no outstanding request, outstanding={})&quot;,</span>
+<span class="nc" id="L163">                  callId, peer, replies.size());</span>
+            }
+<span class="fc" id="L165">            return;</span>
+          }
+<span class="fc bfc" id="L167" title="All 2 branches covered.">          if (proto.getRaftNettyServerReplyCase() == EXCEPTIONREPLY) {</span>
+<span class="fc" id="L168">            final Object ioe = ProtoUtils.toObject(proto.getExceptionReply().getException());</span>
+<span class="fc" id="L169">            future.completeExceptionally((IOException)ioe);</span>
+<span class="fc" id="L170">          } else {</span>
+<span class="fc" id="L171">            future.complete(proto);</span>
+          }
+<span class="fc" id="L173">        }</span>
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+<span class="fc" id="L177">          client.close();</span>
+<span class="fc" id="L178">          failOutstandingRequests(new IOException(&quot;Caught an exception for the connection to &quot; + peer, cause));</span>
+<span class="fc" id="L179">        }</span>
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+<span class="fc" id="L183">          failOutstandingRequests(new AlreadyClosedException(&quot;Channel to &quot; + peer + &quot; is inactive.&quot;));</span>
+<span class="fc" id="L184">          super.channelInactive(ctx);</span>
+<span class="fc" id="L185">        }</span>
+      };
+<span class="fc" id="L187">      final ChannelInitializer&lt;SocketChannel&gt; initializer</span>
+<span class="fc" id="L188">          = new ChannelInitializer&lt;SocketChannel&gt;() {</span>
+        @Override
+        protected void initChannel(SocketChannel ch) {
+<span class="fc" id="L191">          final ChannelPipeline p = ch.pipeline();</span>
+
+          // LoggingHandler emits all events at the chosen level; use DEBUG to reduce noise by default.
+<span class="fc" id="L194">          p.addLast(new LoggingHandler(LogLevel.DEBUG));</span>
+<span class="fc" id="L195">          p.addLast(new ProtobufVarint32FrameDecoder());</span>
+<span class="fc" id="L196">          p.addLast(new ProtobufDecoder(RaftNettyServerReplyProto.getDefaultInstance()));</span>
+<span class="fc" id="L197">          p.addLast(new ProtobufVarint32LengthFieldPrepender());</span>
+<span class="fc" id="L198">          p.addLast(new ProtobufEncoder());</span>
+
+<span class="fc" id="L200">          p.addLast(inboundHandler);</span>
+<span class="fc" id="L201">        }</span>
+      };
+
+<span class="fc" id="L204">      client.connect(group, initializer);</span>
+<span class="fc" id="L205">    }</span>
+
+    private CompletableFuture&lt;RaftNettyServerReplyProto&gt; getReplyFuture(long callId,
+        CompletableFuture&lt;RaftNettyServerReplyProto&gt; expected, String reason) {
+<span class="fc" id="L209">      final CompletableFuture&lt;RaftNettyServerReplyProto&gt; removed = replies.remove(callId);</span>
+<span class="pc bpc" id="L210" title="1 of 4 branches missed.">      if (removed == null &amp;&amp; LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L211">        LOG.debug(&quot;Request {} not found for callId={} from {} (reason={}, outstanding={})&quot;,</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            expected == null ? &quot;future&quot; : &quot;reply&quot;, callId, peer, reason, replies.size());</span>
+      }
+<span class="fc bfc" id="L214" title="All 2 branches covered.">      if (expected != null) {</span>
+<span class="fc" id="L215">        Preconditions.assertSame(expected, removed, &quot;removed&quot;);</span>
+      }
+<span class="fc" id="L217">      return removed;</span>
+    }
+
+    synchronized CompletableFuture&lt;RaftNettyServerReplyProto&gt; offer(RaftNettyServerRequestProto request) {
+<span class="fc" id="L221">      final CompletableFuture&lt;RaftNettyServerReplyProto&gt; reply = new CompletableFuture&lt;&gt;();</span>
+<span class="fc" id="L222">      final long callId = getRequest(request).getCallId();</span>
+<span class="fc" id="L223">      final CompletableFuture&lt;RaftNettyServerReplyProto&gt; previous = replies.put(callId, reply);</span>
+<span class="fc" id="L224">      Preconditions.assertNull(previous, &quot;previous&quot;);</span>
+
+      final ChannelFuture future;
+      try {
+<span class="fc" id="L228">        future = client.writeAndFlush(request);</span>
+<span class="fc" id="L229">      } catch (AlreadyClosedException e) {</span>
+<span class="fc" id="L230">        replies.remove(callId, reply);</span>
+<span class="fc" id="L231">        return JavaUtils.completeExceptionally(e);</span>
+<span class="fc" id="L232">      }</span>
+
+<span class="fc" id="L234">      future.addListener(cf -&gt; {</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (!cf.isSuccess()) {</span>
+          // Remove from queue on async write failure to prevent reply mismatch.
+          // Only complete exceptionally if removal succeeds (not already polled).
+<span class="fc" id="L238">          final CompletableFuture&lt;RaftNettyServerReplyProto&gt; removed =</span>
+<span class="fc" id="L239">              getReplyFuture(callId, reply, &quot;write-failure&quot;);</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">          if (removed != null) {</span>
+<span class="fc" id="L241">            removed.completeExceptionally(cf.cause());</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">          } else if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L243">            LOG.debug(&quot;Write failed for callId={} to {} after request removed&quot;, callId, peer, cf.cause());</span>
+          }
+<span class="fc" id="L245">          client.close();</span>
+        }
+<span class="fc" id="L247">      });</span>
+<span class="fc" id="L248">      return reply;</span>
+    }
+
+    @Override
+    public synchronized void close() {
+<span class="fc" id="L253">      client.close();</span>
+<span class="fc" id="L254">      failOutstandingRequests(new AlreadyClosedException(&quot;Closing connection to &quot; + peer));</span>
+<span class="fc" id="L255">    }</span>
+
+    private synchronized void failOutstandingRequests(Throwable cause) {
+<span class="fc bfc" id="L258" title="All 2 branches covered.">      if (!replies.isEmpty()) {</span>
+<span class="fc" id="L259">        LOG.warn(&quot;Still have {} requests outstanding from {} connection: {}&quot;,</span>
+<span class="fc" id="L260">            replies.size(), peer, cause.toString());</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L262">          LOG.debug(&quot;Outstanding request ids from {}: {}&quot;, peer, replies.keySet());</span>
+        }
+<span class="fc" id="L264">        replies.values().forEach(f -&gt; f.completeExceptionally(cause));</span>
+<span class="fc" id="L265">        replies.clear();</span>
+      }
+<span class="fc" id="L267">    }</span>
+  }
+
+  private final RaftPeer peer;
+  private final Connection connection;
+  private final TimeDuration requestTimeoutDuration;
+
+<span class="fc" id="L274">  public NettyRpcProxy(RaftPeer peer, RaftProperties properties, EventLoopGroup group) throws InterruptedException {</span>
+<span class="fc" id="L275">    this.peer = peer;</span>
+<span class="fc" id="L276">    this.connection = new Connection(group);</span>
+<span class="fc" id="L277">    this.requestTimeoutDuration = RaftClientConfigKeys.Rpc.requestTimeout(properties);</span>
+<span class="fc" id="L278">  }</span>
+
+  @Override
+  public void close() {
+<span class="fc" id="L282">    connection.close();</span>
+<span class="fc" id="L283">  }</span>
+
+  public CompletableFuture&lt;RaftNettyServerReplyProto&gt; sendAsync(RaftNettyServerRequestProto proto) {
+<span class="fc" id="L286">    return connection.offer(proto);</span>
+  }
+
+  public RaftNettyServerReplyProto send(
+      RaftRpcRequestProto request, RaftNettyServerRequestProto proto)
+      throws IOException {
+<span class="fc" id="L292">    final CompletableFuture&lt;RaftNettyServerReplyProto&gt; reply = sendAsync(proto);</span>
+    try {
+<span class="fc" id="L294">      TimeDuration newDuration = requestTimeoutDuration.add(request.getTimeoutMs(), TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L295">      return reply.get(newDuration.getDuration(), newDuration.getUnit());</span>
+<span class="fc" id="L296">    } catch (InterruptedException e) {</span>
+<span class="fc" id="L297">      Thread.currentThread().interrupt();</span>
+<span class="fc" id="L298">      throw IOUtils.toInterruptedIOException(ProtoUtils.toString(request)</span>
+          + &quot; sending from &quot; + peer + &quot; is interrupted.&quot;, e);
+<span class="fc" id="L300">    } catch (ExecutionException e) {</span>
+<span class="fc" id="L301">      throw IOUtils.toIOException(e);</span>
+<span class="fc" id="L302">    } catch (TimeoutException e) {</span>
+<span class="fc" id="L303">      throw new TimeoutIOException(e.getMessage(), e);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TraceUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.trace</a> &gt; <span class="el_source">TraceUtils.java</span></div><h1>TraceUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.trace;
+
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.context.propagation.TextMapGetter;
+import org.apache.ratis.conf.RaftProperties;
+import org.apache.ratis.proto.RaftProtos.SpanContextProto;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.function.CheckedSupplier;
+import org.apache.ratis.util.VersionInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
+
+/** Common OpenTelemetry utilities shared by {@link TraceClient} and {@link TraceServer}. */
+public final class TraceUtils {
+
+<span class="fc" id="L47">  private static final AtomicReference&lt;Tracer&gt; TRACER = new AtomicReference&lt;&gt;();</span>
+<span class="fc" id="L48">  private static final Logger LOG = LoggerFactory.getLogger(TraceUtils.class);</span>
+
+  private TraceUtils() {
+  }
+
+  public static Tracer getGlobalTracer() {
+<span class="fc" id="L54">    return TRACER.get();</span>
+  }
+
+  /**
+   * Initializes the global tracer from configuration when tracing is enabled, or clears it when
+   * disabled. Call from {@link org.apache.ratis.server.RaftServer} and
+   * {@link org.apache.ratis.client.RaftClient} construction so tracing follows
+   * {@link TraceConfigKeys}.
+   *
+   * @param properties raft configuration; tracing is on when {@link TraceConfigKeys#enabled} is true
+   */
+  public static void setTracerWhenEnabled(RaftProperties properties) {
+<span class="fc" id="L66">    setTracerWhenEnabled(TraceConfigKeys.enabled(properties));</span>
+<span class="fc" id="L67">  }</span>
+
+  /**
+   * Enables or disables the tracer without reading {@link RaftProperties}. Intended for tests and
+   * simple toggles; production code should prefer {@link #setTracerWhenEnabled(RaftProperties)}.
+   *
+   * @param enabled when true, lazily obtains the OpenTelemetry tracer; when false, clears it
+   */
+  public static void setTracerWhenEnabled(boolean enabled) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">    if (enabled) {</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">      TRACER.updateAndGet(previous -&gt; previous != null ? previous</span>
+<span class="fc" id="L78">          : GlobalOpenTelemetry.getTracer(&quot;org.apache.ratis&quot;, VersionInfo.getSoftwareInfoVersion()));</span>
+    } else {
+<span class="fc" id="L80">      TRACER.set(null);</span>
+    }
+<span class="fc" id="L82">  }</span>
+
+  static boolean isEnabled() {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">    return TRACER.get() != null;</span>
+  }
+
+  /**
+   * Traces an asynchronous operation represented by a {@link CompletableFuture}. The returned future
+   * completes with the same outcome as the supplied future; the span is ended when that future
+   * completes.
+   */
+  static &lt;T, THROWABLE extends Throwable&gt; CompletableFuture&lt;T&gt; traceAsyncMethod(
+      CheckedSupplier&lt;CompletableFuture&lt;T&gt;, THROWABLE&gt; action, Supplier&lt;Span&gt; spanSupplier) throws THROWABLE {
+<span class="fc" id="L95">    final Span span = spanSupplier.get();</span>
+<span class="fc" id="L96">    try (Scope ignored = span.makeCurrent()) {</span>
+      final CompletableFuture&lt;T&gt; future;
+      try {
+<span class="fc" id="L99">        future = action.get();</span>
+<span class="nc" id="L100">      } catch (RuntimeException | Error e) {</span>
+<span class="nc" id="L101">        setError(span, e);</span>
+<span class="nc" id="L102">        span.end();</span>
+<span class="nc" id="L103">        throw e;</span>
+<span class="fc" id="L104">      } catch (Throwable t) {</span>
+<span class="fc" id="L105">        setError(span, t);</span>
+<span class="fc" id="L106">        span.end();</span>
+<span class="fc" id="L107">        throw JavaUtils.&lt;THROWABLE&gt;cast(t);</span>
+<span class="fc" id="L108">      }</span>
+<span class="fc" id="L109">      endSpan(future, span);</span>
+<span class="fc" id="L110">      return future;</span>
+    }
+  }
+
+  private static void endSpan(CompletableFuture&lt;?&gt; future, Span span) {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">    if (span == null) {</span>
+<span class="nc" id="L116">      LOG.debug(&quot;Span is null, cannot trace the future {}&quot;, future);</span>
+<span class="nc" id="L117">      return;</span>
+    }
+<span class="fc" id="L119">    addListener(future, (resp, error) -&gt; {</span>
+      try {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (error != null) {</span>
+<span class="fc" id="L122">          setError(span, error);</span>
+        } else {
+<span class="fc" id="L124">          span.setStatus(StatusCode.OK);</span>
+        }
+<span class="nc" id="L126">      } catch (Throwable t) {</span>
+<span class="nc" id="L127">        LOG.error(&quot;Error setting span status, ending span anyway&quot;, t);</span>
+      } finally {
+<span class="fc" id="L129">        span.end();</span>
+      }
+<span class="fc" id="L131">    });</span>
+<span class="fc" id="L132">  }</span>
+
+  public static void setError(Span span, Throwable error) {
+<span class="fc" id="L135">    span.recordException(error);</span>
+<span class="fc" id="L136">    span.setStatus(StatusCode.ERROR);</span>
+<span class="fc" id="L137">  }</span>
+
+  /**
+   * This is method is used when you just want to add a listener to the given future. We will call
+   * {@link CompletableFuture#whenComplete(BiConsumer)} to register the {@code action} to the
+   * {@code future}. Ignoring the return value of a Future is considered as a bad practice as it may
+   * suppress exceptions thrown from the code that completes the future, and this method will catch
+   * all the exception thrown from the {@code action} to catch possible code bugs.
+   * &lt;p/&gt;
+   * And the error phone check will always report FutureReturnValueIgnored because every method in
+   * the {@link CompletableFuture} class will return a new {@link CompletableFuture}, so you always
+   * have one future that has not been checked. So we introduce this method and add a suppression
+   * warnings annotation here.
+   */
+  @SuppressWarnings(&quot;FutureReturnValueIgnored&quot;)
+  private static &lt;T&gt; void addListener(CompletableFuture&lt;T&gt; future,
+      BiConsumer&lt;? super T, ? super Throwable&gt; action) {
+<span class="fc" id="L154">    future.whenComplete((resp, error) -&gt; {</span>
+      try {
+        // https://s.apache.org/completionexception — unwrap CompletionException for callers
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        action.accept(resp, error == null ? null : JavaUtils.unwrapCompletionException(error));</span>
+<span class="nc" id="L158">      } catch (Throwable t) {</span>
+<span class="nc" id="L159">        LOG.error(&quot;Unexpected error caught when processing CompletableFuture&quot;, t);</span>
+<span class="fc" id="L160">      }</span>
+<span class="fc" id="L161">    });</span>
+<span class="fc" id="L162">  }</span>
+
+<span class="fc" id="L164">  private static final TextMapPropagator PROPAGATOR =</span>
+<span class="fc" id="L165">      GlobalOpenTelemetry.getPropagators().getTextMapPropagator();</span>
+
+  public static SpanContextProto injectContextToProto(Context context) {
+<span class="fc" id="L168">    Map&lt;String, String&gt; carrier = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L169">    PROPAGATOR.inject(context, carrier, (map, key, value) -&gt; map.put(key, value));</span>
+<span class="fc" id="L170">    return SpanContextProto.newBuilder().putAllContext(carrier).build();</span>
+  }
+
+  public static Context extractContextFromProto(SpanContextProto proto) {
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">    if (proto == null || proto.getContextMap().isEmpty()) {</span>
+<span class="fc" id="L175">      return Context.current();</span>
+    }
+<span class="fc" id="L177">    final TextMapGetter&lt;SpanContextProto&gt; getter = SpanContextGetter.INSTANCE;</span>
+<span class="fc" id="L178">    return PROPAGATOR.extract(Context.current(), proto, getter);</span>
+  }
+}
+
+<span class="fc" id="L182">class SpanContextGetter implements TextMapGetter&lt;SpanContextProto&gt; {</span>
+<span class="fc" id="L183">  static final SpanContextGetter INSTANCE = new SpanContextGetter();</span>
+
+  @Override
+  public Iterable&lt;String&gt; keys(SpanContextProto carrier) {
+<span class="nc" id="L187">    return carrier.getContextMap().keySet();</span>
+  }
+
+  @Override
+  public String get(SpanContextProto carrier, String key) {
+<span class="fc" id="L192">    return Optional.ofNullable(carrier).map(SpanContextProto::getContextMap)</span>
+<span class="fc" id="L193">        .map(map -&gt; map.get(key)).orElse(null);</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

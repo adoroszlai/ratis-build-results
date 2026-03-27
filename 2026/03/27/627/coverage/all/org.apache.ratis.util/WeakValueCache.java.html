@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WeakValueCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCo Coverage Report</a> &gt; <a href="index.source.html" class="el_package">org.apache.ratis.util</a> &gt; <span class="el_source">WeakValueCache.java</span></div><h1>WeakValueCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * &quot;License&quot;); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.ratis.util;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+
+import static org.apache.ratis.util.BiWeakValueCache.newMap;
+
+/**
+ * Weak Value Cache: {@link K} -&gt; {@link V}.
+ * &lt;p&gt;
+ * Note that the cached values are weakly referenced.
+ * A cached value could be garage-collected (i.e. evicted from the cache)
+ * when there are no external (strong) references.
+ * &lt;p&gt;
+ * For key types with two components, use {@link BiWeakValueCache}.
+ *
+ * @param &lt;K&gt; the type of the keys.
+ * @param &lt;V&gt; the type to be cached values.
+ */
+public final class WeakValueCache&lt;K, V&gt; {
+  private final String keyName;
+  private final String name;
+
+  /** For constructing a value from a key. */
+  private final Function&lt;K, V&gt; constructor;
+  /** Count the number of values constructed. */
+<span class="fc" id="L48">  private final AtomicInteger constructionCount = new AtomicInteger(0);</span>
+
+  /** Map: {@link K} -&gt; {@link V}. */
+<span class="fc" id="L51">  private final ConcurrentMap&lt;K, V&gt; map = newMap();</span>
+
+  /**
+   * Create a cache for mapping {@link K} keys to {@link V} values.
+   *
+   * @param keyName the name of the key.
+   * @param constructor for constructing {@link V} values.
+   */
+<span class="fc" id="L59">  public WeakValueCache(String keyName, Function&lt;K, V&gt; constructor) {</span>
+<span class="fc" id="L60">    this.keyName = keyName;</span>
+<span class="fc" id="L61">    this.name = keyName + &quot;-cache&quot;;</span>
+<span class="fc" id="L62">    this.constructor = constructor;</span>
+<span class="fc" id="L63">  }</span>
+
+  private V construct(K key) {
+<span class="fc" id="L66">    final V constructed = constructor.apply(key);</span>
+<span class="fc" id="L67">    Objects.requireNonNull(constructed, &quot;constructed == null&quot;);</span>
+<span class="fc" id="L68">    constructionCount.incrementAndGet();</span>
+<span class="fc" id="L69">    return constructed;</span>
+  }
+
+  /**
+   * If the given key is in the cache, return its cached values.
+   * Otherwise, create a new value, put it in the cache and then return it.
+   */
+  public V getOrCreate(K key) {
+<span class="pc" id="L77">    Objects.requireNonNull(key, () -&gt; keyName + &quot; (key) == null&quot;);</span>
+<span class="fc" id="L78">    return map.computeIfAbsent(key, this::construct);</span>
+  }
+
+  List&lt;V&gt; getValues() {
+<span class="fc" id="L82">    return new ArrayList&lt;&gt;(map.values());</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L87">    return name;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
