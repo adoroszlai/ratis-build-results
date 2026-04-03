@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftWithNetty
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 55.35 s <<< FAILURE! -- in org.apache.ratis.netty.TestRaftWithNetty
+org.apache.ratis.netty.TestRaftWithNetty.testBasicAppendEntriesKillLeader -- Time elapsed: 5.323 s <<< ERROR!
+org.apache.ratis.protocol.exceptions.AlreadyClosedException: Client is closed or failed: state=CLOSED, channel=[id: 0xbe313679, L:/127.0.0.1:49410 ! R:localhost/127.0.0.1:15032]
+	at org.apache.ratis.netty.NettyClient.writeAndFlush(NettyClient.java:71)
+	at org.apache.ratis.netty.NettyRpcProxy$Connection.offer(NettyRpcProxy.java:228)
+	at org.apache.ratis.netty.NettyRpcProxy.sendAsync(NettyRpcProxy.java:286)
+	at org.apache.ratis.netty.NettyRpcProxy.send(NettyRpcProxy.java:292)
+	at org.apache.ratis.netty.client.NettyClientRpc.sendRequest(NettyClientRpc.java:122)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequest(BlockingImpl.java:147)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:109)
+	at org.apache.ratis.client.impl.BlockingImpl.send(BlockingImpl.java:95)
+	at org.apache.ratis.client.impl.BlockingImpl.send(BlockingImpl.java:59)
+	at org.apache.ratis.RaftBasicTests.runTestBasicAppendEntries(RaftBasicTests.java:157)
+	at org.apache.ratis.RaftBasicTests.lambda$testBasicAppendEntriesKillLeader$1(RaftBasicTests.java:96)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:143)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:121)
+	at org.apache.ratis.RaftBasicTests.testBasicAppendEntriesKillLeader(RaftBasicTests.java:95)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
