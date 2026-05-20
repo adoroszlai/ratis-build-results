@@ -1,0 +1,57 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestLogAppenderWithNetty
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 13.49 s <<< FAILURE! -- in org.apache.ratis.netty.TestLogAppenderWithNetty
+org.apache.ratis.netty.TestLogAppenderWithNetty.testNewAppendEntriesRequestAfterPurgeFollowerAtStartIndex -- Time elapsed: 3.758 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+newAppendEntriesRequest should return null when previous TermIndex is not found ==> expected: <null> but was: <serverRequest {
+  requestorId: "s1"
+  replyId: "s0"
+  raftGroupId {
+    id: "\335\035=\366\206\351O \233\312\335\276\2350\202\252"
+  }
+}
+leaderTerm: 2
+commitInfos {
+  server {
+    id: "s1"
+    address: "localhost:15004"
+    dataStreamAddress: "localhost:15007"
+    clientAddress: "localhost:15006"
+    adminAddress: "localhost:15005"
+    startupRole: FOLLOWER
+  }
+  commitIndex: 60
+}
+commitInfos {
+  server {
+    id: "s0"
+    address: "localhost:15000"
+    dataStreamAddress: "localhost:15003"
+    clientAddress: "localhost:15002"
+    adminAddress: "localhost:15001"
+    startupRole: FOLLOWER
+  }
+  commitIndex: 59
+}
+commitInfos {
+  server {
+    id: "s2"
+    address: "localhost:15008"
+    dataStreamAddress: "localhost:15011"
+    clientAddress: "localhost:15010"
+    adminAddress: "localhost:15009"
+    startupRole: FOLLOWER
+  }
+  commitIndex: 59
+}
+>
+	at org.apache.ratis.LogAppenderTests.runTestNewAppendEntriesRequestAfterPurge(LogAppenderTests.java:308)
+	at org.apache.ratis.LogAppenderTests.lambda$testNewAppendEntriesRequestAfterPurgeFollowerAtStartIndex$4(LogAppenderTests.java:249)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:124)
+	at org.apache.ratis.LogAppenderTests.testNewAppendEntriesRequestAfterPurgeFollowerAtStartIndex(LogAppenderTests.java:246)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
