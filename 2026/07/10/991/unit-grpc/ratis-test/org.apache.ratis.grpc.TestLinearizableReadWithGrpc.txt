@@ -1,0 +1,27 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestLinearizableReadWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 25.10 s <<< FAILURE! -- in org.apache.ratis.grpc.TestLinearizableReadWithGrpc
+org.apache.ratis.grpc.TestLinearizableReadWithGrpc.testLinearizableReadFailWhenLeaderDown -- Time elapsed: 4.663 s <<< ERROR!
+org.apache.ratis.protocol.exceptions.TimeoutIOException: client-000000000008: Timed out 3s for RaftClientRequest:client-000000000008->s0@group-9E00607F8912, cid=382, seq=null, RO, QUERY
+	at org.apache.ratis.grpc.client.GrpcClientRpc.sendRequest(GrpcClientRpc.java:194)
+	at org.apache.ratis.grpc.client.GrpcClientRpc.sendRequest(GrpcClientRpc.java:149)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequest(BlockingImpl.java:147)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:109)
+	at org.apache.ratis.client.impl.BlockingImpl.send(BlockingImpl.java:95)
+	at org.apache.ratis.client.impl.BlockingImpl.sendReadOnly(BlockingImpl.java:64)
+	at org.apache.ratis.client.api.BlockingApi.sendReadOnly(BlockingApi.java:45)
+	at org.apache.ratis.LinearizableReadTests.runTestLinearizableReadFailWhenLeaderDown(LinearizableReadTests.java:258)
+	at org.apache.ratis.LinearizableReadTests.lambda$runWithNewCluster$0(LinearizableReadTests.java:83)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+	at org.apache.ratis.LinearizableReadTests.runWithNewCluster(LinearizableReadTests.java:81)
+	at org.apache.ratis.LinearizableReadTests.testLinearizableReadFailWhenLeaderDown(LinearizableReadTests.java:245)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: java.util.concurrent.TimeoutException
+	at java.base/java.util.concurrent.CompletableFuture.timedGet(CompletableFuture.java:1981)
+	at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:2116)
+	at org.apache.ratis.grpc.client.GrpcClientRpc.sendRequest(GrpcClientRpc.java:185)
+	... 14 more
+
