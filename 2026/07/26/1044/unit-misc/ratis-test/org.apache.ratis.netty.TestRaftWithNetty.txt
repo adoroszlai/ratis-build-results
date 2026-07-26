@@ -1,0 +1,29 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftWithNetty
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 128.5 s <<< FAILURE! -- in org.apache.ratis.netty.TestRaftWithNetty
+org.apache.ratis.netty.TestRaftWithNetty.testWithLoad -- Time elapsed: 100.0 s <<< ERROR!
+java.util.concurrent.TimeoutException: testWithLoad() timed out after 100 seconds
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	Suppressed: java.lang.InterruptedException: sleep interrupted
+		at java.base/java.lang.Thread.sleepNanos0(Native Method)
+		at java.base/java.lang.Thread.sleepNanos(Thread.java:509)
+		at java.base/java.lang.Thread.sleep(Thread.java:577)
+		at java.base/java.util.concurrent.TimeUnit.sleep(TimeUnit.java:446)
+		at org.apache.ratis.util.TimeDuration.sleep(TimeDuration.java:353)
+		at org.apache.ratis.util.TimeDuration.sleep(TimeDuration.java:338)
+		at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:236)
+		at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+		at org.apache.ratis.util.JavaUtils.attemptRepeatedly(JavaUtils.java:204)
+		at org.apache.ratis.RaftTestUtil.changeLeader(RaftTestUtil.java:487)
+		at org.apache.ratis.RaftTestUtil.changeLeader(RaftTestUtil.java:479)
+		at org.apache.ratis.RaftBasicTests.testWithLoad(RaftBasicTests.java:447)
+		at org.apache.ratis.RaftBasicTests.lambda$testWithLoad$0(RaftBasicTests.java:379)
+		at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+		at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:124)
+		at org.apache.ratis.RaftBasicTests.testWithLoad(RaftBasicTests.java:379)
+		at org.apache.ratis.netty.TestRaftWithNetty.testWithLoad(TestRaftWithNetty.java:31)
+		at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+		... 2 more
+
