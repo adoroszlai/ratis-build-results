@@ -1,0 +1,60 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestLeaderElectionWithNetty
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 61.44 s <<< FAILURE! -- in org.apache.ratis.netty.TestLeaderElectionWithNetty
+org.apache.ratis.netty.TestLeaderElectionWithNetty.testTransferLeader -- Time elapsed: 4.003 s <<< ERROR!
+org.apache.ratis.protocol.exceptions.TransferLeadershipException: 
+s0@group-1C0EADF846FC: Failed to transfer leadership to s1 (the current leader is s0): COMPLETED_EXCEPTIONALLY: java.util.concurrent.CompletionException: java.lang.IllegalStateException: previous is expected to be null but previous = java.util.concurrent.CompletableFuture@4743c037[Not completed, 1 dependents] != null, class = class java.util.concurrent.CompletableFuture
+	at java.base/java.util.concurrent.CompletableFuture.wrapInCompletionException(CompletableFuture.java:323)
+	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:359)
+	at java.base/java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:364)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1791)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: previous is expected to be null but previous = java.util.concurrent.CompletableFuture@4743c037[Not completed, 1 dependents] != null, class = class java.util.concurrent.CompletableFuture
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:77)
+	at org.apache.ratis.util.Preconditions.assertNull(Preconditions.java:103)
+	at org.apache.ratis.util.Preconditions.assertNull(Preconditions.java:107)
+	at org.apache.ratis.netty.NettyRpcProxy$Connection.offer(NettyRpcProxy.java:225)
+	at org.apache.ratis.netty.NettyRpcProxy.sendAsync(NettyRpcProxy.java:287)
+	at org.apache.ratis.netty.NettyRpcProxy.send(NettyRpcProxy.java:293)
+	at org.apache.ratis.netty.server.NettyRpcService.sendRaftNettyServerRequestProto(NettyRpcService.java:369)
+	at org.apache.ratis.netty.server.NettyRpcService.startLeaderElection(NettyRpcService.java:338)
+	at org.apache.ratis.server.impl.TransferLeadership.lambda$sendStartLeaderElection$0(TransferLeadership.java:218)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1789)
+	... 3 more
+
+	at org.apache.ratis.server.impl.TransferLeadership$PendingRequest.complete(TransferLeadership.java:152)
+	at org.apache.ratis.server.impl.TransferLeadership.start(TransferLeadership.java:305)
+	at org.apache.ratis.server.impl.TransferLeadership.start(TransferLeadership.java:288)
+	at org.apache.ratis.server.impl.RaftServerImpl.transferLeadershipAsync(RaftServerImpl.java:1315)
+	at org.apache.ratis.server.impl.RaftServerImpl.transferLeadership(RaftServerImpl.java:1259)
+	at org.apache.ratis.server.impl.RaftServerProxy.transferLeadership(RaftServerProxy.java:477)
+	at org.apache.ratis.netty.server.NettyRpcService.handle(NettyRpcService.java:199)
+	at org.apache.ratis.netty.server.NettyRpcService$InboundHandler.channelRead0(NettyRpcService.java:94)
+	at org.apache.ratis.netty.server.NettyRpcService$InboundHandler.channelRead0(NettyRpcService.java:90)
+	at org.apache.ratis.thirdparty.io.netty.channel.SimpleChannelInboundHandler.channelRead(SimpleChannelInboundHandler.java:99)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:444)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:420)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:412)
+	at org.apache.ratis.thirdparty.io.netty.handler.codec.MessageToMessageDecoder.channelRead(MessageToMessageDecoder.java:107)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:444)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:420)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:412)
+	at org.apache.ratis.thirdparty.io.netty.handler.codec.ByteToMessageDecoder.fireChannelRead(ByteToMessageDecoder.java:361)
+	at org.apache.ratis.thirdparty.io.netty.handler.codec.ByteToMessageDecoder.channelRead(ByteToMessageDecoder.java:325)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:444)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:420)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:412)
+	at org.apache.ratis.thirdparty.io.netty.channel.DefaultChannelPipeline$HeadContext.channelRead(DefaultChannelPipeline.java:1357)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:440)
+	at org.apache.ratis.thirdparty.io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:420)
+	at org.apache.ratis.thirdparty.io.netty.channel.DefaultChannelPipeline.fireChannelRead(DefaultChannelPipeline.java:868)
+	at org.apache.ratis.thirdparty.io.netty.channel.epoll.AbstractEpollStreamChannel$EpollStreamUnsafe.epollInReady(AbstractEpollStreamChannel.java:805)
+	at org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollEventLoop.processReady(EpollEventLoop.java:501)
+	at org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollEventLoop.run(EpollEventLoop.java:399)
+	at org.apache.ratis.thirdparty.io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:1007)
+	at org.apache.ratis.thirdparty.io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+
