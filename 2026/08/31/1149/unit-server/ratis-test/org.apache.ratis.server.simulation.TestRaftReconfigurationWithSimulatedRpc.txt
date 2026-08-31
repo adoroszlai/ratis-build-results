@@ -1,0 +1,26 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.server.simulation.TestRaftReconfigurationWithSimulatedRpc
+-------------------------------------------------------------------------------
+Tests run: 19, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 47.53 s <<< FAILURE! -- in org.apache.ratis.server.simulation.TestRaftReconfigurationWithSimulatedRpc
+org.apache.ratis.server.simulation.TestRaftReconfigurationWithSimulatedRpc.testKillLeaderDuringReconf -- Time elapsed: 10.16 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+New leader s2 is not bootstrapping peer s3; printing ALL groups
+  s3:      NEW      null (NEW): s3@group-7D39EBAE3704:t0, leader=null, voted=null, raftlog=Uninitialized, conf=conf: {index: -1, cur=peers:[]|listeners:[], old=null}
+  s0:   CLOSED    LEADER (CLOSED): s0@group-7D39EBAE3704:t1, leader=s0, voted=s0, raftlog=Memoized:s0@group-7D39EBAE3704-SegmentedRaftLog:CLOSED:c0, conf=conf: {index: 0, cur=peers:[s0|localhost:15128, s1|localhost:15132, s2|localhost:15136]|listeners:[], old=null}
+  s1:  RUNNING  FOLLOWER (RUNNING): s1@group-7D39EBAE3704:t2, leader=s2, voted=s2, raftlog=Memoized:s1@group-7D39EBAE3704-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s0|localhost:15128, s1|localhost:15132, s2|localhost:15136]|listeners:[], old=null}
+  s2:  RUNNING    LEADER (RUNNING): s2@group-7D39EBAE3704:t2, leader=s2, voted=s2, raftlog=Memoized:s2@group-7D39EBAE3704-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s0|localhost:15128, s1|localhost:15132, s2|localhost:15136]|listeners:[], old=null} ==> expected: <true> but was: <false>
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.lambda$runTestKillLeaderDuringReconf$5(RaftReconfigurationBaseTest.java:590)
+	at org.apache.ratis.util.function.CheckedRunnable.lambda$asCheckedSupplier$0(CheckedRunnable.java:32)
+	at org.apache.ratis.util.JavaUtils.lambda$attempt$0(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:225)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:212)
+	at org.apache.ratis.util.JavaUtils.attemptRepeatedly(JavaUtils.java:204)
+	at org.apache.ratis.util.JavaUtils.attempt(JavaUtils.java:245)
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.runTestKillLeaderDuringReconf(RaftReconfigurationBaseTest.java:587)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:124)
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.testKillLeaderDuringReconf(RaftReconfigurationBaseTest.java:519)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+
