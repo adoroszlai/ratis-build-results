@@ -1,0 +1,23 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.grpc.TestRaftReconfigurationWithGrpc
+-------------------------------------------------------------------------------
+Tests run: 19, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 68.48 s <<< FAILURE! -- in org.apache.ratis.grpc.TestRaftReconfigurationWithGrpc
+org.apache.ratis.grpc.TestRaftReconfigurationWithGrpc.testKillLeaderDuringReconf -- Time elapsed: 31.29 s <<< FAILURE!
+java.lang.AssertionError: 
+Timed out waiting for reconfiguration; newPeer=s3, newPeerState=STARTING, setConfTask[done=false, cancelled=false], printing ALL groups
+  s3:  RUNNING  FOLLOWER (STARTING): s3@group-F2560D35EE29:t2, leader=s1, voted=null, raftlog=Memoized:s3@group-F2560D35EE29-SegmentedRaftLog:OPENED:c2:last(t:2, i:2), conf=conf: {index: 1, cur=peers:[s0|localhost:15139, s1|localhost:15143, s2|localhost:15147]|listeners:[], old=null}
+  s0:  RUNNING CANDIDATE (CLOSED): s0@group-F2560D35EE29:t2, leader=null, voted=s1, raftlog=Memoized:s0@group-F2560D35EE29-SegmentedRaftLog:CLOSED:c2, conf=conf: {index: 3, cur=peers:[s3|0.0.0.0:15151, s1|localhost:15143, s2|localhost:15147]|listeners:[], old=peers:[s0|localhost:15139, s1|localhost:15143, s2|localhost:15147]|listeners:[]}
+  s1:  RUNNING  FOLLOWER (RUNNING): s1@group-F2560D35EE29:t2, leader=null, voted=s1, raftlog=Memoized:s1@group-F2560D35EE29-SegmentedRaftLog:OPENED:c2:last(t:2, i:3), conf=conf: {index: 3, cur=peers:[s3|0.0.0.0:15151, s1|localhost:15143, s2|localhost:15147]|listeners:[], old=peers:[s0|localhost:15139, s1|localhost:15143, s2|localhost:15147]|listeners:[]}
+  s2:   CLOSED    LEADER (CLOSED): s2@group-F2560D35EE29:t1, leader=s2, voted=s2, raftlog=Memoized:s2@group-F2560D35EE29-SegmentedRaftLog:CLOSED:c0, conf=conf: {index: 0, cur=peers:[s0|localhost:15139, s1|localhost:15143, s2|localhost:15147]|listeners:[], old=null}
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.runTestKillLeaderDuringReconf(RaftReconfigurationBaseTest.java:606)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:124)
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.testKillLeaderDuringReconf(RaftReconfigurationBaseTest.java:519)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: java.util.concurrent.TimeoutException
+	at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:206)
+	at org.apache.ratis.server.impl.RaftReconfigurationBaseTest.runTestKillLeaderDuringReconf(RaftReconfigurationBaseTest.java:601)
+	... 6 more
+
