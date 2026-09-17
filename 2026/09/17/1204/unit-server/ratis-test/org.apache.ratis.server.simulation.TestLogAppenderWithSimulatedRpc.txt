@@ -1,0 +1,57 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.server.simulation.TestLogAppenderWithSimulatedRpc
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 35.02 s <<< FAILURE! -- in org.apache.ratis.server.simulation.TestLogAppenderWithSimulatedRpc
+org.apache.ratis.server.simulation.TestLogAppenderWithSimulatedRpc.testNewAppendEntriesRequestAfterPurgeFollowerAtStartIndex -- Time elapsed: 5.771 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+newAppendEntriesRequest should return null when previous TermIndex is not found ==> expected: <null> but was: <serverRequest {
+  requestorId: "s2"
+  replyId: "s0"
+  raftGroupId {
+    id: "\352yt\272\313\177N\352\276\266zZ\234/\355m"
+  }
+}
+leaderTerm: 2
+commitInfos {
+  server {
+    id: "s2"
+    address: "localhost:15008"
+    dataStreamAddress: "localhost:15011"
+    clientAddress: "localhost:15010"
+    adminAddress: "localhost:15009"
+    startupRole: FOLLOWER
+  }
+  commitIndex: 59
+}
+commitInfos {
+  server {
+    id: "s0"
+    address: "localhost:15000"
+    dataStreamAddress: "localhost:15003"
+    clientAddress: "localhost:15002"
+    adminAddress: "localhost:15001"
+    startupRole: FOLLOWER
+  }
+  commitIndex: 58
+}
+commitInfos {
+  server {
+    id: "s1"
+    address: "localhost:15004"
+    dataStreamAddress: "localhost:15007"
+    clientAddress: "localhost:15006"
+    adminAddress: "localhost:15005"
+    startupRole: FOLLOWER
+  }
+  commitIndex: 58
+}
+>
+	at org.apache.ratis.LogAppenderTests.runTestNewAppendEntriesRequestAfterPurge(LogAppenderTests.java:308)
+	at org.apache.ratis.LogAppenderTests.lambda$testNewAppendEntriesRequestAfterPurgeFollowerAtStartIndex$0(LogAppenderTests.java:249)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:124)
+	at org.apache.ratis.LogAppenderTests.testNewAppendEntriesRequestAfterPurgeFollowerAtStartIndex(LogAppenderTests.java:246)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+
