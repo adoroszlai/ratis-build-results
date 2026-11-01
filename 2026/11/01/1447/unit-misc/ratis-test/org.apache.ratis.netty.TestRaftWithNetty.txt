@@ -1,0 +1,36 @@
+-------------------------------------------------------------------------------
+Test set: org.apache.ratis.netty.TestRaftWithNetty
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 57.15 s <<< FAILURE! -- in org.apache.ratis.netty.TestRaftWithNetty
+org.apache.ratis.netty.TestRaftWithNetty.testBasicAppendEntries -- Time elapsed: 4.403 s <<< ERROR!
+java.lang.IllegalStateException: ILLEGAL TRANSITION: In NettyClient-localhost:15032, CLOSED -> RUNNING
+	at org.apache.ratis.util.Preconditions.assertTrue(Preconditions.java:65)
+	at org.apache.ratis.util.LifeCycle$State.validate(LifeCycle.java:124)
+	at org.apache.ratis.util.LifeCycle.lambda$transition$0(LifeCycle.java:167)
+	at java.base/java.util.concurrent.atomic.AtomicReference.updateAndGet(AtomicReference.java:206)
+	at org.apache.ratis.util.LifeCycle.transition(LifeCycle.java:166)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:281)
+	at org.apache.ratis.netty.NettyClient.connect(NettyClient.java:49)
+	at org.apache.ratis.netty.NettyRpcProxy$Connection.<init>(NettyRpcProxy.java:205)
+	at org.apache.ratis.netty.NettyRpcProxy.<init>(NettyRpcProxy.java:277)
+	at org.apache.ratis.netty.NettyRpcProxy$PeerMap.lambda$new$0(NettyRpcProxy.java:70)
+	at org.apache.ratis.util.PeerProxyMap.createProxyImpl(PeerProxyMap.java:115)
+	at org.apache.ratis.util.PeerProxyMap.access$100(PeerProxyMap.java:42)
+	at org.apache.ratis.util.PeerProxyMap$PeerAndProxy.lambda$getProxy$0(PeerProxyMap.java:73)
+	at org.apache.ratis.util.LifeCycle.startAndTransition(LifeCycle.java:280)
+	at org.apache.ratis.util.PeerProxyMap$PeerAndProxy.getProxy(PeerProxyMap.java:72)
+	at org.apache.ratis.util.PeerProxyMap.getProxy(PeerProxyMap.java:127)
+	at org.apache.ratis.netty.client.NettyClientRpc.sendRequest(NettyClientRpc.java:110)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequest(BlockingImpl.java:147)
+	at org.apache.ratis.client.impl.BlockingImpl.sendRequestWithRetry(BlockingImpl.java:109)
+	at org.apache.ratis.client.impl.BlockingImpl.send(BlockingImpl.java:95)
+	at org.apache.ratis.client.impl.BlockingImpl.send(BlockingImpl.java:59)
+	at org.apache.ratis.RaftBasicTests.runTestBasicAppendEntries(RaftBasicTests.java:185)
+	at org.apache.ratis.RaftBasicTests.lambda$testBasicAppendEntries$0(RaftBasicTests.java:91)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:146)
+	at org.apache.ratis.server.impl.MiniRaftCluster$Factory$Get.runWithNewCluster(MiniRaftCluster.java:124)
+	at org.apache.ratis.RaftBasicTests.testBasicAppendEntries(RaftBasicTests.java:90)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+
